@@ -50,4 +50,43 @@ const orders: Order[] = Array.from({ length: 50 }, (_, i) => {
   };
 });
 
-export const mockData = { orders, agents: agents.filter(a => a.role === 'agent'), users: agents, products };
+import { PredictionList, PredictionEntry, PredictionLeadStatus } from '@/types';
+
+const leadStatuses: PredictionLeadStatus[] = ['not_contacted', 'no_answer', 'interested', 'not_interested', 'confirmed'];
+
+const predictionEntries1: PredictionEntry[] = Array.from({ length: 20 }, (_, i) => {
+  const agent = i < 8 ? agents[0] : i < 14 ? agents[1] : null;
+  return {
+    id: `pe1-${i}`,
+    name: ['Khalid Amrani', 'Samira Benkaddour', 'Rachid El Fassi', 'Naima Ouahbi', 'Hassan Tazi'][i % 5],
+    telephone: `+212 6${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`,
+    address: `${Math.floor(Math.random() * 200) + 1} Rue ${['Ibn Sina', 'Al Massira', 'Zerktouni'][i % 3]}`,
+    city: ['Casablanca', 'Rabat', 'Marrakech', 'Fes', 'Tangier'][i % 5],
+    product: ['VitaBoost Pro', 'OmegaPlus 3-6-9', 'CollagenFlex'][i % 3],
+    status: agent ? leadStatuses[Math.floor(Math.random() * leadStatuses.length)] : 'not_contacted',
+    assignedAgentId: agent?.id ?? null,
+    assignedAgentName: agent?.name ?? null,
+    notes: i % 3 === 0 ? 'Customer asked for more info.' : '',
+  };
+});
+
+const predictionLists: PredictionList[] = [
+  {
+    id: 'pl1',
+    name: 'February Campaign Leads',
+    uploadedAt: '2026-02-10T10:00:00Z',
+    totalRecords: 20,
+    assignedCount: 14,
+    entries: predictionEntries1,
+  },
+  {
+    id: 'pl2',
+    name: 'VitaBoost Promo Batch',
+    uploadedAt: '2026-02-12T14:30:00Z',
+    totalRecords: 0,
+    assignedCount: 0,
+    entries: [],
+  },
+];
+
+export const mockData = { orders, agents: agents.filter(a => a.role === 'agent'), users: agents, products, predictionLists };

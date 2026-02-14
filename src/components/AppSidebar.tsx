@@ -11,12 +11,15 @@ import {
   ChevronRight,
   LogOut,
   ClipboardList,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 const navItems = [
   { title: 'Dashboard', path: '/', icon: LayoutDashboard },
   { title: 'Orders', path: '/orders', icon: ShoppingCart },
   { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
+  { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
+  { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
   { title: 'Users', path: '/users', icon: Users },
   { title: 'Products', path: '/products', icon: Package },
 ];
