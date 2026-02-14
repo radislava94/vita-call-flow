@@ -88,3 +88,46 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
 
 export const AGENT_ALLOWED_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed'];
 export const ALL_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed', 'shipped', 'returned', 'paid', 'trashed', 'cancelled'];
+
+// Prediction Lists
+export type PredictionLeadStatus = 'not_contacted' | 'no_answer' | 'interested' | 'not_interested' | 'confirmed';
+
+export const PREDICTION_LEAD_STATUSES: PredictionLeadStatus[] = ['not_contacted', 'no_answer', 'interested', 'not_interested', 'confirmed'];
+
+export const PREDICTION_LEAD_LABELS: Record<PredictionLeadStatus, string> = {
+  not_contacted: 'Not Contacted',
+  no_answer: 'No Answer',
+  interested: 'Interested',
+  not_interested: 'Not Interested',
+  confirmed: 'Confirmed',
+};
+
+export const PREDICTION_LEAD_COLORS: Record<PredictionLeadStatus, string> = {
+  not_contacted: 'status-pending',
+  no_answer: 'status-call-again',
+  interested: 'status-take',
+  not_interested: 'status-returned',
+  confirmed: 'status-confirmed',
+};
+
+export interface PredictionEntry {
+  id: string;
+  name: string;
+  telephone: string;
+  address: string;
+  city: string;
+  product: string;
+  status: PredictionLeadStatus;
+  assignedAgentId: string | null;
+  assignedAgentName: string | null;
+  notes: string;
+}
+
+export interface PredictionList {
+  id: string;
+  name: string;
+  uploadedAt: string;
+  totalRecords: number;
+  assignedCount: number;
+  entries: PredictionEntry[];
+}
