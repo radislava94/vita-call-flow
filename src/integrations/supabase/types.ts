@@ -14,16 +14,357 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      order_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          changed_by_name: string | null
+          from_status: Database["public"]["Enums"]["order_status"] | null
+          id: string
+          order_id: string
+          to_status: Database["public"]["Enums"]["order_status"]
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          id?: string
+          order_id: string
+          to_status: Database["public"]["Enums"]["order_status"]
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          changed_by_name?: string | null
+          from_status?: Database["public"]["Enums"]["order_status"] | null
+          id?: string
+          order_id?: string
+          to_status?: Database["public"]["Enums"]["order_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_notes: {
+        Row: {
+          author_id: string | null
+          author_name: string
+          created_at: string
+          id: string
+          order_id: string
+          text: string
+        }
+        Insert: {
+          author_id?: string | null
+          author_name: string
+          created_at?: string
+          id?: string
+          order_id: string
+          text: string
+        }
+        Update: {
+          author_id?: string | null
+          author_name?: string
+          created_at?: string
+          id?: string
+          order_id?: string
+          text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_notes_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      orders: {
+        Row: {
+          assigned_agent_id: string | null
+          assigned_agent_name: string | null
+          assigned_at: string | null
+          assigned_by: string | null
+          birthday: string | null
+          created_at: string
+          customer_address: string
+          customer_city: string
+          customer_name: string
+          customer_phone: string
+          display_id: string
+          id: string
+          postal_code: string | null
+          price: number
+          product_id: string | null
+          product_name: string
+          status: Database["public"]["Enums"]["order_status"]
+          updated_at: string
+        }
+        Insert: {
+          assigned_agent_id?: string | null
+          assigned_agent_name?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          birthday?: string | null
+          created_at?: string
+          customer_address?: string
+          customer_city?: string
+          customer_name?: string
+          customer_phone?: string
+          display_id: string
+          id?: string
+          postal_code?: string | null
+          price?: number
+          product_id?: string | null
+          product_name: string
+          status?: Database["public"]["Enums"]["order_status"]
+          updated_at?: string
+        }
+        Update: {
+          assigned_agent_id?: string | null
+          assigned_agent_name?: string | null
+          assigned_at?: string | null
+          assigned_by?: string | null
+          birthday?: string | null
+          created_at?: string
+          customer_address?: string
+          customer_city?: string
+          customer_name?: string
+          customer_phone?: string
+          display_id?: string
+          id?: string
+          postal_code?: string | null
+          price?: number
+          product_id?: string | null
+          product_name?: string
+          status?: Database["public"]["Enums"]["order_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prediction_leads: {
+        Row: {
+          address: string | null
+          assigned_agent_id: string | null
+          assigned_agent_name: string | null
+          city: string | null
+          created_at: string
+          id: string
+          list_id: string
+          name: string
+          notes: string | null
+          product: string | null
+          status: Database["public"]["Enums"]["lead_status"]
+          telephone: string
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          assigned_agent_id?: string | null
+          assigned_agent_name?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          list_id: string
+          name?: string
+          notes?: string | null
+          product?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          telephone?: string
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          assigned_agent_id?: string | null
+          assigned_agent_name?: string | null
+          city?: string | null
+          created_at?: string
+          id?: string
+          list_id?: string
+          name?: string
+          notes?: string | null
+          product?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          telephone?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_leads_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      prediction_lists: {
+        Row: {
+          assigned_count: number
+          id: string
+          name: string
+          total_records: number
+          uploaded_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          assigned_count?: number
+          id?: string
+          name: string
+          total_records?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          assigned_count?: number
+          id?: string
+          name?: string
+          total_records?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      products: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          photo_url: string | null
+          price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          photo_url?: string | null
+          price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          photo_url?: string | null
+          price?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          full_name: string
+          id: string
+          is_active: boolean
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          full_name: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          full_name?: string
+          id?: string
+          is_active?: boolean
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      check_phone_duplicates: {
+        Args: { _exclude_order_id?: string; _phone: string }
+        Returns: {
+          source: string
+          source_id: string
+          source_name: string
+        }[]
+      }
+      get_my_role: {
+        Args: never
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "agent"
+      lead_status:
+        | "not_contacted"
+        | "no_answer"
+        | "interested"
+        | "not_interested"
+        | "confirmed"
+      order_status:
+        | "pending"
+        | "take"
+        | "call_again"
+        | "confirmed"
+        | "shipped"
+        | "returned"
+        | "paid"
+        | "trashed"
+        | "cancelled"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +491,26 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "agent"],
+      lead_status: [
+        "not_contacted",
+        "no_answer",
+        "interested",
+        "not_interested",
+        "confirmed",
+      ],
+      order_status: [
+        "pending",
+        "take",
+        "call_again",
+        "confirmed",
+        "shipped",
+        "returned",
+        "paid",
+        "trashed",
+        "cancelled",
+      ],
+    },
   },
 } as const
