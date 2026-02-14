@@ -1,51 +1,62 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format, parse } from 'date-fns';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { mockData } from '@/data/mockData';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
-import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil } from 'lucide-react';
-import { normalizePhone, isValidPhone, findDuplicatePhoneInOrders, findDuplicatePhoneInPredictions } from '@/lib/validation';
+import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2 } from 'lucide-react';
+import { isValidPhone } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const STATUSES_REQUIRING_COMPLETE_INFO: OrderStatus[] = ['confirmed', 'shipped', 'returned', 'paid', 'cancelled'];
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
-  const order = mockData.orders.find(o => o.id === id);
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
 
+  const [order, setOrder] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [customerName, setCustomerName] = useState(order?.customerName ?? '');
-  const [customerPhone, setCustomerPhone] = useState(order?.customerPhone ?? '');
-  const [customerCity, setCustomerCity] = useState(order?.customerCity ?? '');
-  const [customerAddress, setCustomerAddress] = useState(order?.customerAddress ?? '');
-  const [postalCode, setPostalCode] = useState(order?.postalCode ?? '');
-  const [birthday, setBirthday] = useState<Date | undefined>(
-    order?.birthday ? parse(order.birthday, 'yyyy-MM-dd', new Date()) : undefined
-  );
-  const [selectedStatus, setSelectedStatus] = useState<OrderStatus>(order?.status ?? 'pending');
+  const [customerName, setCustomerName] = useState('');
+  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerCity, setCustomerCity] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [birthday, setBirthday] = useState<Date | undefined>(undefined);
+  const [selectedStatus, setSelectedStatus] = useState<OrderStatus>('pending');
   const [statusError, setStatusError] = useState('');
+  const [noteText, setNoteText] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  // Phone duplicate checks
-  const phoneDuplicates = useMemo(() => {
-    if (!order) return [];
-    const dupes: string[] = [];
-    const phone = editing ? customerPhone : order.customerPhone;
-    const norm = normalizePhone(phone);
-    const otherOrder = mockData.orders.find(o => o.id !== order.id && normalizePhone(o.customerPhone) === norm);
-    if (otherOrder) dupes.push(`Duplicate phone in order ${otherOrder.id}`);
-    const predList = findDuplicatePhoneInPredictions(phone);
-    if (predList) dupes.push(`Phone exists in prediction list "${predList}"`);
-    return dupes;
-  }, [editing, customerPhone, order]);
+  const loadOrder = () => {
+    if (!id) return;
+    setLoading(true);
+    apiGetOrder(id)
+      .then((data) => {
+        setOrder(data);
+        setCustomerName(data.customer_name || '');
+        setCustomerPhone(data.customer_phone || '');
+        setCustomerCity(data.customer_city || '');
+        setCustomerAddress(data.customer_address || '');
+        setPostalCode(data.postal_code || '');
+        setBirthday(data.birthday ? parse(data.birthday, 'yyyy-MM-dd', new Date()) : undefined);
+        setSelectedStatus(data.status);
+      })
+      .catch(() => setOrder(null))
+      .finally(() => setLoading(false));
+  };
 
-  // Validation for required fields
+  useEffect(() => { loadOrder(); }, [id]);
+
+  const phoneDuplicates = order?.phone_duplicates || [];
+
   const fieldErrors = useMemo(() => {
     if (!editing) return {};
     const errors: Record<string, string> = {};
@@ -59,6 +70,16 @@ export default function OrderDetails() {
 
   const hasRequiredFieldsComplete = customerName.trim() && customerPhone.trim() && customerCity.trim() && customerAddress.trim();
 
+  if (loading) {
+    return (
+      <AppLayout title="Order Details">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
   if (!order) {
     return (
       <AppLayout title="Order Not Found">
@@ -70,40 +91,72 @@ export default function OrderDetails() {
     );
   }
 
-  const handleSaveCustomer = () => {
+  const handleSaveCustomer = async () => {
     if (Object.keys(fieldErrors).length > 0) {
       toast({ title: 'Validation error', description: 'Please fix all required fields.', variant: 'destructive' });
       return;
     }
-    // Update mock data in-place
-    order.customerName = customerName.trim();
-    order.customerPhone = customerPhone.trim();
-    order.customerCity = customerCity.trim();
-    order.customerAddress = customerAddress.trim();
-    order.postalCode = postalCode.trim();
-    order.birthday = birthday ? format(birthday, 'yyyy-MM-dd') : null;
-    setEditing(false);
-    toast({ title: 'Customer info saved' });
+    setSaving(true);
+    try {
+      await apiUpdateCustomer(order.id, {
+        customer_name: customerName.trim(),
+        customer_phone: customerPhone.trim(),
+        customer_city: customerCity.trim(),
+        customer_address: customerAddress.trim(),
+        postal_code: postalCode.trim(),
+        birthday: birthday ? format(birthday, 'yyyy-MM-dd') : null,
+      });
+      setEditing(false);
+      toast({ title: 'Customer info saved' });
+      loadOrder();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancelEdit = () => {
-    setCustomerName(order.customerName);
-    setCustomerPhone(order.customerPhone);
-    setCustomerCity(order.customerCity);
-    setCustomerAddress(order.customerAddress);
-    setPostalCode(order.postalCode);
+    setCustomerName(order.customer_name || '');
+    setCustomerPhone(order.customer_phone || '');
+    setCustomerCity(order.customer_city || '');
+    setCustomerAddress(order.customer_address || '');
+    setPostalCode(order.postal_code || '');
     setBirthday(order.birthday ? parse(order.birthday, 'yyyy-MM-dd', new Date()) : undefined);
     setEditing(false);
   };
 
-  const handleStatusUpdate = () => {
+  const handleStatusUpdate = async () => {
     setStatusError('');
     if (STATUSES_REQUIRING_COMPLETE_INFO.includes(selectedStatus) && !hasRequiredFieldsComplete) {
       setStatusError(`Cannot change to "${STATUS_LABELS[selectedStatus]}" — Name, Phone, City, and Address must be filled in first.`);
       return;
     }
-    order.status = selectedStatus;
-    toast({ title: 'Status updated', description: `Order status changed to ${STATUS_LABELS[selectedStatus]}` });
+    setSaving(true);
+    try {
+      await apiUpdateOrderStatus(order.id, selectedStatus);
+      toast({ title: 'Status updated', description: `Order status changed to ${STATUS_LABELS[selectedStatus]}` });
+      loadOrder();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!noteText.trim()) return;
+    setSaving(true);
+    try {
+      await apiAddOrderNote(order.id, noteText.trim());
+      setNoteText('');
+      toast({ title: 'Note added' });
+      loadOrder();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const renderField = (label: string, value: string, onChange: (v: string) => void, error?: string, mono?: boolean) => (
@@ -129,8 +182,11 @@ export default function OrderDetails() {
     </div>
   );
 
+  const history = order.history || [];
+  const notes = order.notes || [];
+
   return (
-    <AppLayout title={`Order ${order.id}`}>
+    <AppLayout title={`Order ${order.display_id}`}>
       <Link to="/orders" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back to Orders
       </Link>
@@ -158,9 +214,9 @@ export default function OrderDetails() {
                 {renderField('Telephone', customerPhone, setCustomerPhone, fieldErrors.phone, true)}
                 {phoneDuplicates.length > 0 && (
                   <div className="mt-1.5 space-y-1">
-                    {phoneDuplicates.map((msg, i) => (
+                    {phoneDuplicates.map((d: any, i: number) => (
                       <p key={i} className="flex items-center gap-1 text-xs text-warning">
-                        <AlertTriangle className="h-3 w-3 shrink-0" /> {msg}
+                        <AlertTriangle className="h-3 w-3 shrink-0" /> Duplicate in {d.source}: {d.source_name} ({d.source_id})
                       </p>
                     ))}
                   </div>
@@ -205,7 +261,7 @@ export default function OrderDetails() {
 
             {editing && (
               <div className="mt-5 flex items-center gap-2 border-t pt-4">
-                <Button onClick={handleSaveCustomer} className="gap-1.5">
+                <Button onClick={handleSaveCustomer} disabled={saving} className="gap-1.5">
                   <Save className="h-4 w-4" /> Save Changes
                 </Button>
                 <Button variant="outline" onClick={handleCancelEdit}>Cancel</Button>
@@ -220,10 +276,10 @@ export default function OrderDetails() {
             </h2>
             <div className="flex items-center justify-between rounded-lg bg-muted p-4">
               <div>
-                <p className="font-semibold">{order.product}</p>
-                <p className="text-sm text-muted-foreground">ID: {order.productId}</p>
+                <p className="font-semibold">{order.product_name}</p>
+                {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
               </div>
-              <span className="text-lg font-bold text-primary">${order.price.toFixed(2)}</span>
+              <span className="text-lg font-bold text-primary">${Number(order.price).toFixed(2)}</span>
             </div>
           </div>
 
@@ -232,15 +288,15 @@ export default function OrderDetails() {
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
               <MessageSquare className="h-5 w-5 text-primary" /> Internal Notes
             </h2>
-            {order.notes.length === 0 ? (
+            {notes.length === 0 ? (
               <p className="text-sm text-muted-foreground">No notes yet.</p>
             ) : (
               <div className="space-y-3">
-                {order.notes.map(note => (
+                {notes.map((note: any) => (
                   <div key={note.id} className="rounded-lg bg-muted p-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium">{note.author}</span>
-                      <span className="text-xs text-muted-foreground">{new Date(note.createdAt).toLocaleString()}</span>
+                      <span className="text-sm font-medium">{note.author_name}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(note.created_at).toLocaleString()}</span>
                     </div>
                     <p className="mt-1 text-sm">{note.text}</p>
                   </div>
@@ -248,11 +304,17 @@ export default function OrderDetails() {
               </div>
             )}
             <textarea
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
               placeholder="Add a note..."
               className="mt-4 w-full rounded-lg border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               rows={3}
             />
-            <button className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors">
+            <button
+              onClick={handleAddNote}
+              disabled={saving || !noteText.trim()}
+              className="mt-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+            >
               Add Note
             </button>
           </div>
@@ -278,7 +340,7 @@ export default function OrderDetails() {
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" /> {statusError}
               </p>
             )}
-            <Button onClick={handleStatusUpdate} className="mt-2 w-full">
+            <Button onClick={handleStatusUpdate} disabled={saving} className="mt-2 w-full">
               Update Status
             </Button>
           </div>
@@ -286,14 +348,14 @@ export default function OrderDetails() {
           {/* Assignment */}
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">Assignment</h2>
-            {order.assignedAgent ? (
+            {order.assigned_agent_name ? (
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                  {order.assignedAgent.charAt(0)}
+                  {order.assigned_agent_name.charAt(0)}
                 </div>
                 <div>
-                  <p className="text-sm font-medium">{order.assignedAgent}</p>
-                  <p className="text-xs text-muted-foreground">Assigned by {order.assignedBy}</p>
+                  <p className="text-sm font-medium">{order.assigned_agent_name}</p>
+                  <p className="text-xs text-muted-foreground">Assigned by {order.assigned_by}</p>
                 </div>
               </div>
             ) : (
@@ -305,21 +367,21 @@ export default function OrderDetails() {
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">Timeline</h2>
             <div className="space-y-3">
-              {order.statusHistory.map((change, i) => (
+              {history.map((change: any, i: number) => (
                 <div key={i} className="flex items-start gap-3">
                   <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
                     <Clock className="h-3 w-3 text-primary" />
                   </div>
                   <div>
                     <p className="text-sm">
-                      <span className="font-medium">{change.changedBy}</span> changed status
+                      <span className="font-medium">{change.changed_by_name}</span> changed status
                     </p>
                     <div className="mt-0.5 flex items-center gap-1 text-xs">
-                      <StatusBadge status={change.from} />
+                      {change.from_status && <StatusBadge status={change.from_status} />}
                       <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                      <StatusBadge status={change.to} />
+                      <StatusBadge status={change.to_status} />
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{new Date(change.changedAt).toLocaleString()}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{new Date(change.changed_at).toLocaleString()}</p>
                   </div>
                 </div>
               ))}
@@ -329,7 +391,7 @@ export default function OrderDetails() {
                 </div>
                 <div>
                   <p className="text-sm">Order created</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.createdAt).toLocaleString()}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{new Date(order.created_at).toLocaleString()}</p>
                 </div>
               </div>
             </div>

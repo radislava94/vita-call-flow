@@ -1,5 +1,3 @@
-import { mockData } from '@/data/mockData';
-
 /**
  * Normalize a phone number by stripping all non-digit characters except leading +.
  */
@@ -13,16 +11,6 @@ export function normalizePhone(phone: string): string {
 export function isValidPhone(phone: string): boolean {
   const normalized = normalizePhone(phone);
   return /^\+?\d{8,15}$/.test(normalized);
-}
-
-/**
- * Check if a phone number already exists in orders.
- */
-export function findDuplicatePhoneInOrders(phone: string): string | null {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return null;
-  const match = mockData.orders.find(o => normalizePhone(o.customerPhone) === normalized);
-  return match ? match.id : null;
 }
 
 /**
@@ -42,20 +30,6 @@ export function findDuplicatePhoneIndices(phones: string[]): Set<number> {
     }
   });
   return dupes;
-}
-
-/**
- * Check if a phone exists in any prediction list entry.
- */
-export function findDuplicatePhoneInPredictions(phone: string, excludeListId?: string): string | null {
-  const normalized = normalizePhone(phone);
-  if (!normalized) return null;
-  for (const list of mockData.predictionLists) {
-    if (list.id === excludeListId) continue;
-    const match = list.entries.find(e => normalizePhone(e.telephone) === normalized);
-    if (match) return list.name;
-  }
-  return null;
 }
 
 /**
