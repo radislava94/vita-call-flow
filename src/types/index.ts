@@ -18,6 +18,7 @@ export interface Order {
   customerCity: string;
   customerAddress: string;
   postalCode: string;
+  birthday: string | null;
   price: number;
   status: OrderStatus;
   assignedAgent: string | null;

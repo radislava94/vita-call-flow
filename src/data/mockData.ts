@@ -38,6 +38,7 @@ const orders: Order[] = Array.from({ length: 50 }, (_, i) => {
     customerCity: ['Casablanca', 'Rabat', 'Marrakech', 'Fes', 'Tangier', 'Agadir'][Math.floor(Math.random() * 6)],
     customerAddress: `${Math.floor(Math.random() * 200) + 1} Rue ${['Hassan II', 'Mohammed V', 'Atlas', 'Sahara', 'Palmeraie'][Math.floor(Math.random() * 5)]}`,
     postalCode: `${Math.floor(Math.random() * 90000) + 10000}`,
+    birthday: Math.random() > 0.5 ? `${1970 + Math.floor(Math.random() * 40)}-${String(Math.floor(Math.random() * 12) + 1).padStart(2, '0')}-${String(Math.floor(Math.random() * 28) + 1).padStart(2, '0')}` : null,
     price: product.price,
     status,
     assignedAgent: agent?.name ?? null,
