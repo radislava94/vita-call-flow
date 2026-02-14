@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
-import { mockData } from '@/data/mockData';
-import { PredictionEntry, PredictionList, PREDICTION_LEAD_LABELS, PREDICTION_LEAD_COLORS } from '@/types';
-import { UserPlus, ArrowLeft, CheckSquare } from 'lucide-react';
+import { PREDICTION_LEAD_LABELS, PREDICTION_LEAD_COLORS } from '@/types';
+import { UserPlus, ArrowLeft, CheckSquare, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -15,15 +14,64 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
+import { apiGetPredictionList, apiGetAgents, apiAssignLeads } from '@/lib/api';
+
+interface LeadEntry {
+  id: string;
+  name: string;
+  telephone: string;
+  city: string | null;
+  product: string | null;
+  status: string;
+  assigned_agent_id: string | null;
+  assigned_agent_name: string | null;
+}
+
+interface Agent {
+  user_id: string;
+  full_name: string;
+  email: string;
+}
 
 export default function PredictionListDetail() {
   const { id } = useParams();
   const { toast } = useToast();
 
-  const initialList = mockData.predictionLists.find(l => l.id === id);
-  const [list, setList] = useState<PredictionList | undefined>(initialList ? { ...initialList, entries: [...initialList.entries] } : undefined);
+  const [list, setList] = useState<any>(null);
+  const [entries, setEntries] = useState<LeadEntry[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
+  const [agents, setAgents] = useState<Agent[]>([]);
+
+  const fetchList = () => {
+    if (!id) return;
+    setLoading(true);
+    apiGetPredictionList(id)
+      .then((data) => {
+        setList(data);
+        setEntries(data.entries || []);
+      })
+      .catch(() => setList(null))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchList(); }, [id]);
+
+  const openAssign = () => {
+    apiGetAgents().then(setAgents).catch(() => {});
+    setAssignOpen(true);
+  };
+
+  if (loading) {
+    return (
+      <AppLayout title="Prediction List">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   if (!list) {
     return (
@@ -42,7 +90,7 @@ export default function PredictionListDetail() {
   };
 
   const toggleAll = () => {
-    const unassigned = list.entries.filter(e => !e.assignedAgentId);
+    const unassigned = entries.filter(e => !e.assigned_agent_id);
     if (selected.size === unassigned.length) {
       setSelected(new Set());
     } else {
@@ -50,28 +98,19 @@ export default function PredictionListDetail() {
     }
   };
 
-  const handleBulkAssign = (agentId: string) => {
-    const agent = mockData.agents.find(a => a.id === agentId);
-    if (!agent) return;
-
-    setList(prev => {
-      if (!prev) return prev;
-      const newEntries = prev.entries.map(e =>
-        selected.has(e.id) ? { ...e, assignedAgentId: agent.id, assignedAgentName: agent.name } : e
-      );
-      return {
-        ...prev,
-        entries: newEntries,
-        assignedCount: newEntries.filter(e => e.assignedAgentId).length,
-      };
-    });
-
-    toast({ title: 'Entries assigned', description: `${selected.size} entries assigned to ${agent.name}` });
-    setSelected(new Set());
-    setAssignOpen(false);
+  const handleBulkAssign = async (agentId: string) => {
+    try {
+      await apiAssignLeads(id!, agentId, Array.from(selected));
+      toast({ title: 'Entries assigned' });
+      setSelected(new Set());
+      setAssignOpen(false);
+      fetchList();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
   };
 
-  const unassignedCount = list.entries.filter(e => !e.assignedAgentId).length;
+  const unassignedCount = entries.filter(e => !e.assigned_agent_id).length;
 
   return (
     <AppLayout title={list.name}>
@@ -83,12 +122,12 @@ export default function PredictionListDetail() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span>{list.totalRecords} total records</span>
-          <span>{list.assignedCount} assigned</span>
+          <span>{list.total_records} total records</span>
+          <span>{list.assigned_count} assigned</span>
           <span>{unassignedCount} unassigned</span>
         </div>
         {selected.size > 0 && (
-          <Button onClick={() => setAssignOpen(true)} className="gap-2">
+          <Button onClick={openAssign} className="gap-2">
             <UserPlus className="h-4 w-4" /> Assign {selected.size} Selected
           </Button>
         )}
@@ -112,10 +151,10 @@ export default function PredictionListDetail() {
             </tr>
           </thead>
           <tbody>
-            {list.entries.map(entry => (
+            {entries.map(entry => (
               <tr key={entry.id} className={cn('border-b last:border-0 transition-colors', selected.has(entry.id) ? 'bg-primary/5' : 'hover:bg-muted/30')}>
                 <td className="px-4 py-3">
-                  {!entry.assignedAgentId ? (
+                  {!entry.assigned_agent_id ? (
                     <input
                       type="checkbox"
                       checked={selected.has(entry.id)}
@@ -131,17 +170,17 @@ export default function PredictionListDetail() {
                 <td className="px-4 py-3">{entry.city}</td>
                 <td className="px-4 py-3">{entry.product}</td>
                 <td className="px-4 py-3">
-                  <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', PREDICTION_LEAD_COLORS[entry.status])}>
-                    {PREDICTION_LEAD_LABELS[entry.status]}
+                  <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', PREDICTION_LEAD_COLORS[entry.status as keyof typeof PREDICTION_LEAD_COLORS] || '')}>
+                    {PREDICTION_LEAD_LABELS[entry.status as keyof typeof PREDICTION_LEAD_LABELS] || entry.status}
                   </span>
                 </td>
                 <td className="px-4 py-3">
-                  {entry.assignedAgentName ? (
+                  {entry.assigned_agent_name ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                        {entry.assignedAgentName.charAt(0)}
+                        {entry.assigned_agent_name.charAt(0)}
                       </span>
-                      {entry.assignedAgentName}
+                      {entry.assigned_agent_name}
                     </span>
                   ) : (
                     <span className="text-muted-foreground">—</span>
@@ -161,17 +200,17 @@ export default function PredictionListDetail() {
             <DialogDescription>Select an agent to assign {selected.size} entries to.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            {mockData.agents.filter(a => a.isActive).map(agent => (
+            {agents.map(agent => (
               <button
-                key={agent.id}
-                onClick={() => handleBulkAssign(agent.id)}
+                key={agent.user_id}
+                onClick={() => handleBulkAssign(agent.user_id)}
                 className="flex w-full items-center gap-3 rounded-lg p-3 text-left hover:bg-muted transition-colors"
               >
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                  {agent.name.charAt(0)}
+                  {agent.full_name.charAt(0)}
                 </span>
                 <div>
-                  <p className="text-sm font-medium">{agent.name}</p>
+                  <p className="text-sm font-medium">{agent.full_name}</p>
                   <p className="text-xs text-muted-foreground">{agent.email}</p>
                 </div>
               </button>

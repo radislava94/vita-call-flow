@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
-import { mockData } from '@/data/mockData';
-import { PredictionList, PredictionEntry } from '@/types';
-import { Upload, Eye, FileSpreadsheet, Check, AlertTriangle } from 'lucide-react';
+import { PredictionEntry } from '@/types';
+import { Upload, Eye, FileSpreadsheet, Check, AlertTriangle, Loader2 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
   Dialog,
@@ -17,28 +16,46 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import {
-  normalizePhone,
   isValidPhone,
-  findDuplicatePhoneInOrders,
   findDuplicatePhoneIndices,
-  findDuplicatePhoneInPredictions,
   hasEmptyRequiredFields,
 } from '@/lib/validation';
+import { apiGetPredictionLists, apiCreatePredictionList } from '@/lib/api';
 
-type PreviewRow = Omit<PredictionEntry, 'id' | 'status' | 'assignedAgentId' | 'assignedAgentName' | 'notes'>;
+type PreviewRow = { name: string; telephone: string; address: string; city: string; product: string };
 
 interface RowIssue {
   type: 'error' | 'warning';
   message: string;
 }
 
+interface ListRow {
+  id: string;
+  name: string;
+  uploaded_at: string;
+  total_records: number;
+  assigned_count: number;
+}
+
 export default function PredictionListsPage() {
-  const [lists, setLists] = useState<PredictionList[]>(mockData.predictionLists);
+  const [lists, setLists] = useState<ListRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [preview, setPreview] = useState<PreviewRow[]>([]);
   const [listName, setListName] = useState('');
   const [fileName, setFileName] = useState('');
+  const [saving, setSaving] = useState(false);
   const { toast } = useToast();
+
+  const fetchLists = () => {
+    setLoading(true);
+    apiGetPredictionLists()
+      .then(setLists)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { fetchLists(); }, []);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -66,37 +83,15 @@ export default function PredictionListsPage() {
     reader.readAsArrayBuffer(file);
   };
 
-  // Validate all rows
   const rowIssues = useMemo(() => {
     const issues = new Map<number, RowIssue[]>();
     const dupeIndices = findDuplicatePhoneIndices(preview.map(r => r.telephone));
 
     preview.forEach((row, i) => {
       const rowProblems: RowIssue[] = [];
-
-      if (hasEmptyRequiredFields(row)) {
-        rowProblems.push({ type: 'error', message: 'Missing name or phone' });
-      }
-
-      if (row.telephone && !isValidPhone(row.telephone)) {
-        rowProblems.push({ type: 'error', message: 'Invalid phone format' });
-      }
-
-      if (dupeIndices.has(i)) {
-        rowProblems.push({ type: 'warning', message: 'Duplicate phone in file' });
-      }
-
-      if (row.telephone && isValidPhone(row.telephone)) {
-        const orderDupe = findDuplicatePhoneInOrders(row.telephone);
-        if (orderDupe) {
-          rowProblems.push({ type: 'warning', message: `Phone exists in order ${orderDupe}` });
-        }
-        const predDupe = findDuplicatePhoneInPredictions(row.telephone);
-        if (predDupe) {
-          rowProblems.push({ type: 'warning', message: `Phone exists in list "${predDupe}"` });
-        }
-      }
-
+      if (hasEmptyRequiredFields(row)) rowProblems.push({ type: 'error', message: 'Missing name or phone' });
+      if (row.telephone && !isValidPhone(row.telephone)) rowProblems.push({ type: 'error', message: 'Invalid phone format' });
+      if (dupeIndices.has(i)) rowProblems.push({ type: 'warning', message: 'Duplicate phone in file' });
       if (rowProblems.length > 0) issues.set(i, rowProblems);
     });
     return issues;
@@ -104,49 +99,36 @@ export default function PredictionListsPage() {
 
   const errorCount = useMemo(() => {
     let count = 0;
-    rowIssues.forEach(issues => {
-      if (issues.some(i => i.type === 'error')) count++;
-    });
+    rowIssues.forEach(issues => { if (issues.some(i => i.type === 'error')) count++; });
     return count;
   }, [rowIssues]);
 
   const warningCount = useMemo(() => {
     let count = 0;
-    rowIssues.forEach(issues => {
-      if (issues.some(i => i.type === 'warning') && !issues.some(i => i.type === 'error')) count++;
-    });
+    rowIssues.forEach(issues => { if (issues.some(i => i.type === 'warning') && !issues.some(i => i.type === 'error')) count++; });
     return count;
   }, [rowIssues]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!listName.trim() || preview.length === 0) return;
     if (errorCount > 0) {
       toast({ title: 'Cannot save', description: `Fix ${errorCount} errors before saving.`, variant: 'destructive' });
       return;
     }
-
-    const newList: PredictionList = {
-      id: `pl-${Date.now()}`,
-      name: listName,
-      uploadedAt: new Date().toISOString(),
-      totalRecords: preview.length,
-      assignedCount: 0,
-      entries: preview.map((entry, i) => ({
-        ...entry,
-        id: `pe-${Date.now()}-${i}`,
-        status: 'not_contacted' as const,
-        assignedAgentId: null,
-        assignedAgentName: null,
-        notes: '',
-      })),
-    };
-
-    setLists(prev => [newList, ...prev]);
-    setUploadOpen(false);
-    setPreview([]);
-    setListName('');
-    setFileName('');
-    toast({ title: 'List imported', description: `${newList.totalRecords} records saved.` });
+    setSaving(true);
+    try {
+      await apiCreatePredictionList({ name: listName, entries: preview });
+      toast({ title: 'List imported', description: `${preview.length} records saved.` });
+      setUploadOpen(false);
+      setPreview([]);
+      setListName('');
+      setFileName('');
+      fetchLists();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const resetUpload = () => {
@@ -166,6 +148,11 @@ export default function PredictionListsPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -185,11 +172,11 @@ export default function PredictionListsPage() {
                     {list.name}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{new Date(list.uploadedAt).toLocaleDateString()}</td>
-                <td className="px-4 py-3 font-semibold">{list.totalRecords}</td>
+                <td className="px-4 py-3 text-muted-foreground">{new Date(list.uploaded_at).toLocaleDateString()}</td>
+                <td className="px-4 py-3 font-semibold">{list.total_records}</td>
                 <td className="px-4 py-3">
-                  <span className={cn('text-sm font-medium', list.assignedCount === list.totalRecords && list.totalRecords > 0 ? 'text-green-600' : 'text-muted-foreground')}>
-                    {list.assignedCount}/{list.totalRecords}
+                  <span className={cn('text-sm font-medium', list.assigned_count === list.total_records && list.total_records > 0 ? 'text-green-600' : 'text-muted-foreground')}>
+                    {list.assigned_count}/{list.total_records}
                   </span>
                 </td>
                 <td className="px-4 py-3">
@@ -208,6 +195,7 @@ export default function PredictionListsPage() {
             )}
           </tbody>
         </table>
+        )}
       </div>
 
       {/* Upload Dialog */}
@@ -308,8 +296,8 @@ export default function PredictionListsPage() {
 
           <DialogFooter className="gap-2 pt-2">
             <Button variant="outline" onClick={resetUpload}>Cancel</Button>
-            <Button onClick={handleSave} disabled={preview.length === 0 || !listName.trim() || errorCount > 0}>
-              {errorCount > 0 ? `Fix ${errorCount} errors to save` : `Save List (${preview.length} records)`}
+            <Button onClick={handleSave} disabled={preview.length === 0 || !listName.trim() || errorCount > 0 || saving}>
+              {saving ? 'Saving...' : errorCount > 0 ? `Fix ${errorCount} errors to save` : `Save List (${preview.length} records)`}
             </Button>
           </DialogFooter>
         </DialogContent>

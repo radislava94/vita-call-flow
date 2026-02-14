@@ -1,36 +1,60 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { mockData } from '@/data/mockData';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
-import { Eye, UserPlus, Download, ChevronLeft, ChevronRight, Filter, Search } from 'lucide-react';
+import { Eye, UserPlus, Download, ChevronLeft, ChevronRight, Filter, Search, Loader2 } from 'lucide-react';
+import { apiGetOrders } from '@/lib/api';
 
 const PAGE_SIZE = 10;
+
+interface ApiOrder {
+  id: string;
+  display_id: string;
+  product_name: string;
+  price: number;
+  status: OrderStatus;
+  customer_name: string;
+  customer_phone: string;
+  customer_city: string;
+  assigned_agent_name: string | null;
+  created_at: string;
+}
 
 export default function Orders() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all');
   const [page, setPage] = useState(1);
+  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = useMemo(() => {
-    return mockData.orders.filter(o => {
-      const matchSearch = search === '' ||
-        o.id.toLowerCase().includes(search.toLowerCase()) ||
-        o.customerName.toLowerCase().includes(search.toLowerCase()) ||
-        o.product.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = statusFilter === 'all' || o.status === statusFilter;
-      return matchSearch && matchStatus;
-    });
-  }, [search, statusFilter]);
+  const fetchOrders = () => {
+    setLoading(true);
+    apiGetOrders({
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      search: search || undefined,
+      page,
+      limit: PAGE_SIZE,
+    })
+      .then((data) => {
+        setOrders(data.orders || []);
+        setTotal(data.total || 0);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const pageOrders = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  useEffect(() => {
+    fetchOrders();
+  }, [page, statusFilter, search]);
+
+  const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const exportCSV = () => {
     const header = 'Order ID,Product,Price,Status,Customer,Agent,Date\n';
-    const rows = filtered.map(o =>
-      `${o.id},${o.product},${o.price},${o.status},${o.customerName},${o.assignedAgent || 'Unassigned'},${new Date(o.createdAt).toLocaleDateString()}`
+    const rows = orders.map(o =>
+      `${o.display_id},${o.product_name},${o.price},${o.status},${o.customer_name},${o.assigned_agent_name || 'Unassigned'},${new Date(o.created_at).toLocaleDateString()}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -77,6 +101,11 @@ export default function Orders() {
 
       {/* Table */}
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : (
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -91,26 +120,26 @@ export default function Orders() {
             </tr>
           </thead>
           <tbody>
-            {pageOrders.map(order => (
+            {orders.map(order => (
               <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
-                <td className="px-4 py-3 font-mono text-xs font-semibold">{order.id}</td>
-                <td className="px-4 py-3">{order.customerName}</td>
-                <td className="px-4 py-3">{order.product}</td>
-                <td className="px-4 py-3 font-semibold">${order.price.toFixed(2)}</td>
+                <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
+                <td className="px-4 py-3">{order.customer_name}</td>
+                <td className="px-4 py-3">{order.product_name}</td>
+                <td className="px-4 py-3 font-semibold">${Number(order.price).toFixed(2)}</td>
                 <td className="px-4 py-3">
-                  {order.assignedAgent ? (
+                  {order.assigned_agent_name ? (
                     <span className="inline-flex items-center gap-1.5">
                       <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                        {order.assignedAgent.charAt(0)}
+                        {order.assigned_agent_name.charAt(0)}
                       </span>
-                      {order.assignedAgent}
+                      {order.assigned_agent_name}
                     </span>
                   ) : (
                     <span className="text-muted-foreground">Unassigned</span>
                   )}
                 </td>
-                <td className="px-4 py-3 text-muted-foreground">{new Date(order.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
                     <Link
@@ -119,21 +148,25 @@ export default function Orders() {
                     >
                       <Eye className="h-4 w-4 text-muted-foreground" />
                     </Link>
-                    <button className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors">
-                      <UserPlus className="h-4 w-4 text-muted-foreground" />
-                    </button>
                   </div>
                 </td>
               </tr>
             ))}
+            {orders.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No orders found.</td>
+              </tr>
+            )}
           </tbody>
         </table>
+        )}
       </div>
 
       {/* Pagination */}
+      {totalPages > 1 && (
       <div className="mt-4 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+          Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
         </p>
         <div className="flex items-center gap-1">
           <button
@@ -163,6 +196,7 @@ export default function Orders() {
           </button>
         </div>
       </div>
+      )}
     </AppLayout>
   );
 }

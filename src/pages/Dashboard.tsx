@@ -1,14 +1,13 @@
-import { useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatsCard } from '@/components/StatsCard';
-import { StatusBadge } from '@/components/StatusBadge';
-import { mockData } from '@/data/mockData';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
 import {
   Clock, PhoneCall, PhoneForwarded, CheckCircle2, Truck, RotateCcw,
-  DollarSign, Trash2, XCircle, BarChart3, Users,
+  DollarSign, Trash2, XCircle, BarChart3, Users, Loader2,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { apiGetOrderStats } from '@/lib/api';
 
 const statusIcons: Record<OrderStatus, any> = {
   pending: Clock, take: PhoneCall, call_again: PhoneForwarded,
@@ -17,38 +16,41 @@ const statusIcons: Record<OrderStatus, any> = {
 };
 
 export default function Dashboard() {
-  const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    ALL_STATUSES.forEach(s => counts[s] = 0);
-    mockData.orders.forEach(o => counts[o.status]++);
-    return counts;
+  const [loading, setLoading] = useState(true);
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [agentCounts, setAgentCounts] = useState<Record<string, number>>({});
+  const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    apiGetOrderStats()
+      .then((data) => {
+        setStatusCounts(data.statusCounts || {});
+        setAgentCounts(data.agentCounts || {});
+        setDailyCounts(data.dailyCounts || {});
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const chartData = useMemo(() => {
-    const days: Record<string, number> = {};
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      days[key] = 0;
-    }
-    mockData.orders.forEach(o => {
-      const d = new Date(o.createdAt);
-      const key = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      if (key in days) days[key]++;
-    });
-    return Object.entries(days).map(([name, orders]) => ({ name, orders }));
-  }, []);
+  const chartData = Object.entries(dailyCounts)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-7)
+    .map(([date, orders]) => ({
+      name: new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+      orders,
+    }));
 
-  const agentStats = useMemo(() => {
-    const stats: Record<string, number> = {};
-    mockData.orders.forEach(o => {
-      if (o.assignedAgent) {
-        stats[o.assignedAgent] = (stats[o.assignedAgent] || 0) + 1;
-      }
-    });
-    return Object.entries(stats).map(([name, count]) => ({ name, count }));
-  }, []);
+  const agentStats = Object.entries(agentCounts).map(([name, count]) => ({ name, count }));
+
+  if (loading) {
+    return (
+      <AppLayout title="Dashboard">
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout title="Dashboard">
@@ -58,7 +60,7 @@ export default function Dashboard() {
           <StatsCard
             key={status}
             title={STATUS_LABELS[status]}
-            value={statusCounts[status]}
+            value={statusCounts[status] || 0}
             icon={statusIcons[status]}
           />
         ))}
@@ -96,6 +98,9 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-card-foreground">Agent Assignments</h2>
           </div>
           <div className="space-y-3">
+            {agentStats.length === 0 && (
+              <p className="text-sm text-muted-foreground">No assignments yet.</p>
+            )}
             {agentStats.map(agent => (
               <div key={agent.name} className="flex items-center justify-between rounded-lg bg-muted p-3">
                 <div className="flex items-center gap-3">
