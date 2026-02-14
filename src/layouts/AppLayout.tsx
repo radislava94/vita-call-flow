@@ -1,5 +1,13 @@
 import { AppSidebar } from '@/components/AppSidebar';
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, LogOut } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -7,6 +15,21 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children, title }: AppLayoutProps) {
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
+
+  const initials = user?.full_name
+    ?.split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || '?';
+
   return (
     <div className="flex h-screen w-full overflow-hidden">
       <AppSidebar />
@@ -29,12 +52,25 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                 3
               </span>
             </button>
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
-                A
-              </div>
-              <span className="text-sm font-medium text-card-foreground">Admin</span>
-            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted transition-colors">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
+                    {initials}
+                  </div>
+                  <div className="text-left">
+                    <span className="block text-sm font-medium text-card-foreground">{user?.full_name || 'User'}</span>
+                    <span className="block text-xs text-muted-foreground capitalize">{user?.role || ''}</span>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </header>
         {/* Content */}
