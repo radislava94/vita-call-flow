@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { mockData } from '@/data/mockData';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
-import { ArrowLeft, User, MapPin, Phone, Package, Clock, MessageSquare, ChevronRight } from 'lucide-react';
+import { ArrowLeft, User, MapPin, Phone, Package, Clock, MessageSquare, ChevronRight, AlertTriangle } from 'lucide-react';
+import { normalizePhone, findDuplicatePhoneInOrders, findDuplicatePhoneInPredictions } from '@/lib/validation';
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +21,14 @@ export default function OrderDetails() {
       </AppLayout>
     );
   }
+
+  // Check for phone duplicates
+  const phoneDuplicates: string[] = [];
+  const norm = normalizePhone(order.customerPhone);
+  const otherOrder = mockData.orders.find(o => o.id !== order.id && normalizePhone(o.customerPhone) === norm);
+  if (otherOrder) phoneDuplicates.push(`Duplicate phone in order ${otherOrder.id}`);
+  const predList = findDuplicatePhoneInPredictions(order.customerPhone);
+  if (predList) phoneDuplicates.push(`Phone exists in prediction list "${predList}"`);
 
   return (
     <AppLayout title={`Order ${order.id}`}>
@@ -37,23 +47,32 @@ export default function OrderDetails() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <p className="text-xs text-muted-foreground">Name</p>
-                <p className="font-medium">{order.customerName}</p>
+                <p className="mt-1 font-medium">{order.customerName}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Phone</p>
-                <p className="font-medium">{order.customerPhone}</p>
+                <p className="mt-1 font-medium">{order.customerPhone}</p>
+                {phoneDuplicates.length > 0 && (
+                  <div className="mt-1.5 space-y-1">
+                    {phoneDuplicates.map((msg, i) => (
+                      <p key={i} className="flex items-center gap-1 text-xs text-warning">
+                        <AlertTriangle className="h-3 w-3 shrink-0" /> {msg}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">City</p>
-                <p className="font-medium">{order.customerCity}</p>
+                <p className="mt-1 font-medium">{order.customerCity}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Address</p>
-                <p className="font-medium">{order.customerAddress}</p>
+                <p className="mt-1 font-medium">{order.customerAddress}</p>
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Postal Code</p>
-                <p className="font-medium">{order.postalCode}</p>
+                <p className="mt-1 font-medium">{order.postalCode}</p>
               </div>
             </div>
           </div>
