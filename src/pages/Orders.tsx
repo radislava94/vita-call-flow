@@ -33,16 +33,19 @@ interface ApiOrder {
   assigned_agent_name: string | null;
   assigned_agent_id: string | null;
   created_at: string;
+  source_type?: string;
+  source_lead_id?: string | null;
 }
 
 const STATUS_CHIP_COLORS: Record<OrderStatus, string> = {
   pending: 'bg-amber-100 text-amber-800 border-amber-200',
   take: 'bg-blue-100 text-blue-800 border-blue-200',
-  call_again: 'bg-violet-100 text-violet-800 border-violet-200',
-  confirmed: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  shipped: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+  call_again: 'bg-gray-100 text-gray-800 border-gray-200',
+  confirmed: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+  shipped: 'bg-green-100 text-green-800 border-green-200',
+  delivered: 'bg-sky-100 text-sky-800 border-sky-200',
   returned: 'bg-rose-100 text-rose-800 border-rose-200',
-  paid: 'bg-teal-100 text-teal-800 border-teal-200',
+  paid: 'bg-purple-100 text-purple-800 border-purple-200',
   trashed: 'bg-gray-100 text-gray-800 border-gray-200',
   cancelled: 'bg-red-100 text-red-800 border-red-200',
 };
@@ -148,9 +151,9 @@ export default function Orders() {
   }, [orders]);
 
   const exportCSV = () => {
-    const header = 'Order ID,Product,Price,Status,Customer,Assignee,Date\n';
+    const header = 'Order ID,Product,Price,Status,Customer,Assignee,Source,Date\n';
     const rows = filteredOrders.map(o =>
-      `${o.display_id},${o.product_name},${o.price},${o.status},${o.customer_name},${o.assigned_agent_name || 'Unassigned'},${new Date(o.created_at).toLocaleDateString()}`
+      `${o.display_id},${o.product_name},${o.price},${o.status},${o.customer_name},${o.assigned_agent_name || 'Unassigned'},${o.source_type === 'prediction_lead' ? 'Prediction Lead' : 'Manual'},${new Date(o.created_at).toLocaleDateString()}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -368,6 +371,7 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -392,6 +396,11 @@ export default function Orders() {
                       <span className="text-muted-foreground">Unassigned</span>
                     )}
                   </td>
+                  <td className="px-4 py-3">
+                    <Badge variant={order.source_type === 'prediction_lead' ? 'secondary' : 'outline'} className="text-[10px]">
+                      {order.source_type === 'prediction_lead' ? 'Lead' : 'Manual'}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     <Link
@@ -405,7 +414,7 @@ export default function Orders() {
               ))}
               {filteredOrders.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
                     No orders found.
                     {hasActiveFilters && (
                       <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>

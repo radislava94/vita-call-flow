@@ -316,6 +316,8 @@ export type Database = {
           price: number
           product_id: string | null
           product_name: string
+          source_lead_id: string | null
+          source_type: string | null
           status: Database["public"]["Enums"]["order_status"]
           updated_at: string
         }
@@ -336,6 +338,8 @@ export type Database = {
           price?: number
           product_id?: string | null
           product_name: string
+          source_lead_id?: string | null
+          source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           updated_at?: string
         }
@@ -356,6 +360,8 @@ export type Database = {
           price?: number
           product_id?: string | null
           product_name?: string
+          source_lead_id?: string | null
+          source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
           updated_at?: string
         }
@@ -365,6 +371,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "orders_source_lead_id_fkey"
+            columns: ["source_lead_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_leads"
             referencedColumns: ["id"]
           },
         ]
@@ -687,6 +700,7 @@ export type Database = {
         | "call_again"
         | "confirmed"
         | "shipped"
+        | "delivered"
         | "returned"
         | "paid"
         | "trashed"
@@ -832,6 +846,7 @@ export const Constants = {
         "call_again",
         "confirmed",
         "shipped",
+        "delivered",
         "returned",
         "paid",
         "trashed",

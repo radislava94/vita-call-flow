@@ -36,7 +36,7 @@ const updateCustomerSchema = z.object({
 });
 
 const updateStatusSchema = z.object({
-  status: z.enum(["pending", "take", "call_again", "confirmed", "shipped", "returned", "paid", "trashed", "cancelled"]),
+  status: z.enum(["pending", "take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid", "trashed", "cancelled"]),
 });
 
 const createProductSchema = z.object({
@@ -681,15 +681,15 @@ serve(async (req) => {
         const lead_count = leads.length;
         const confirmedLeads = leads.filter((l: any) => l.status === "confirmed");
         // deals_won includes confirmed/paid orders AND confirmed prediction leads
-        const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length + confirmedLeads.length;
+        const deals_won = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length + confirmedLeads.length;
         const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
-        const total_value = orders.filter((o: any) => ["confirmed", "paid", "shipped"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
+        const total_value = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
         const tasks_completed = calls.length;
         // total_orders includes standard orders + confirmed prediction leads
         const total_orders = orders.length + confirmedLeads.length;
 
         // Source breakdown
-        const orders_from_standard = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
+        const orders_from_standard = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length;
         const orders_from_leads = confirmedLeads.length;
 
         const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
@@ -697,7 +697,7 @@ serve(async (req) => {
           const day = o.created_at.substring(0, 10);
           if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
           dailyBreakdown[day].orders++;
-          if (["confirmed", "paid"].includes(o.status)) dailyBreakdown[day].deals_won++;
+          if (["confirmed", "shipped", "delivered", "paid"].includes(o.status)) dailyBreakdown[day].deals_won++;
           if (["returned", "cancelled", "trashed"].includes(o.status)) dailyBreakdown[day].deals_lost++;
         }
         for (const l of leads) {
@@ -1058,6 +1058,74 @@ serve(async (req) => {
         .select()
         .single();
       if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Auto-create order when prediction lead reaches call_again or confirmed
+      if (body.status && ["call_again", "confirmed"].includes(body.status)) {
+        // Check if an order already exists for this lead
+        const { data: existingOrder } = await adminClient
+          .from("orders")
+          .select("id")
+          .eq("source_lead_id", leadId)
+          .maybeSingle();
+
+        if (!existingOrder) {
+          // Get the lead data for order creation
+          const lead = data;
+          const { data: agentProfile } = lead.assigned_agent_id
+            ? await adminClient.from("profiles").select("full_name").eq("user_id", lead.assigned_agent_id).single()
+            : { data: null };
+
+          const { data: newOrder } = await adminClient
+            .from("orders")
+            .insert({
+              product_name: lead.product || "From Prediction Lead",
+              customer_name: lead.name || "",
+              customer_phone: lead.telephone || "",
+              customer_city: lead.city || "",
+              customer_address: lead.address || "",
+              price: 0,
+              status: body.status === "confirmed" ? "confirmed" : "call_again",
+              source_type: "prediction_lead",
+              source_lead_id: leadId,
+              assigned_agent_id: lead.assigned_agent_id,
+              assigned_agent_name: agentProfile?.full_name || lead.assigned_agent_name || null,
+              assigned_at: lead.assigned_agent_id ? new Date().toISOString() : null,
+            })
+            .select()
+            .single();
+
+          if (newOrder) {
+            // Log initial status in order history
+            await adminClient.from("order_history").insert({
+              order_id: newOrder.id,
+              to_status: newOrder.status,
+              changed_by: user.id,
+              changed_by_name: "System (from Prediction Lead)",
+            });
+          }
+        } else {
+          // Update existing order status to match lead
+          const newStatus = body.status === "confirmed" ? "confirmed" : "call_again";
+          const { data: currentOrder } = await adminClient
+            .from("orders")
+            .select("status")
+            .eq("id", existingOrder.id)
+            .single();
+
+          if (currentOrder && currentOrder.status !== newStatus) {
+            await adminClient.from("orders").update({ status: newStatus }).eq("id", existingOrder.id);
+            const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+            await adminClient.from("order_history").insert({
+              order_id: existingOrder.id,
+              from_status: currentOrder.status,
+              to_status: newStatus,
+              changed_by: user.id,
+              changed_by_name: profile?.full_name || "System",
+            });
+          }
+        }
+      }
+
       return json(data);
     }
 
@@ -1520,7 +1588,7 @@ serve(async (req) => {
         if (statusFilter) {
           oQuery = oQuery.eq("status", statusFilter);
         } else {
-          oQuery = oQuery.in("status", ["confirmed", "shipped"]);
+          oQuery = oQuery.in("status", ["confirmed", "shipped", "delivered"]);
         }
         if (agentFilter && agentFilter !== "all") oQuery = oQuery.eq("assigned_agent_id", agentFilter);
         if (from) oQuery = oQuery.gte("created_at", from);
