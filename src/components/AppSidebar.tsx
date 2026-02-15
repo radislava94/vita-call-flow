@@ -16,6 +16,7 @@ import {
   BarChart3,
   CalendarDays,
   FileText,
+  Warehouse,
 } from 'lucide-react';
 
 const adminNavItems = [
@@ -29,6 +30,7 @@ const adminNavItems = [
   { title: 'Users', path: '/users', icon: Users },
   { title: 'Products', path: '/products', icon: Package },
   { title: 'Call Scripts', path: '/call-scripts', icon: FileText },
+  { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
 ];
 
 const agentNavItems = [
@@ -39,6 +41,7 @@ const agentNavItems = [
   { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
   { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays },
   { title: 'Call Scripts', path: '/call-scripts', icon: FileText },
+  { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
 ];
 
 export function AppSidebar() {

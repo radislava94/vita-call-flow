@@ -111,6 +111,23 @@ export const apiLogCall = (body: { context_type: string; context_id: string; out
 export const apiGetCallLogs = (contextType: string, contextId: string) =>
   apiFetch(`call-logs/${contextType}/${contextId}`);
 
+// Warehouse
+export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  if (params?.product) sp.set('product', params.product);
+  return apiFetch(`warehouse/incoming-orders?${sp.toString()}`);
+};
+export const apiGetUserWarehouseItems = () => apiFetch('warehouse/user-items');
+export const apiAssignWarehouseItem = (body: { user_id: string; product_id: string; quantity: number; notes?: string }) =>
+  apiFetch('warehouse/user-items', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateWarehouseItem = (id: string, body: any) =>
+  apiFetch(`warehouse/user-items/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteWarehouseItem = (id: string) =>
+  apiFetch(`warehouse/user-items/${id}`, { method: 'DELETE' });
+
 // Shifts
 export const apiGetShifts = (params?: { agent_id?: string; from?: string; to?: string }) => {
   const sp = new URLSearchParams();
