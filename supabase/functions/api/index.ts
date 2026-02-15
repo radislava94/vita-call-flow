@@ -457,6 +457,92 @@ serve(async (req) => {
       return json(note);
     }
 
+    // GET /api/dashboard-stats?period=today|yesterday|month&agent_id=xxx
+    if (req.method === "GET" && path === "dashboard-stats") {
+      const period = url.searchParams.get("period") || "today";
+      const agentFilter = url.searchParams.get("agent_id");
+
+      const now = new Date();
+      const todayStr = now.toISOString().substring(0, 10);
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().substring(0, 10);
+      const monthStart = todayStr.substring(0, 7) + "-01";
+
+      let fromDate: string, toDate: string;
+      if (period === "yesterday") {
+        fromDate = yesterdayStr + "T00:00:00Z";
+        toDate = yesterdayStr + "T23:59:59Z";
+      } else if (period === "month") {
+        fromDate = monthStart + "T00:00:00Z";
+        toDate = now.toISOString();
+      } else {
+        fromDate = todayStr + "T00:00:00Z";
+        toDate = now.toISOString();
+      }
+
+      // For agents, force filter to their own data
+      const effectiveAgentId = isAdmin ? (agentFilter || null) : user.id;
+
+      // Orders in period
+      let ordersQ = adminClient.from("orders").select("id, status, price, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
+      if (effectiveAgentId) ordersQ = ordersQ.eq("assigned_agent_id", effectiveAgentId);
+      const { data: periodOrders } = await ordersQ;
+
+      // Leads in period
+      let leadsQ = adminClient.from("prediction_leads").select("id, status, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
+      if (effectiveAgentId) leadsQ = leadsQ.eq("assigned_agent_id", effectiveAgentId);
+      const { data: periodLeads } = await leadsQ;
+
+      // Call logs in period (as "tasks completed")
+      let callsQ = adminClient.from("call_logs").select("id, agent_id, created_at").gte("created_at", fromDate).lte("created_at", toDate);
+      if (effectiveAgentId) callsQ = callsQ.eq("agent_id", effectiveAgentId);
+      const { data: periodCalls } = await callsQ;
+
+      const orders = periodOrders || [];
+      const leads = periodLeads || [];
+      const calls = periodCalls || [];
+
+      const lead_count = leads.length;
+      const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
+      const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
+      const total_value = orders.filter((o: any) => ["confirmed", "paid", "shipped"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
+      const tasks_completed = calls.length;
+      const total_orders = orders.length;
+
+      // Daily breakdown for charts (last 7 or 30 days depending on period)
+      const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
+      for (const o of orders) {
+        const day = o.created_at.substring(0, 10);
+        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+        dailyBreakdown[day].orders++;
+        if (["confirmed", "paid"].includes(o.status)) dailyBreakdown[day].deals_won++;
+        if (["returned", "cancelled", "trashed"].includes(o.status)) dailyBreakdown[day].deals_lost++;
+      }
+      for (const l of leads) {
+        const day = l.created_at.substring(0, 10);
+        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+        dailyBreakdown[day].leads++;
+      }
+      for (const c of calls) {
+        const day = c.created_at.substring(0, 10);
+        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+        dailyBreakdown[day].calls++;
+      }
+
+      // Status breakdown for pie
+      const statusCounts: Record<string, number> = {};
+      for (const o of orders) {
+        statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
+      }
+
+      return json({
+        lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders,
+        daily: dailyBreakdown, statusCounts,
+        period, from: fromDate, to: toDate,
+      });
+    }
+
     // GET /api/orders/stats
     if (req.method === "GET" && path === "orders/stats") {
       const from = url.searchParams.get("from");
