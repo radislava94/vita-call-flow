@@ -4,7 +4,7 @@ import { format, parse } from 'date-fns';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
-import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2 } from 'lucide-react';
+import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2, Phone } from 'lucide-react';
 import { isValidPhone } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { CallPopup } from '@/components/CallPopup';
 
 const STATUSES_REQUIRING_COMPLETE_INFO: OrderStatus[] = ['confirmed', 'shipped', 'returned', 'paid', 'cancelled'];
 
@@ -34,7 +35,7 @@ export default function OrderDetails() {
   const [statusError, setStatusError] = useState('');
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
-
+  const [showCallPopup, setShowCallPopup] = useState(false);
   const loadOrder = () => {
     if (!id) return;
     setLoading(true);
@@ -187,9 +188,18 @@ export default function OrderDetails() {
 
   return (
     <AppLayout title={`Order ${order.display_id}`}>
-      <Link to="/orders" className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        <ArrowLeft className="h-4 w-4" /> Back to Orders
-      </Link>
+      <div className="flex items-center gap-3 mb-4">
+        <Link to="/orders" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <ArrowLeft className="h-4 w-4" /> Back to Orders
+        </Link>
+        <Button
+          onClick={() => setShowCallPopup(true)}
+          className="ml-auto gap-1.5"
+          size="sm"
+        >
+          <Phone className="h-4 w-4" /> Call Customer
+        </Button>
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main info */}
@@ -398,6 +408,19 @@ export default function OrderDetails() {
           </div>
         </div>
       </div>
+
+      <CallPopup
+        open={showCallPopup}
+        onClose={() => {
+          setShowCallPopup(false);
+          loadOrder(); // Refresh to see any status changes
+        }}
+        contextType="order"
+        contextId={order.id}
+        customerName={order.customer_name}
+        phoneNumber={order.customer_phone}
+        productName={order.product_name}
+      />
     </AppLayout>
   );
 }

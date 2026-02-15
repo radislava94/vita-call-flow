@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      call_logs: {
+        Row: {
+          agent_id: string
+          context_id: string
+          context_type: string
+          created_at: string
+          id: string
+          notes: string | null
+          outcome: string
+        }
+        Insert: {
+          agent_id: string
+          context_id: string
+          context_type: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcome: string
+        }
+        Update: {
+          agent_id?: string
+          context_id?: string
+          context_type?: string
+          created_at?: string
+          id?: string
+          notes?: string | null
+          outcome?: string
+        }
+        Relationships: []
+      }
+      call_scripts: {
+        Row: {
+          context_type: string
+          id: string
+          script_text: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          context_type: string
+          id?: string
+          script_text?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          context_type?: string
+          id?: string
+          script_text?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       inventory_logs: {
         Row: {
           change_amount: number
