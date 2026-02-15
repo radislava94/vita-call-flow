@@ -63,6 +63,12 @@ export const apiGetOrderStats = (from?: string, to?: string) => {
   if (to) sp.set('to', to);
   return apiFetch(`orders/stats?${sp.toString()}`);
 };
+export const apiGetDashboardStats = (params?: { period?: string; agent_id?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.period) sp.set('period', params.period);
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  return apiFetch(`dashboard-stats?${sp.toString()}`);
+};
 
 // Products
 export const apiGetProducts = () => apiFetch('products');

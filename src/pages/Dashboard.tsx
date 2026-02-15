@@ -1,13 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatsCard } from '@/components/StatsCard';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiGetDashboardStats, apiGetOrderStats, apiGetAgents } from '@/lib/api';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Clock, PhoneCall, PhoneForwarded, CheckCircle2, Truck, RotateCcw,
-  DollarSign, Trash2, XCircle, BarChart3, Users, Loader2,
+  DollarSign, Trash2, XCircle, BarChart3, Users, Loader2, TrendingUp,
+  TrendingDown, FileText, Target, Download, CalendarDays, Phone,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { apiGetOrderStats } from '@/lib/api';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, PieChart, Pie, Cell, Legend,
+} from 'recharts';
 
 const statusIcons: Record<OrderStatus, any> = {
   pending: Clock, take: PhoneCall, call_again: PhoneForwarded,
@@ -15,47 +25,177 @@ const statusIcons: Record<OrderStatus, any> = {
   paid: DollarSign, trashed: Trash2, cancelled: XCircle,
 };
 
-export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
-  const [agentCounts, setAgentCounts] = useState<Record<string, number>>({});
-  const [dailyCounts, setDailyCounts] = useState<Record<string, number>>({});
+const PIE_COLORS = [
+  'hsl(27, 95%, 48%)', 'hsl(142, 76%, 36%)', 'hsl(217, 91%, 60%)',
+  'hsl(38, 92%, 50%)', 'hsl(0, 84%, 60%)', 'hsl(262, 83%, 58%)',
+  'hsl(180, 70%, 40%)', 'hsl(340, 82%, 52%)', 'hsl(45, 93%, 47%)',
+];
 
-  useEffect(() => {
-    apiGetOrderStats()
-      .then((data) => {
-        setStatusCounts(data.statusCounts || {});
-        setAgentCounts(data.agentCounts || {});
-        setDailyCounts(data.dailyCounts || {});
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
+interface DashStats {
+  lead_count: number; deals_won: number; deals_lost: number;
+  total_value: number; tasks_completed: number; total_orders: number;
+  daily: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }>;
+  statusCounts: Record<string, number>;
+}
+
+function exportCSV(data: DashStats, period: string) {
+  const rows = [
+    ['Metric', 'Value'],
+    ['Period', period],
+    ['Leads Created', String(data.lead_count)],
+    ['Deals Won', String(data.deals_won)],
+    ['Deals Lost', String(data.deals_lost)],
+    ['Total Value', String(data.total_value)],
+    ['Calls Completed', String(data.tasks_completed)],
+    ['Total Orders', String(data.total_orders)],
+    ['', ''],
+    ['Status', 'Count'],
+    ...Object.entries(data.statusCounts).map(([s, c]) => [s, String(c)]),
+    ['', ''],
+    ['Date', 'Leads', 'Deals Won', 'Deals Lost', 'Orders', 'Calls'],
+    ...Object.entries(data.daily).sort(([a], [b]) => a.localeCompare(b)).map(([d, v]) =>
+      [d, String(v.leads), String(v.deals_won), String(v.deals_lost), String(v.orders), String(v.calls)]
+    ),
+  ];
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `dashboard-${period}-${new Date().toISOString().substring(0, 10)}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+}
+
+function PeriodCard({ title, data, icon: Icon, onExport }: { title: string; data: DashStats | undefined; icon: any; onExport: () => void }) {
+  if (!data) return (
+    <Card><CardContent className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></CardContent></Card>
+  );
+  return (
+    <Card>
+      <CardHeader className="pb-2 flex flex-row items-center justify-between">
+        <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+          <Icon className="h-4 w-4" />{title}
+        </CardTitle>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onExport} title="Export CSV">
+          <Download className="h-3.5 w-3.5" />
+        </Button>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="text-center">
+          <p className="text-2xl font-bold text-foreground">{data.lead_count}</p>
+          <p className="text-[11px] text-muted-foreground">Leads</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-success">{data.deals_won}</p>
+          <p className="text-[11px] text-muted-foreground">Won</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-destructive">{data.deals_lost}</p>
+          <p className="text-[11px] text-muted-foreground">Lost</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-foreground">${data.total_value.toLocaleString()}</p>
+          <p className="text-[11px] text-muted-foreground">Value</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-info">{data.tasks_completed}</p>
+          <p className="text-[11px] text-muted-foreground">Calls</p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export default function Dashboard() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [agentFilter, setAgentFilter] = useState('all');
+
+  const effectiveAgent = agentFilter !== 'all' ? agentFilter : undefined;
+
+  const { data: todayStats } = useQuery<DashStats>({
+    queryKey: ['dashboard-stats', 'today', effectiveAgent],
+    queryFn: () => apiGetDashboardStats({ period: 'today', agent_id: effectiveAgent }),
+    refetchInterval: 30000,
+  });
+
+  const { data: yesterdayStats } = useQuery<DashStats>({
+    queryKey: ['dashboard-stats', 'yesterday', effectiveAgent],
+    queryFn: () => apiGetDashboardStats({ period: 'yesterday', agent_id: effectiveAgent }),
+  });
+
+  const { data: monthStats } = useQuery<DashStats>({
+    queryKey: ['dashboard-stats', 'month', effectiveAgent],
+    queryFn: () => apiGetDashboardStats({ period: 'month', agent_id: effectiveAgent }),
+    refetchInterval: 60000,
+  });
+
+  const { data: orderStats } = useQuery({
+    queryKey: ['order-stats'],
+    queryFn: () => apiGetOrderStats(),
+  });
+
+  const { data: agents = [] } = useQuery<{ user_id: string; full_name: string }[]>({
+    queryKey: ['agents'],
+    queryFn: apiGetAgents,
+    enabled: isAdmin,
+  });
+
+  const statusCounts = orderStats?.statusCounts || {};
+  const agentCounts = orderStats?.agentCounts || {};
+  const dailyCounts = orderStats?.dailyCounts || {};
 
   const chartData = Object.entries(dailyCounts)
     .sort(([a], [b]) => a.localeCompare(b))
     .slice(-7)
     .map(([date, orders]) => ({
       name: new Date(date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
-      orders,
+      orders: orders as number,
     }));
 
-  const agentStats = Object.entries(agentCounts).map(([name, count]) => ({ name, count }));
+  const agentStats = Object.entries(agentCounts).map(([name, count]) => ({ name, count: count as number }));
 
-  if (loading) {
-    return (
-      <AppLayout title="Dashboard">
-        <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </AppLayout>
-    );
-  }
+  // Monthly trend chart from monthStats
+  const trendData = monthStats ? Object.entries(monthStats.daily)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, v]) => ({
+      date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      leads: v.leads, won: v.deals_won, lost: v.deals_lost, calls: v.calls,
+    })) : [];
+
+  // Pie chart from month status counts
+  const pieData = monthStats ? Object.entries(monthStats.statusCounts)
+    .filter(([, v]) => v > 0)
+    .map(([name, value]) => ({ name: STATUS_LABELS[name as OrderStatus] || name, value })) : [];
 
   return (
     <AppLayout title="Dashboard">
+      {/* Admin filter */}
+      {isAdmin && (
+        <div className="mb-4 flex items-center gap-3">
+          <Select value={agentFilter} onValueChange={setAgentFilter}>
+            <SelectTrigger className="w-52">
+              <SelectValue placeholder="All Agents" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Agents</SelectItem>
+              {agents.map(a => <SelectItem key={a.user_id} value={a.user_id}>{a.full_name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          {agentFilter !== 'all' && (
+            <Button variant="ghost" size="sm" onClick={() => setAgentFilter('all')}>Clear</Button>
+          )}
+        </div>
+      )}
+
+      {/* Period stat cards */}
+      <div className="grid gap-4 md:grid-cols-3 mb-6">
+        <PeriodCard title="Today" data={todayStats} icon={CalendarDays} onExport={() => todayStats && exportCSV(todayStats, 'today')} />
+        <PeriodCard title="Yesterday" data={yesterdayStats} icon={Clock} onExport={() => yesterdayStats && exportCSV(yesterdayStats, 'yesterday')} />
+        <PeriodCard title="This Month" data={monthStats} icon={Target} onExport={() => monthStats && exportCSV(monthStats, 'month')} />
+      </div>
+
       {/* Status counters */}
-      <div className="grid grid-cols-3 gap-4 lg:grid-cols-5 xl:grid-cols-9">
+      <div className="grid grid-cols-3 gap-4 lg:grid-cols-5 xl:grid-cols-9 mb-6">
         {ALL_STATUSES.map(status => (
           <StatsCard
             key={status}
@@ -66,8 +206,9 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        {/* Chart */}
+      {/* Charts row */}
+      <div className="grid gap-6 lg:grid-cols-3 mb-6">
+        {/* Orders per day */}
         <div className="col-span-2 rounded-xl border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
@@ -78,14 +219,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
               <XAxis dataKey="name" tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
               <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--card))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                }}
-              />
+              <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '13px' }} />
               <Bar dataKey="orders" fill="hsl(27, 95%, 48%)" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -98,9 +232,7 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold text-card-foreground">Agent Assignments</h2>
           </div>
           <div className="space-y-3">
-            {agentStats.length === 0 && (
-              <p className="text-sm text-muted-foreground">No assignments yet.</p>
-            )}
+            {agentStats.length === 0 && <p className="text-sm text-muted-foreground">No assignments yet.</p>}
             {agentStats.map(agent => (
               <div key={agent.name} className="flex items-center justify-between rounded-lg bg-muted p-3">
                 <div className="flex items-center gap-3">
@@ -109,12 +241,58 @@ export default function Dashboard() {
                   </div>
                   <span className="text-sm font-medium">{agent.name}</span>
                 </div>
-                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
-                  {agent.count}
-                </span>
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">{agent.count}</span>
               </div>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Monthly trends + pie chart */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Trend line chart */}
+        <div className="col-span-2 rounded-xl border bg-card p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-card-foreground">Monthly Trends</h2>
+          </div>
+          {trendData.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">No data for this month yet</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={trendData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} />
+                <YAxis tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }} />
+                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '13px' }} />
+                <Legend />
+                <Line type="monotone" dataKey="leads" stroke="hsl(217, 91%, 60%)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="won" stroke="hsl(142, 76%, 36%)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="lost" stroke="hsl(0, 84%, 60%)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="calls" stroke="hsl(27, 95%, 48%)" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Pie chart */}
+        <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <div className="mb-4 flex items-center gap-2">
+            <FileText className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-card-foreground">Order Status (Month)</h2>
+          </div>
+          {pieData.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">No orders this month</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={90} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                </Pie>
+                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: '13px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
     </AppLayout>
