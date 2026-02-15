@@ -34,6 +34,8 @@ export const apiToggleUserActive = (userId: string) =>
   apiFetch(`users/${userId}/toggle-active`, { method: 'POST' });
 export const apiUpdateUserRole = (userId: string, role: string) =>
   apiFetch(`users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+export const apiSetUserRoles = (userId: string, roles: string[]) =>
+  apiFetch(`users/${userId}/roles`, { method: 'PUT', body: JSON.stringify({ roles }) });
 export const apiDeleteUser = (userId: string) =>
   apiFetch(`users/${userId}`, { method: 'DELETE' });
 
