@@ -293,6 +293,30 @@ serve(async (req) => {
         }
       }
 
+      // Stock check on confirm
+      if (newStatus === "confirmed" && order.status !== "confirmed" && order.product_id) {
+        const { data: product } = await adminClient
+          .from("products")
+          .select("stock_quantity, name")
+          .eq("id", order.product_id)
+          .single();
+        if (product && product.stock_quantity <= 0) {
+          return json({ error: `Out of Stock: ${product.name} has no available inventory` }, 400);
+        }
+        if (product && product.stock_quantity > 0) {
+          const newQty = product.stock_quantity - 1;
+          await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", order.product_id);
+          await adminClient.from("inventory_logs").insert({
+            product_id: order.product_id,
+            change_amount: -1,
+            previous_stock: product.stock_quantity,
+            new_stock: newQty,
+            reason: "order",
+            user_id: user.id,
+          });
+        }
+      }
+
       // Get profile name
       const { data: profile } = await adminClient
         .from("profiles")
@@ -433,6 +457,9 @@ serve(async (req) => {
           name: body.name.trim(),
           description: body.description || "",
           price: body.price || 0,
+          sku: body.sku || null,
+          stock_quantity: body.stock_quantity ?? 0,
+          low_stock_threshold: body.low_stock_threshold ?? 5,
           photo_url: body.photo_url || null,
           is_active: body.is_active ?? true,
         })
@@ -448,12 +475,44 @@ serve(async (req) => {
       const productId = segments[1];
       const body = await req.json();
 
+      // If stock_quantity is changing, log it
+      if (body.stock_quantity !== undefined) {
+        const { data: current } = await adminClient
+          .from("products")
+          .select("stock_quantity")
+          .eq("id", productId)
+          .single();
+        if (current && current.stock_quantity !== body.stock_quantity) {
+          await adminClient.from("inventory_logs").insert({
+            product_id: productId,
+            change_amount: body.stock_quantity - current.stock_quantity,
+            previous_stock: current.stock_quantity,
+            new_stock: body.stock_quantity,
+            reason: "manual",
+            user_id: user.id,
+          });
+        }
+      }
+
       const { data, error } = await adminClient
         .from("products")
         .update(body)
         .eq("id", productId)
         .select()
         .single();
+      if (error) return json({ error: error.message }, 400);
+      return json(data);
+    }
+
+    // GET /api/products/:id/inventory-logs
+    if (req.method === "GET" && segments[0] === "products" && segments[2] === "inventory-logs") {
+      const productId = segments[1];
+      const { data, error } = await adminClient
+        .from("inventory_logs")
+        .select("*")
+        .eq("product_id", productId)
+        .order("created_at", { ascending: false })
+        .limit(50);
       if (error) return json({ error: error.message }, 400);
       return json(data);
     }
