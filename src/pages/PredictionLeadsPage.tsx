@@ -10,8 +10,9 @@ import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Loader2, Pencil, Check, X } from 'lucide-react';
+import { MessageSquare, Loader2, Pencil, Check, X, Phone } from 'lucide-react';
 import { apiGetMyLeads, apiUpdateLead } from '@/lib/api';
+import { CallPopup, CallOutcome } from '@/components/CallPopup';
 
 interface LeadRow {
   id: string;
@@ -32,6 +33,7 @@ export default function PredictionLeadsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [callPopupLead, setCallPopupLead] = useState<LeadRow | null>(null);
 
   const fetchLeads = () => {
     setLoading(true);
@@ -172,6 +174,15 @@ export default function PredictionLeadsPage() {
 
               {isExpanded && (
                 <div className="border-t px-4 py-4 space-y-4 bg-muted/10">
+                  {/* Call button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCallPopupLead(lead); }}
+                    className="flex items-center gap-2 w-full rounded-lg bg-primary text-primary-foreground py-2.5 font-medium text-sm hover:bg-primary/90 transition-colors justify-center"
+                  >
+                    <Phone className="h-4 w-4" />
+                    Start Call with {lead.name || 'Customer'}
+                  </button>
+
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     {renderEditableField(lead, 'address', 'Address')}
                     {renderEditableField(lead, 'city', 'City')}
@@ -223,6 +234,31 @@ export default function PredictionLeadsPage() {
           </div>
         )}
       </div>
+
+      <CallPopup
+        open={!!callPopupLead}
+        onClose={(outcome) => {
+          if (outcome && callPopupLead) {
+            // Auto-update lead status in local state based on outcome
+            const statusMap: Record<string, PredictionLeadStatus> = {
+              no_answer: 'no_answer',
+              interested: 'interested',
+              not_interested: 'not_interested',
+              call_again: 'not_contacted',
+            };
+            const newStatus = statusMap[outcome];
+            if (newStatus) {
+              setLeads(prev => prev.map(l => l.id === callPopupLead.id ? { ...l, status: newStatus } : l));
+            }
+          }
+          setCallPopupLead(null);
+        }}
+        contextType="prediction_lead"
+        contextId={callPopupLead?.id || ''}
+        customerName={callPopupLead?.name || ''}
+        phoneNumber={callPopupLead?.telephone || ''}
+        productName={callPopupLead?.product || undefined}
+      />
     </AppLayout>
   );
 }

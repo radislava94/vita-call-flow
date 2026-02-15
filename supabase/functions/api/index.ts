@@ -728,6 +728,93 @@ serve(async (req) => {
       return json(data);
     }
 
+    // ============================================================
+    // CALL SCRIPTS & LOGS
+    // ============================================================
+
+    // GET /api/call-scripts/:contextType
+    if (req.method === "GET" && segments[0] === "call-scripts" && segments.length === 2) {
+      const contextType = segments[1];
+      const { data, error } = await supabase
+        .from("call_scripts")
+        .select("*")
+        .eq("context_type", contextType)
+        .single();
+      if (error) return json({ script_text: "" });
+      return json(data);
+    }
+
+    // PATCH /api/call-scripts/:contextType (admin only)
+    if (req.method === "PATCH" && segments[0] === "call-scripts" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const contextType = segments[1];
+      const body = await req.json();
+      const { data, error } = await adminClient
+        .from("call_scripts")
+        .update({ script_text: body.script_text, updated_by: user.id, updated_at: new Date().toISOString() })
+        .eq("context_type", contextType)
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+      return json(data);
+    }
+
+    // POST /api/call-logs
+    if (req.method === "POST" && path === "call-logs") {
+      const body = await req.json();
+      const { context_type, context_id, outcome, notes } = body;
+      if (!context_type || !context_id || !outcome) {
+        return json({ error: "context_type, context_id, and outcome are required" }, 400);
+      }
+
+      const { data, error } = await adminClient
+        .from("call_logs")
+        .insert({
+          agent_id: user.id,
+          context_type,
+          context_id,
+          outcome,
+          notes: notes || "",
+        })
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+
+      // Auto-update prediction lead status based on outcome
+      if (context_type === "prediction_lead") {
+        const statusMap: Record<string, string> = {
+          no_answer: "no_answer",
+          interested: "interested",
+          not_interested: "not_interested",
+          call_again: "not_contacted",
+        };
+        const newStatus = statusMap[outcome];
+        if (newStatus) {
+          await adminClient
+            .from("prediction_leads")
+            .update({ status: newStatus })
+            .eq("id", context_id);
+        }
+      }
+
+      return json(data);
+    }
+
+    // GET /api/call-logs/:contextType/:contextId
+    if (req.method === "GET" && segments[0] === "call-logs" && segments.length === 3) {
+      const contextType = segments[1];
+      const contextId = segments[2];
+      const { data, error } = await adminClient
+        .from("call_logs")
+        .select("*")
+        .eq("context_type", contextType)
+        .eq("context_id", contextId)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) return json({ error: error.message }, 400);
+      return json(data);
+    }
+
     // GET /api/me
     if (req.method === "GET" && path === "me") {
       const { data: profile } = await supabase

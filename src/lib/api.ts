@@ -89,3 +89,14 @@ export const apiUpdateLead = (id: string, body: { status?: string; notes?: strin
 // Phone duplicate check
 export const apiCheckPhoneDuplicates = (phone: string, excludeOrderId?: string) =>
   apiFetch('check-phone-duplicates', { method: 'POST', body: JSON.stringify({ phone, exclude_order_id: excludeOrderId }) });
+
+// Call Scripts
+export const apiGetCallScript = (contextType: string) => apiFetch(`call-scripts/${contextType}`);
+export const apiUpdateCallScript = (contextType: string, scriptText: string) =>
+  apiFetch(`call-scripts/${contextType}`, { method: 'PATCH', body: JSON.stringify({ script_text: scriptText }) });
+
+// Call Logs
+export const apiLogCall = (body: { context_type: string; context_id: string; outcome: string; notes?: string }) =>
+  apiFetch('call-logs', { method: 'POST', body: JSON.stringify(body) });
+export const apiGetCallLogs = (contextType: string, contextId: string) =>
+  apiFetch(`call-logs/${contextType}/${contextId}`);
