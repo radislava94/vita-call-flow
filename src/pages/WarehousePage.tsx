@@ -137,6 +137,7 @@ function IncomingOrdersTab() {
 
   const statusBadge = (status: string) => {
     if (status === 'shipped') return <Badge className="bg-green-500/15 text-green-700 border-green-500/30">Shipped</Badge>;
+    if (status === 'delivered') return <Badge className="bg-sky-500/15 text-sky-700 border-sky-500/30">Delivered</Badge>;
     return <Badge className="bg-yellow-500/15 text-yellow-700 border-yellow-500/30">Confirmed</Badge>;
   };
 
@@ -172,6 +173,7 @@ function IncomingOrdersTab() {
             <SelectItem value="all">All Statuses</SelectItem>
             <SelectItem value="confirmed">Confirmed</SelectItem>
             <SelectItem value="shipped">Shipped</SelectItem>
+            <SelectItem value="delivered">Delivered</SelectItem>
           </SelectContent>
         </Select>
         <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" placeholder="From" />
@@ -253,6 +255,9 @@ function IncomingOrdersTab() {
                                     </SelectItem>
                                     <SelectItem value="shipped">
                                       <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> Shipped</span>
+                                    </SelectItem>
+                                    <SelectItem value="delivered">
+                                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" /> Delivered</span>
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>

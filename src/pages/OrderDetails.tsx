@@ -15,7 +15,7 @@ import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote }
 import { useAuth } from '@/contexts/AuthContext';
 import { CallPopup } from '@/components/CallPopup';
 
-const STATUSES_REQUIRING_COMPLETE_INFO: OrderStatus[] = ['confirmed', 'shipped', 'returned', 'paid', 'cancelled'];
+const STATUSES_REQUIRING_COMPLETE_INFO: OrderStatus[] = ['confirmed', 'shipped', 'delivered', 'returned', 'paid', 'cancelled'];
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();

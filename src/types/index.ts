@@ -4,6 +4,7 @@ export type OrderStatus =
   | 'call_again' 
   | 'confirmed' 
   | 'shipped' 
+  | 'delivered'
   | 'returned' 
   | 'paid' 
   | 'trashed' 
@@ -28,6 +29,8 @@ export interface Order {
   createdAt: string;
   notes: Note[];
   statusHistory: StatusChange[];
+  sourceType?: string;
+  sourceLeadId?: string | null;
 }
 
 export interface Note {
@@ -69,6 +72,7 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   call_again: 'Call Again',
   confirmed: 'Confirmed',
   shipped: 'Shipped',
+  delivered: 'Delivered',
   returned: 'Returned',
   paid: 'Paid',
   trashed: 'Trashed',
@@ -81,6 +85,7 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
   call_again: 'status-call-again',
   confirmed: 'status-confirmed',
   shipped: 'status-shipped',
+  delivered: 'status-delivered',
   returned: 'status-returned',
   paid: 'status-paid',
   trashed: 'status-trashed',
@@ -88,7 +93,7 @@ export const STATUS_COLORS: Record<OrderStatus, string> = {
 };
 
 export const AGENT_ALLOWED_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed'];
-export const ALL_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed', 'shipped', 'returned', 'paid', 'trashed', 'cancelled'];
+export const ALL_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed', 'shipped', 'delivered', 'returned', 'paid', 'trashed', 'cancelled'];
 
 // Prediction Lists
 export type PredictionLeadStatus = 'not_contacted' | 'no_answer' | 'interested' | 'not_interested' | 'confirmed';
