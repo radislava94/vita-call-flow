@@ -129,7 +129,7 @@ function getVisibleSections(
       // "Users" & "Performance" only for admin
       if (!isAdmin) {
         items = items.filter(
-          (i) => i.path !== '/users' && i.path !== '/performance' && i.path !== '/shifts',
+          (i) => i.path !== '/users' && i.path !== '/performance' && i.path !== '/shifts' && i.path !== '/inbound-leads',
         );
       }
 
