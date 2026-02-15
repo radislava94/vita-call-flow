@@ -507,10 +507,15 @@ serve(async (req) => {
         .single();
       if (!order) return json({ error: "Order not found" }, 404);
 
-      // Agent permission check
+      // Permission check for non-admins
       const agentAllowed = ["pending", "take", "call_again", "confirmed"];
-      if (!isAdmin && !agentAllowed.includes(newStatus)) {
-        return json({ error: `Agents can only set status to: ${agentAllowed.join(", ")}` }, 403);
+      const warehouseAllowed = ["confirmed", "shipped"];
+      if (!isAdmin) {
+        if (isWarehouse && warehouseAllowed.includes(newStatus)) {
+          // Warehouse users can set confirmed/shipped
+        } else if (!agentAllowed.includes(newStatus)) {
+          return json({ error: `You can only set status to: ${agentAllowed.join(", ")}` }, 403);
+        }
       }
 
       // Validation: require fields for certain statuses
@@ -1506,9 +1511,17 @@ serve(async (req) => {
 
       const results: any[] = [];
 
-      // 1. Confirmed orders (source = "order")
+      // Filter by status (default: confirmed + shipped)
+      const statusFilter = url.searchParams.get("status"); // "confirmed" | "shipped" | null (both)
+
+      // 1. Orders (source = "order")
       if (!sourceFilter || sourceFilter === "order") {
-        let oQuery = adminClient.from("orders").select("*").eq("status", "confirmed").order("created_at", { ascending: false });
+        let oQuery = adminClient.from("orders").select("*").order("created_at", { ascending: false });
+        if (statusFilter) {
+          oQuery = oQuery.eq("status", statusFilter);
+        } else {
+          oQuery = oQuery.in("status", ["confirmed", "shipped"]);
+        }
         if (agentFilter && agentFilter !== "all") oQuery = oQuery.eq("assigned_agent_id", agentFilter);
         if (from) oQuery = oQuery.gte("created_at", from);
         if (to) oQuery = oQuery.lte("created_at", to);
@@ -1531,8 +1544,8 @@ serve(async (req) => {
         }
       }
 
-      // 2. Confirmed prediction leads (source = "prediction_lead")
-      if (!sourceFilter || sourceFilter === "prediction_lead") {
+      // 2. Prediction leads (source = "prediction_lead") - only confirmed (no shipped status for leads)
+      if ((!sourceFilter || sourceFilter === "prediction_lead") && (!statusFilter || statusFilter === "confirmed")) {
         let lQuery = adminClient.from("prediction_leads").select("*, prediction_lists(name)").eq("status", "confirmed").order("created_at", { ascending: false });
         if (agentFilter && agentFilter !== "all") lQuery = lQuery.eq("assigned_agent_id", agentFilter);
         if (from) lQuery = lQuery.gte("created_at", from);

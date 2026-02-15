@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -16,6 +17,7 @@ import {
   apiUpdateWarehouseItem,
   apiDeleteWarehouseItem,
   apiGetAgents,
+  apiUpdateOrderStatus,
 } from '@/lib/api';
 import {
   Package,
@@ -25,18 +27,23 @@ import {
   Trash2,
   Edit,
   UserPlus,
+  ChevronRight,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isToday, parseISO } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 // ─── Incoming Orders Tab ───────────────────────────────────────
 function IncomingOrdersTab() {
+  const { toast } = useToast();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [agentFilter, setAgentFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [agents, setAgents] = useState<any[]>([]);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const fetchOrders = () => {
     setLoading(true);
@@ -45,6 +52,7 @@ function IncomingOrdersTab() {
       from: dateFrom ? dateFrom + 'T00:00:00Z' : undefined,
       to: dateTo ? dateTo + 'T23:59:59Z' : undefined,
       source: sourceFilter || undefined,
+      status: statusFilter || undefined,
     })
       .then(setOrders)
       .catch(() => {})
@@ -55,11 +63,57 @@ function IncomingOrdersTab() {
     apiGetAgents().then(setAgents).catch(() => {});
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [agentFilter, dateFrom, dateTo, sourceFilter]);
+  useEffect(() => { fetchOrders(); }, [agentFilter, dateFrom, dateTo, sourceFilter, statusFilter]);
+
+  // Group orders by date
+  const groupedOrders = useMemo(() => {
+    const groups: Record<string, any[]> = {};
+    for (const o of orders) {
+      const dateKey = format(new Date(o.created_at), 'yyyy-MM-dd');
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(o);
+    }
+    // Sort dates descending
+    return Object.entries(groups).sort(([a], [b]) => b.localeCompare(a));
+  }, [orders]);
+
+  // Track which folders are open. Default: today open
+  const [openDates, setOpenDates] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const todayStr = format(new Date(), 'yyyy-MM-dd');
+    setOpenDates(new Set([todayStr]));
+  }, []);
+
+  const toggleDate = (date: string) => {
+    setOpenDates(prev => {
+      const next = new Set(prev);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  };
+
+  const handleStatusChange = async (orderId: string, source: string, newStatus: string) => {
+    if (source !== 'order') {
+      toast({ title: 'Cannot change status', description: 'Only standard orders can be shipped', variant: 'destructive' });
+      return;
+    }
+    setUpdatingId(orderId);
+    try {
+      await apiUpdateOrderStatus(orderId, newStatus);
+      toast({ title: `Status updated to ${newStatus}` });
+      fetchOrders();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const exportCSV = () => {
     if (orders.length === 0) return;
-    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Price', 'Agent', 'Source', 'Date'];
+    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Price', 'Agent', 'Source', 'Status', 'Date'];
     const rows = orders.map((o: any) => [
       o.display_id,
       `"${(o.customer_name || '').replace(/"/g, '""')}"`,
@@ -68,6 +122,7 @@ function IncomingOrdersTab() {
       o.price,
       o.assigned_agent_name || '',
       o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order',
+      o.status,
       format(new Date(o.created_at), 'yyyy-MM-dd'),
     ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -75,9 +130,14 @@ function IncomingOrdersTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `confirmed-orders-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `warehouse-orders-${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const statusBadge = (status: string) => {
+    if (status === 'shipped') return <Badge className="bg-green-500/15 text-green-700 border-green-500/30">Shipped</Badge>;
+    return <Badge className="bg-yellow-500/15 text-yellow-700 border-yellow-500/30">Confirmed</Badge>;
   };
 
   return (
@@ -104,61 +164,117 @@ function IncomingOrdersTab() {
             <SelectItem value="prediction_lead">Prediction Leads</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All Statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="confirmed">Confirmed</SelectItem>
+            <SelectItem value="shipped">Shipped</SelectItem>
+          </SelectContent>
+        </Select>
         <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" placeholder="From" />
         <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" placeholder="To" />
         <Button variant="outline" size="sm" onClick={exportCSV} disabled={orders.length === 0}>
           <Download className="h-4 w-4 mr-1" /> Export CSV
         </Button>
-        <span className="text-sm text-muted-foreground ml-auto">{orders.length} confirmed</span>
+        <span className="text-sm text-muted-foreground ml-auto">{orders.length} orders</span>
       </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+      ) : groupedOrders.length === 0 ? (
+        <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">No orders found</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Phone</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Agent</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o: any) => (
-                <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium">{o.display_id}</td>
-                  <td className="px-4 py-3">{o.customer_name}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{o.customer_phone || '—'}</td>
-                  <td className="px-4 py-3">{o.product_name}</td>
-                  <td className="px-4 py-3 font-semibold text-primary">
-                    {o.source === 'order' ? `$${Number(o.price).toFixed(2)}` : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{o.assigned_agent_name || '—'}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={o.source === 'prediction_lead' ? 'secondary' : 'default'}>
-                      {o.source === 'prediction_lead' ? 'Lead' : 'Order'}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{format(new Date(o.created_at), 'MMM d, yyyy')}</td>
-                </tr>
-              ))}
-              {orders.length === 0 && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No confirmed orders found</td></tr>
-              )}
-            </tbody>
-          </table>
+        <div className="space-y-2">
+          {groupedOrders.map(([dateKey, dayOrders]) => {
+            const isOpen = openDates.has(dateKey);
+            const dateObj = parseISO(dateKey);
+            const isTodayDate = isToday(dateObj);
+            return (
+              <div key={dateKey} className="rounded-xl border bg-card shadow-sm overflow-hidden">
+                <button
+                  onClick={() => toggleDate(dateKey)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors"
+                >
+                  <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform duration-200', isOpen && 'rotate-90')} />
+                  <span className="font-semibold text-card-foreground">
+                    {format(dateObj, 'EEEE, MMM d, yyyy')}
+                    {isTodayDate && <Badge className="ml-2 bg-primary/15 text-primary border-primary/30 text-[10px]">Today</Badge>}
+                  </span>
+                  <Badge variant="secondary" className="ml-auto">{dayOrders.length}</Badge>
+                </button>
+                <div className={cn('overflow-hidden transition-all duration-300', isOpen ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0')}>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-t border-b bg-muted/50">
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">ID</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Customer</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Phone</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Product</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Price</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Agent</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Source</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Status</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Time</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dayOrders.map((o: any) => (
+                          <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
+                            <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
+                            <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
+                            <td className="px-4 py-2.5 text-xs">{o.product_name}</td>
+                            <td className="px-4 py-2.5 font-semibold text-primary text-xs">
+                              {o.source === 'order' ? `$${Number(o.price).toFixed(2)}` : '—'}
+                            </td>
+                            <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
+                            <td className="px-4 py-2.5 text-xs">
+                              <Badge variant={o.source === 'prediction_lead' ? 'secondary' : 'default'} className="text-[10px]">
+                                {o.source === 'prediction_lead' ? 'Lead' : 'Order'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-2.5">
+                              {o.source === 'order' ? (
+                                <Select
+                                  value={o.status}
+                                  onValueChange={(val) => handleStatusChange(o.id, o.source, val)}
+                                  disabled={updatingId === o.id}
+                                >
+                                  <SelectTrigger className="h-7 w-[110px] text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="confirmed">
+                                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-yellow-500" /> Confirmed</span>
+                                    </SelectItem>
+                                    <SelectItem value="shipped">
+                                      <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> Shipped</span>
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                statusBadge(o.status)
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-muted-foreground text-xs">{format(new Date(o.created_at), 'HH:mm')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
-
 // ─── Inventory Tab ─────────────────────────────────────────────
 function InventoryTab() {
   const [products, setProducts] = useState<any[]>([]);

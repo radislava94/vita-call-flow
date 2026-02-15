@@ -126,13 +126,14 @@ export const apiGetCallHistory = (params?: { agent_id?: string; outcome?: string
 };
 
 // Warehouse
-export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string; source?: string }) => {
+export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string; source?: string; status?: string }) => {
   const sp = new URLSearchParams();
   if (params?.agent_id) sp.set('agent_id', params.agent_id);
   if (params?.from) sp.set('from', params.from);
   if (params?.to) sp.set('to', params.to);
   if (params?.product) sp.set('product', params.product);
   if (params?.source) sp.set('source', params.source);
+  if (params?.status) sp.set('status', params.status);
   return apiFetch(`warehouse/incoming-orders?${sp.toString()}`);
 };
 export const apiGetUserWarehouseItems = () => apiFetch('warehouse/user-items');
