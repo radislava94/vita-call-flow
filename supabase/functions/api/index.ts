@@ -53,13 +53,16 @@ serve(async (req) => {
     if (req.method === "POST" && path === "users/create") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const body = await req.json();
-      const { email, password, full_name, role: newRole } = body;
+      const { email, password, full_name, roles: newRoles } = body;
+      // Support legacy single role field
+      const rolesToAssign: string[] = newRoles || (body.role ? [body.role] : []);
 
-      if (!email || !password || !full_name || !newRole) {
-        return json({ error: "Missing required fields: email, password, full_name, role" }, 400);
+      if (!email || !password || !full_name || rolesToAssign.length === 0) {
+        return json({ error: "Missing required fields: email, password, full_name, roles" }, 400);
       }
-      if (!["admin", "agent"].includes(newRole)) {
-        return json({ error: "Role must be admin or agent" }, 400);
+      const validRoles = ["admin", "agent"];
+      if (rolesToAssign.some((r: string) => !validRoles.includes(r))) {
+        return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
       }
 
       const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
@@ -70,13 +73,43 @@ serve(async (req) => {
       });
       if (createErr) return json({ error: createErr.message }, 400);
 
-      // Assign role
-      await adminClient.from("user_roles").insert({ user_id: newUser.user.id, role: newRole });
+      // Assign all roles
+      for (const r of rolesToAssign) {
+        await adminClient.from("user_roles").insert({ user_id: newUser.user.id, role: r });
+      }
 
       return json({ success: true, user_id: newUser.user.id });
     }
 
-    // PATCH /api/users/:id/role (admin only)
+    // PUT /api/users/:id/roles (admin only - set roles array)
+    if (req.method === "PUT" && segments[0] === "users" && segments[2] === "roles") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const userId = segments[1];
+      const body = await req.json();
+      const { roles: newRoles } = body;
+
+      if (!newRoles || !Array.isArray(newRoles) || newRoles.length === 0) {
+        return json({ error: "At least one role is required" }, 400);
+      }
+      const validRoles = ["admin", "agent"];
+      if (newRoles.some((r: string) => !validRoles.includes(r))) {
+        return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
+      }
+      // Prevent admin from changing own roles
+      if (userId === user.id) {
+        return json({ error: "Cannot change your own roles" }, 400);
+      }
+
+      // Delete existing roles and insert new ones
+      await adminClient.from("user_roles").delete().eq("user_id", userId);
+      for (const r of newRoles) {
+        await adminClient.from("user_roles").insert({ user_id: userId, role: r });
+      }
+
+      return json({ success: true, roles: newRoles });
+    }
+
+    // PATCH /api/users/:id/role (legacy - admin only)
     if (req.method === "PATCH" && segments[0] === "users" && segments[2] === "role") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
@@ -85,15 +118,12 @@ serve(async (req) => {
       if (!newRole || !["admin", "agent"].includes(newRole)) {
         return json({ error: "Role must be admin or agent" }, 400);
       }
-      // Prevent admin from changing own role
       if (userId === user.id) {
         return json({ error: "Cannot change your own role" }, 400);
       }
-      const { error: roleErr } = await adminClient
-        .from("user_roles")
-        .update({ role: newRole })
-        .eq("user_id", userId);
-      if (roleErr) return json({ error: roleErr.message }, 400);
+      // Replace all roles with the single one (legacy behavior)
+      await adminClient.from("user_roles").delete().eq("user_id", userId);
+      await adminClient.from("user_roles").insert({ user_id: userId, role: newRole });
       return json({ success: true });
     }
 
@@ -145,16 +175,17 @@ serve(async (req) => {
         .select("*")
         .order("created_at", { ascending: false });
 
-      // Get all roles in one query
+      // Get all roles in one query (multiple roles per user)
       const userIds = (users || []).map((u: any) => u.user_id);
       const { data: allRoles } = await adminClient
         .from("user_roles")
         .select("user_id, role")
         .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
 
-      const roleMap: Record<string, string> = {};
+      const roleMap: Record<string, string[]> = {};
       for (const r of allRoles || []) {
-        roleMap[r.user_id] = r.role;
+        if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
+        roleMap[r.user_id].push(r.role);
       }
 
       // Get stats for each user
@@ -170,9 +201,11 @@ serve(async (req) => {
             .select("id", { count: "exact", head: true })
             .eq("assigned_agent_id", u.user_id);
 
+          const userRoles = roleMap[u.user_id] || ["agent"];
           return {
             ...u,
-            role: roleMap[u.user_id] || "agent",
+            roles: userRoles,
+            role: userRoles.includes("admin") ? "admin" : userRoles[0] || "agent", // legacy compat
             orders_processed: ordersProcessed || 0,
             leads_processed: leadsProcessed || 0,
           };

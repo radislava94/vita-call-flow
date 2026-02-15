@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2 } from 'lucide-react';
-import { apiGetUsers, apiCreateUser, apiToggleUserActive, apiUpdateUserRole, apiDeleteUser } from '@/lib/api';
+import { apiGetUsers, apiCreateUser, apiToggleUserActive, apiSetUserRoles, apiDeleteUser } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -15,11 +15,19 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
+const AVAILABLE_ROLES = ['admin', 'agent'] as const;
+const ROLE_ICONS: Record<string, any> = { admin: Shield, agent: Headphones };
+const ROLE_COLORS: Record<string, string> = {
+  admin: 'bg-primary/10 text-primary',
+  agent: 'bg-accent text-accent-foreground',
+};
+
 interface UserRow {
   user_id: string;
   full_name: string;
   email: string;
-  role: string;
+  roles: string[];
+  role: string; // legacy
   is_active: boolean;
   orders_processed: number;
   leads_processed: number;
@@ -32,7 +40,7 @@ export default function UsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
-  const [formRole, setFormRole] = useState('agent');
+  const [formRoles, setFormRoles] = useState<Set<string>>(new Set(['agent']));
   const [formPassword, setFormPassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
@@ -43,12 +51,30 @@ export default function UsersPage() {
   const fetchUsers = () => {
     setLoading(true);
     apiGetUsers()
-      .then(setUsers)
+      .then((data) => {
+        // Normalize: ensure roles array exists
+        setUsers(data.map((u: any) => ({
+          ...u,
+          roles: u.roles || [u.role || 'agent'],
+        })));
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchUsers(); }, []);
+
+  const toggleFormRole = (role: string) => {
+    setFormRoles(prev => {
+      const next = new Set(prev);
+      if (next.has(role)) {
+        if (next.size > 1) next.delete(role); // must keep at least one
+      } else {
+        next.add(role);
+      }
+      return next;
+    });
+  };
 
   const handleCreate = async () => {
     if (!formName.trim() || !formEmail.trim() || !formPassword.trim()) {
@@ -57,10 +83,47 @@ export default function UsersPage() {
     }
     setCreating(true);
     try {
-      await apiCreateUser({ full_name: formName, email: formEmail, role: formRole, password: formPassword });
+      await apiCreateUser({ full_name: formName, email: formEmail, role: Array.from(formRoles)[0], password: formPassword });
+      // If multiple roles, set them after creation
+      // The create endpoint now supports roles array via the body
       toast({ title: 'User created' });
       setShowModal(false);
-      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRole('agent');
+      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRoles(new Set(['agent']));
+      fetchUsers();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCreateWithRoles = async () => {
+    if (!formName.trim() || !formEmail.trim() || !formPassword.trim()) {
+      toast({ title: 'Error', description: 'All fields are required', variant: 'destructive' });
+      return;
+    }
+    if (formRoles.size === 0) {
+      toast({ title: 'Error', description: 'At least one role is required', variant: 'destructive' });
+      return;
+    }
+    setCreating(true);
+    try {
+      const headers = await getHeadersForCreate();
+      const res = await fetch(`${getApiBase()}/users/create`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          full_name: formName,
+          email: formEmail,
+          password: formPassword,
+          roles: Array.from(formRoles),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to create user');
+      toast({ title: 'User created' });
+      setShowModal(false);
+      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRoles(new Set(['agent']));
       fetchUsers();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -78,10 +141,21 @@ export default function UsersPage() {
     }
   };
 
-  const handleRoleChange = async (userId: string, newRole: string) => {
+  const handleToggleRole = async (userId: string, role: string, currentRoles: string[]) => {
+    const hasRole = currentRoles.includes(role);
+    let newRoles: string[];
+    if (hasRole) {
+      newRoles = currentRoles.filter(r => r !== role);
+      if (newRoles.length === 0) {
+        toast({ title: 'Error', description: 'User must have at least one role', variant: 'destructive' });
+        return;
+      }
+    } else {
+      newRoles = [...currentRoles, role];
+    }
     try {
-      await apiUpdateUserRole(userId, newRole);
-      toast({ title: 'Role updated' });
+      await apiSetUserRoles(userId, newRoles);
+      toast({ title: 'Roles updated' });
       fetchUsers();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -127,7 +201,7 @@ export default function UsersPage() {
           <thead>
             <tr className="border-b bg-muted/50">
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Role</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Roles</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Orders</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Leads</th>
@@ -150,19 +224,39 @@ export default function UsersPage() {
                 </td>
                 <td className="px-4 py-3">
                   {isSelf(u.user_id) ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
-                      <Shield className="h-3 w-3" />
-                      {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
-                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {u.roles.map(r => {
+                        const Icon = ROLE_ICONS[r] || Shield;
+                        return (
+                          <span key={r} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROLE_COLORS[r] || 'bg-muted text-muted-foreground'}`}>
+                            <Icon className="h-3 w-3" />
+                            {r.charAt(0).toUpperCase() + r.slice(1)}
+                          </span>
+                        );
+                      })}
+                    </div>
                   ) : (
-                    <select
-                      value={u.role}
-                      onChange={e => handleRoleChange(u.user_id, e.target.value)}
-                      className="rounded-lg border bg-background px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="agent">Agent</option>
-                    </select>
+                    <div className="flex flex-wrap gap-2">
+                      {AVAILABLE_ROLES.map(role => {
+                        const hasRole = u.roles.includes(role);
+                        const Icon = ROLE_ICONS[role] || Shield;
+                        return (
+                          <button
+                            key={role}
+                            onClick={() => handleToggleRole(u.user_id, role, u.roles)}
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors border ${
+                              hasRole
+                                ? `${ROLE_COLORS[role]} border-current`
+                                : 'border-border text-muted-foreground hover:bg-muted'
+                            }`}
+                            title={hasRole ? `Remove ${role} role` : `Add ${role} role`}
+                          >
+                            <Icon className="h-3 w-3" />
+                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </td>
                 <td className="px-4 py-3">
@@ -205,17 +299,40 @@ export default function UsersPage() {
             <div className="mt-4 space-y-3">
               <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Full Name" className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
               <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="Email" type="email" className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
-              <select value={formRole} onChange={e => setFormRole(e.target.value)} className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-                <option value="agent">Agent</option>
-                <option value="admin">Admin</option>
-              </select>
+              
+              {/* Multi-role selection */}
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-2">Roles</label>
+                <div className="flex gap-2">
+                  {AVAILABLE_ROLES.map(role => {
+                    const isSelected = formRoles.has(role);
+                    const Icon = ROLE_ICONS[role] || Shield;
+                    return (
+                      <button
+                        key={role}
+                        type="button"
+                        onClick={() => toggleFormRole(role)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors border ${
+                          isSelected
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-border text-muted-foreground hover:bg-muted'
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {role.charAt(0).toUpperCase() + role.slice(1)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <input value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="Password" type="password" className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
             </div>
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => setShowModal(false)} className="rounded-lg border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
                 Cancel
               </button>
-              <button onClick={handleCreate} disabled={creating} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
+              <button onClick={handleCreateWithRoles} disabled={creating} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50">
                 {creating ? 'Creating...' : 'Create User'}
               </button>
             </div>
@@ -246,4 +363,18 @@ export default function UsersPage() {
       </AlertDialog>
     </AppLayout>
   );
+}
+
+// Helper functions for direct API calls in create
+import { supabase } from '@/integrations/supabase/client';
+function getApiBase() {
+  return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
+}
+async function getHeadersForCreate() {
+  const { data: { session } } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${session?.access_token || ''}`,
+    'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+  };
 }
