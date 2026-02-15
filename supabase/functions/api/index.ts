@@ -84,6 +84,13 @@ const predictionListSchema = z.object({
   })).min(1, "No entries provided"),
 });
 
+const inboundLeadSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(200),
+  phone: z.string().trim().min(1, "Phone is required").max(30),
+  status: z.string().max(50).optional().default("pending"),
+  source: z.string().max(100).optional().default("landing_page"),
+});
+
 const warehouseItemSchema = z.object({
   user_id: z.string().uuid("Invalid user ID"),
   product_id: z.string().uuid("Invalid product ID"),
@@ -134,6 +141,19 @@ serve(async (req) => {
     const url = new URL(req.url);
     const path = url.pathname.replace(/^\/api\//, "").replace(/\/$/, "");
     const segments = path.split("/");
+
+    // ── PUBLIC WEBHOOK (no auth required) ──
+    if (req.method === "POST" && path === "webhook/leads") {
+      let body;
+      try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+      const { data, error } = await adminClient
+        .from("inbound_leads")
+        .insert({ name: body.name, phone: body.phone, status: body.status, source: body.source })
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true, id: data.id });
+    }
 
     // Verify auth
     const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -1842,6 +1862,46 @@ serve(async (req) => {
       });
 
       const { error } = await adminClient.from("ads_campaigns").delete().eq("id", campaignId);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // GET /api/inbound-leads (admin only)
+    if (req.method === "GET" && path === "inbound-leads") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const status = url.searchParams.get("status");
+      let query = adminClient
+        .from("inbound_leads")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (status && status !== "all") query = query.eq("status", status);
+      const { data, error } = await query;
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/inbound-leads/:id (admin only)
+    if (req.method === "PATCH" && segments[0] === "inbound-leads" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const leadId = segments[1];
+      const body = await req.json();
+      const allowed: Record<string, boolean> = { status: true, name: true, phone: true, source: true };
+      const updates: Record<string, any> = {};
+      for (const [k, v] of Object.entries(body)) {
+        if (allowed[k]) updates[k] = v;
+      }
+      if (Object.keys(updates).length === 0) return json({ error: "No valid fields" }, 400);
+      const { error } = await adminClient.from("inbound_leads").update(updates).eq("id", leadId);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // DELETE /api/inbound-leads/:id (admin only)
+    if (req.method === "DELETE" && segments[0] === "inbound-leads" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const leadId = segments[1];
+      const { error } = await adminClient.from("inbound_leads").delete().eq("id", leadId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
     }
