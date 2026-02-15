@@ -1,8 +1,19 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
-import { UserPlus, MoreHorizontal, Shield, Headphones, ToggleLeft, ToggleRight, Loader2 } from 'lucide-react';
-import { apiGetUsers, apiCreateUser, apiToggleUserActive } from '@/lib/api';
+import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2 } from 'lucide-react';
+import { apiGetUsers, apiCreateUser, apiToggleUserActive, apiUpdateUserRole, apiDeleteUser } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface UserRow {
   user_id: string;
@@ -24,7 +35,10 @@ export default function UsersPage() {
   const [formRole, setFormRole] = useState('agent');
   const [formPassword, setFormPassword] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useAuth();
 
   const fetchUsers = () => {
     setLoading(true);
@@ -64,6 +78,33 @@ export default function UsersPage() {
     }
   };
 
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await apiUpdateUserRole(userId, newRole);
+      toast({ title: 'Role updated' });
+      fetchUsers();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await apiDeleteUser(deleteTarget.user_id);
+      toast({ title: 'User deleted' });
+      setDeleteTarget(null);
+      fetchUsers();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const isSelf = (userId: string) => currentUser?.id === userId;
+
   return (
     <AppLayout title="Users">
       <div className="mb-6 flex items-center justify-between">
@@ -94,42 +135,60 @@ export default function UsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map(user => (
-              <tr key={user.user_id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+            {users.map(u => (
+              <tr key={u.user_id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                      {user.full_name.charAt(0)}
+                      {u.full_name.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-medium">{user.full_name}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                      <p className="font-medium">{u.full_name}</p>
+                      <p className="text-xs text-muted-foreground">{u.email}</p>
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                    user.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-info/10 text-info'
-                  }`}>
-                    {user.role === 'admin' ? <Shield className="h-3 w-3" /> : <Headphones className="h-3 w-3" />}
-                    {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-                  </span>
+                  {isSelf(u.user_id) ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold bg-primary/10 text-primary">
+                      <Shield className="h-3 w-3" />
+                      {u.role.charAt(0).toUpperCase() + u.role.slice(1)}
+                    </span>
+                  ) : (
+                    <select
+                      value={u.role}
+                      onChange={e => handleRoleChange(u.user_id, e.target.value)}
+                      className="rounded-lg border bg-background px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-ring"
+                    >
+                      <option value="admin">Admin</option>
+                      <option value="agent">Agent</option>
+                    </select>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => handleToggle(user.user_id)}
-                    className={`inline-flex items-center gap-1 text-xs font-medium ${user.is_active ? 'text-success' : 'text-muted-foreground'}`}
+                    onClick={() => !isSelf(u.user_id) && handleToggle(u.user_id)}
+                    disabled={isSelf(u.user_id)}
+                    className={`inline-flex items-center gap-1 text-xs font-medium ${
+                      isSelf(u.user_id) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    } ${u.is_active ? 'text-success' : 'text-destructive'}`}
                   >
-                    {user.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
-                    {user.is_active ? 'Active' : 'Inactive'}
+                    {u.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
+                    {u.is_active ? 'Active' : 'Suspended'}
                   </button>
                 </td>
-                <td className="px-4 py-3 font-semibold">{user.orders_processed}</td>
-                <td className="px-4 py-3 font-semibold">{user.leads_processed}</td>
+                <td className="px-4 py-3 font-semibold">{u.orders_processed}</td>
+                <td className="px-4 py-3 font-semibold">{u.leads_processed}</td>
                 <td className="px-4 py-3">
-                  <button className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors">
-                    <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
-                  </button>
+                  {!isSelf(u.user_id) && (
+                    <button
+                      onClick={() => setDeleteTarget(u)}
+                      className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors"
+                      title="Delete user"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
@@ -163,6 +222,28 @@ export default function UsersPage() {
           </div>
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteTarget} onOpenChange={open => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete User</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to permanently delete <strong>{deleteTarget?.full_name}</strong> ({deleteTarget?.email})? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppLayout>
   );
 }

@@ -32,6 +32,10 @@ export const apiCreateUser = (body: { email: string; password: string; full_name
   apiFetch('users/create', { method: 'POST', body: JSON.stringify(body) });
 export const apiToggleUserActive = (userId: string) =>
   apiFetch(`users/${userId}/toggle-active`, { method: 'POST' });
+export const apiUpdateUserRole = (userId: string, role: string) =>
+  apiFetch(`users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) });
+export const apiDeleteUser = (userId: string) =>
+  apiFetch(`users/${userId}`, { method: 'DELETE' });
 
 // Orders
 export const apiGetOrders = (params?: { status?: string; search?: string; page?: number; limit?: number }) => {
