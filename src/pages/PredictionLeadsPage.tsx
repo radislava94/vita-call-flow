@@ -8,8 +8,9 @@ import {
 } from '@/types';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Loader2 } from 'lucide-react';
+import { MessageSquare, Loader2, Pencil, Check, X } from 'lucide-react';
 import { apiGetMyLeads, apiUpdateLead } from '@/lib/api';
 
 interface LeadRow {
@@ -29,6 +30,8 @@ export default function PredictionLeadsPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
 
   const fetchLeads = () => {
     setLoading(true);
@@ -63,6 +66,76 @@ export default function PredictionLeadsPage() {
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
+  };
+
+  const startEdit = (id: string, field: string, currentValue: string | null) => {
+    setEditingField({ id, field });
+    setEditValue(currentValue || '');
+  };
+
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  const saveEdit = async () => {
+    if (!editingField) return;
+    const { id, field } = editingField;
+    try {
+      await apiUpdateLead(id, { [field]: editValue });
+      setLeads(prev => prev.map(l => l.id === id ? { ...l, [field]: editValue } : l));
+      toast({ title: 'Updated successfully' });
+      setEditingField(null);
+      setEditValue('');
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const isEditing = (id: string, field: string) =>
+    editingField?.id === id && editingField?.field === field;
+
+  const renderEditableField = (lead: LeadRow, field: 'address' | 'city' | 'telephone' | 'product', label: string) => {
+    const value = lead[field];
+    if (isEditing(lead.id, field)) {
+      return (
+        <div>
+          <p className="text-muted-foreground text-xs mb-1">{label}</p>
+          <div className="flex items-center gap-1">
+            <Input
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              className="h-8 text-sm"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveEdit();
+                if (e.key === 'Escape') cancelEdit();
+              }}
+            />
+            <button onClick={saveEdit} className="p-1 text-primary hover:bg-primary/10 rounded">
+              <Check className="h-4 w-4" />
+            </button>
+            <button onClick={cancelEdit} className="p-1 text-destructive hover:bg-destructive/10 rounded">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div>
+        <p className="text-muted-foreground text-xs mb-1">{label}</p>
+        <div className="flex items-center gap-1 group">
+          <p className={field === 'telephone' ? 'font-mono' : ''}>{value || '—'}</p>
+          <button
+            onClick={() => startEdit(lead.id, field, value)}
+            className="p-1 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity rounded"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+    );
   };
 
   if (loading) {
@@ -100,22 +173,10 @@ export default function PredictionLeadsPage() {
               {isExpanded && (
                 <div className="border-t px-4 py-4 space-y-4 bg-muted/10">
                   <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Address</p>
-                      <p>{lead.address || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">City</p>
-                      <p>{lead.city || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Product</p>
-                      <p>{lead.product || '—'}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Telephone</p>
-                      <p className="font-mono">{lead.telephone}</p>
-                    </div>
+                    {renderEditableField(lead, 'address', 'Address')}
+                    {renderEditableField(lead, 'city', 'City')}
+                    {renderEditableField(lead, 'product', 'Product')}
+                    {renderEditableField(lead, 'telephone', 'Telephone')}
                   </div>
 
                   <div>

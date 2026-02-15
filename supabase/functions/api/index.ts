@@ -691,7 +691,7 @@ serve(async (req) => {
       return json(data);
     }
 
-    // PATCH /api/prediction-leads/:id (update status/notes)
+    // PATCH /api/prediction-leads/:id (update status/notes/details)
     if (req.method === "PATCH" && segments[0] === "prediction-leads" && segments.length === 2) {
       const leadId = segments[1];
       const body = await req.json();
@@ -699,6 +699,10 @@ serve(async (req) => {
       const updates: Record<string, any> = {};
       if (body.status) updates.status = body.status;
       if (body.notes !== undefined) updates.notes = body.notes;
+      if (body.address !== undefined) updates.address = body.address;
+      if (body.city !== undefined) updates.city = body.city;
+      if (body.telephone !== undefined) updates.telephone = body.telephone;
+      if (body.product !== undefined) updates.product = body.product;
 
       const { data, error } = await supabase
         .from("prediction_leads")
