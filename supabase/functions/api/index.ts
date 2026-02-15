@@ -1002,6 +1002,16 @@ serve(async (req) => {
     // CALL SCRIPTS & LOGS
     // ============================================================
 
+    // GET /api/call-scripts (list all scripts - for admin management page)
+    if (req.method === "GET" && path === "call-scripts") {
+      const { data, error } = await supabase
+        .from("call_scripts")
+        .select("*")
+        .order("context_type");
+      if (error) return json({ error: error.message }, 400);
+      return json(data || []);
+    }
+
     // GET /api/call-scripts/:contextType
     if (req.method === "GET" && segments[0] === "call-scripts" && segments.length === 2) {
       const contextType = segments[1];
@@ -1014,17 +1024,34 @@ serve(async (req) => {
       return json(data);
     }
 
-    // PATCH /api/call-scripts/:contextType (admin only)
+    // PATCH /api/call-scripts/:contextType (admin only - upsert)
     if (req.method === "PATCH" && segments[0] === "call-scripts" && segments.length === 2) {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const contextType = segments[1];
       const body = await req.json();
-      const { data, error } = await adminClient
+
+      // Try update first
+      const { data: existing } = await adminClient
         .from("call_scripts")
-        .update({ script_text: body.script_text, updated_by: user.id, updated_at: new Date().toISOString() })
+        .select("id")
         .eq("context_type", contextType)
-        .select()
         .single();
+
+      let data, error;
+      if (existing) {
+        ({ data, error } = await adminClient
+          .from("call_scripts")
+          .update({ script_text: body.script_text, updated_by: user.id, updated_at: new Date().toISOString() })
+          .eq("context_type", contextType)
+          .select()
+          .single());
+      } else {
+        ({ data, error } = await adminClient
+          .from("call_scripts")
+          .insert({ context_type: contextType, script_text: body.script_text, updated_by: user.id })
+          .select()
+          .single());
+      }
       if (error) return json({ error: error.message }, 400);
       return json(data);
     }
