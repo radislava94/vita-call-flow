@@ -111,6 +111,20 @@ export const apiLogCall = (body: { context_type: string; context_id: string; out
 export const apiGetCallLogs = (contextType: string, contextId: string) =>
   apiFetch(`call-logs/${contextType}/${contextId}`);
 
+// Call History
+export const apiGetCallHistory = (params?: { agent_id?: string; outcome?: string; source?: string; from?: string; to?: string; search?: string; page?: number; limit?: number }) => {
+  const sp = new URLSearchParams();
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  if (params?.outcome) sp.set('outcome', params.outcome);
+  if (params?.source) sp.set('source', params.source);
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  if (params?.search) sp.set('search', params.search);
+  if (params?.page) sp.set('page', String(params.page));
+  if (params?.limit) sp.set('limit', String(params.limit));
+  return apiFetch(`call-history?${sp.toString()}`);
+};
+
 // Warehouse
 export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string; source?: string }) => {
   const sp = new URLSearchParams();

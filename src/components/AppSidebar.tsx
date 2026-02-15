@@ -17,6 +17,7 @@ import {
   CalendarDays,
   FileText,
   Warehouse,
+  History,
 } from 'lucide-react';
 
 const adminNavItems = [
@@ -30,6 +31,7 @@ const adminNavItems = [
   { title: 'Users', path: '/users', icon: Users },
   { title: 'Products', path: '/products', icon: Package },
   { title: 'Call Scripts', path: '/call-scripts', icon: FileText },
+  { title: 'Call History', path: '/call-history', icon: History },
   { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
 ];
 
@@ -41,6 +43,7 @@ const agentNavItems = [
   { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
   { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays },
   { title: 'Call Scripts', path: '/call-scripts', icon: FileText },
+  { title: 'Call History', path: '/call-history', icon: History },
   { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
 ];
 

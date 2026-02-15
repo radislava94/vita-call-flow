@@ -1130,6 +1130,87 @@ serve(async (req) => {
       return json(data);
     }
 
+    // GET /api/call-history (list all call logs with filters, pagination, enriched data)
+    if (req.method === "GET" && path === "call-history") {
+      const agentFilter = url.searchParams.get("agent_id");
+      const outcomeFilter = url.searchParams.get("outcome");
+      const sourceFilter = url.searchParams.get("source"); // prediction_lead | order
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      const search = url.searchParams.get("search");
+      const page = parseInt(url.searchParams.get("page") || "1");
+      const limit = parseInt(url.searchParams.get("limit") || "25");
+
+      let query = adminClient.from("call_logs").select("*", { count: "exact" }).order("created_at", { ascending: false });
+
+      // Agent filter: non-admin can only see own
+      if (!isAdmin) {
+        query = query.eq("agent_id", user.id);
+      } else if (agentFilter) {
+        query = query.eq("agent_id", agentFilter);
+      }
+
+      if (outcomeFilter) query = query.eq("outcome", outcomeFilter);
+      if (sourceFilter) query = query.eq("context_type", sourceFilter);
+      if (from) query = query.gte("created_at", from);
+      if (to) query = query.lte("created_at", to);
+
+      query = query.range((page - 1) * limit, page * limit - 1);
+      const { data: logs, count, error: logsErr } = await query;
+      if (logsErr) return json({ error: logsErr.message }, 400);
+
+      // Enrich with agent names, customer info
+      const agentIds = [...new Set((logs || []).map((l: any) => l.agent_id))];
+      let agentMap: Record<string, string> = {};
+      if (agentIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", agentIds);
+        for (const p of profiles || []) agentMap[p.user_id] = p.full_name;
+      }
+
+      // Batch lookup context info
+      const orderContextIds = (logs || []).filter((l: any) => l.context_type === "order").map((l: any) => l.context_id);
+      const leadContextIds = (logs || []).filter((l: any) => l.context_type === "prediction_lead").map((l: any) => l.context_id);
+
+      let orderMap: Record<string, any> = {};
+      let leadMap: Record<string, any> = {};
+
+      if (orderContextIds.length > 0) {
+        const { data: orders } = await adminClient.from("orders").select("id, display_id, customer_name, customer_phone, product_name").in("id", orderContextIds);
+        for (const o of orders || []) orderMap[o.id] = o;
+      }
+      if (leadContextIds.length > 0) {
+        const { data: leads } = await adminClient.from("prediction_leads").select("id, name, telephone, product").in("id", leadContextIds);
+        for (const l of leads || []) leadMap[l.id] = l;
+      }
+
+      // Search filter (post-query on enriched data if search provided)
+      let enriched = (logs || []).map((l: any) => {
+        const isOrder = l.context_type === "order";
+        const ctx = isOrder ? orderMap[l.context_id] : leadMap[l.context_id];
+        return {
+          ...l,
+          agent_name: agentMap[l.agent_id] || "Unknown",
+          customer_name: isOrder ? ctx?.customer_name : ctx?.name || "Unknown",
+          customer_phone: isOrder ? ctx?.customer_phone : ctx?.telephone || "",
+          product_name: isOrder ? ctx?.product_name : ctx?.product || "",
+          display_id: isOrder ? ctx?.display_id : l.context_id.substring(0, 8),
+          source: l.context_type,
+        };
+      });
+
+      if (search) {
+        const s = search.toLowerCase();
+        enriched = enriched.filter((l: any) =>
+          l.customer_name?.toLowerCase().includes(s) ||
+          l.agent_name?.toLowerCase().includes(s) ||
+          l.display_id?.toLowerCase().includes(s) ||
+          l.notes?.toLowerCase().includes(s)
+        );
+      }
+
+      return json({ logs: enriched, total: count, page, limit });
+    }
+
     // GET /api/call-logs/:contextType/:contextId
     if (req.method === "GET" && segments[0] === "call-logs" && segments.length === 3) {
       const contextType = segments[1];
