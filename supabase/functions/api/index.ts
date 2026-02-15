@@ -1248,23 +1248,71 @@ serve(async (req) => {
     // WAREHOUSE
     // ============================================================
 
-    // GET /api/warehouse/incoming-orders (confirmed orders)
+    // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const agentFilter = url.searchParams.get("agent_id");
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
       const productFilter = url.searchParams.get("product");
+      const sourceFilter = url.searchParams.get("source"); // "order" | "prediction_lead" | null
 
-      let query = adminClient.from("orders").select("*").eq("status", "confirmed").order("created_at", { ascending: false });
-      if (agentFilter) query = query.eq("assigned_agent_id", agentFilter);
-      if (from) query = query.gte("created_at", from);
-      if (to) query = query.lte("created_at", to);
-      if (productFilter) query = query.ilike("product_name", `%${productFilter}%`);
+      const results: any[] = [];
 
-      const { data, error } = await query;
-      if (error) return json({ error: error.message }, 400);
-      return json(data || []);
+      // 1. Confirmed orders (source = "order")
+      if (!sourceFilter || sourceFilter === "order") {
+        let oQuery = adminClient.from("orders").select("*").eq("status", "confirmed").order("created_at", { ascending: false });
+        if (agentFilter && agentFilter !== "all") oQuery = oQuery.eq("assigned_agent_id", agentFilter);
+        if (from) oQuery = oQuery.gte("created_at", from);
+        if (to) oQuery = oQuery.lte("created_at", to);
+        if (productFilter) oQuery = oQuery.ilike("product_name", `%${productFilter}%`);
+        const { data: orders } = await oQuery;
+        for (const o of orders || []) {
+          results.push({
+            id: o.id,
+            display_id: o.display_id,
+            customer_name: o.customer_name,
+            customer_phone: o.customer_phone,
+            product_name: o.product_name,
+            price: o.price,
+            assigned_agent_name: o.assigned_agent_name,
+            assigned_agent_id: o.assigned_agent_id,
+            created_at: o.created_at,
+            status: o.status,
+            source: "order",
+          });
+        }
+      }
+
+      // 2. Confirmed prediction leads (source = "prediction_lead")
+      if (!sourceFilter || sourceFilter === "prediction_lead") {
+        let lQuery = adminClient.from("prediction_leads").select("*, prediction_lists(name)").eq("status", "confirmed").order("created_at", { ascending: false });
+        if (agentFilter && agentFilter !== "all") lQuery = lQuery.eq("assigned_agent_id", agentFilter);
+        if (from) lQuery = lQuery.gte("created_at", from);
+        if (to) lQuery = lQuery.lte("created_at", to);
+        if (productFilter) lQuery = lQuery.ilike("product", `%${productFilter}%`);
+        const { data: leads } = await lQuery;
+        for (const l of leads || []) {
+          results.push({
+            id: l.id,
+            display_id: `LEAD-${l.name?.substring(0, 8) || l.id.substring(0, 8)}`,
+            customer_name: l.name,
+            customer_phone: l.telephone,
+            product_name: l.product || "—",
+            price: 0,
+            assigned_agent_name: l.assigned_agent_name,
+            assigned_agent_id: l.assigned_agent_id,
+            created_at: l.created_at,
+            status: "confirmed",
+            source: "prediction_lead",
+            list_name: l.prediction_lists?.name || "",
+          });
+        }
+      }
+
+      // Sort combined by date desc
+      results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return json(results);
     }
 
     // GET /api/warehouse/user-items (admin: all, agent: own)

@@ -35,6 +35,7 @@ function IncomingOrdersTab() {
   const [agentFilter, setAgentFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
   const [agents, setAgents] = useState<any[]>([]);
 
   const fetchOrders = () => {
@@ -43,6 +44,7 @@ function IncomingOrdersTab() {
       agent_id: agentFilter || undefined,
       from: dateFrom ? dateFrom + 'T00:00:00Z' : undefined,
       to: dateTo ? dateTo + 'T23:59:59Z' : undefined,
+      source: sourceFilter || undefined,
     })
       .then(setOrders)
       .catch(() => {})
@@ -53,17 +55,19 @@ function IncomingOrdersTab() {
     apiGetAgents().then(setAgents).catch(() => {});
   }, []);
 
-  useEffect(() => { fetchOrders(); }, [agentFilter, dateFrom, dateTo]);
+  useEffect(() => { fetchOrders(); }, [agentFilter, dateFrom, dateTo, sourceFilter]);
 
   const exportCSV = () => {
     if (orders.length === 0) return;
-    const headers = ['Order ID', 'Customer', 'Product', 'Price', 'Agent', 'Date'];
+    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Price', 'Agent', 'Source', 'Date'];
     const rows = orders.map((o: any) => [
       o.display_id,
-      o.customer_name,
-      o.product_name,
+      `"${(o.customer_name || '').replace(/"/g, '""')}"`,
+      o.customer_phone || '',
+      `"${(o.product_name || '').replace(/"/g, '""')}"`,
       o.price,
       o.assigned_agent_name || '',
+      o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order',
       format(new Date(o.created_at), 'yyyy-MM-dd'),
     ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -90,11 +94,22 @@ function IncomingOrdersTab() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="All Sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="order">Standard Orders</SelectItem>
+            <SelectItem value="prediction_lead">Prediction Leads</SelectItem>
+          </SelectContent>
+        </Select>
         <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-40" placeholder="From" />
         <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-40" placeholder="To" />
         <Button variant="outline" size="sm" onClick={exportCSV} disabled={orders.length === 0}>
           <Download className="h-4 w-4 mr-1" /> Export CSV
         </Button>
+        <span className="text-sm text-muted-foreground ml-auto">{orders.length} confirmed</span>
       </div>
 
       {loading ? (
@@ -104,11 +119,13 @@ function IncomingOrdersTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Order ID</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">ID</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Phone</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Agent</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
               </tr>
             </thead>
@@ -117,14 +134,22 @@ function IncomingOrdersTab() {
                 <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3 font-medium">{o.display_id}</td>
                   <td className="px-4 py-3">{o.customer_name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{o.customer_phone || '—'}</td>
                   <td className="px-4 py-3">{o.product_name}</td>
-                  <td className="px-4 py-3 font-semibold text-primary">${Number(o.price).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-primary">
+                    {o.source === 'order' ? `$${Number(o.price).toFixed(2)}` : '—'}
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{o.assigned_agent_name || '—'}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={o.source === 'prediction_lead' ? 'secondary' : 'default'}>
+                      {o.source === 'prediction_lead' ? 'Lead' : 'Order'}
+                    </Badge>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground">{format(new Date(o.created_at), 'MMM d, yyyy')}</td>
                 </tr>
               ))}
               {orders.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No confirmed orders found</td></tr>
+                <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No confirmed orders found</td></tr>
               )}
             </tbody>
           </table>
