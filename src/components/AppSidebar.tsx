@@ -12,6 +12,7 @@ import {
   LogOut,
   ClipboardList,
   FileSpreadsheet,
+  BarChart3,
 } from 'lucide-react';
 
 const navItems = [
@@ -20,6 +21,7 @@ const navItems = [
   { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
   { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
   { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
+  { title: 'Performance', path: '/performance', icon: BarChart3 },
   { title: 'Users', path: '/users', icon: Users },
   { title: 'Products', path: '/products', icon: Package },
 ];
