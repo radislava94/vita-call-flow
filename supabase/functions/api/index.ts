@@ -99,8 +99,20 @@ serve(async (req) => {
 
       const { data: users } = await adminClient
         .from("profiles")
-        .select("*, user_roles(role)")
+        .select("*")
         .order("created_at", { ascending: false });
+
+      // Get all roles in one query
+      const userIds = (users || []).map((u: any) => u.user_id);
+      const { data: allRoles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
+
+      const roleMap: Record<string, string> = {};
+      for (const r of allRoles || []) {
+        roleMap[r.user_id] = r.role;
+      }
 
       // Get stats for each user
       const enriched = await Promise.all(
@@ -117,7 +129,7 @@ serve(async (req) => {
 
           return {
             ...u,
-            role: u.user_roles?.[0]?.role || "agent",
+            role: roleMap[u.user_id] || "agent",
             orders_processed: ordersProcessed || 0,
             leads_processed: leadsProcessed || 0,
           };
