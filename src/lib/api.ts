@@ -165,3 +165,18 @@ export const apiGetRecentActivity = (limit?: number) => {
   if (limit) sp.set('limit', String(limit));
   return apiFetch(`recent-activity?${sp.toString()}`);
 };
+
+// Ads Campaigns
+export const apiGetAdsCampaigns = (params?: { platform?: string; status?: string; search?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.platform) sp.set('platform', params.platform);
+  if (params?.status) sp.set('status', params.status);
+  if (params?.search) sp.set('search', params.search);
+  return apiFetch(`ads-campaigns?${sp.toString()}`);
+};
+export const apiCreateAdsCampaign = (body: { campaign_name: string; platform: string; budget: number; notes?: string }) =>
+  apiFetch('ads-campaigns', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateAdsCampaign = (id: string, body: any) =>
+  apiFetch(`ads-campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteAdsCampaign = (id: string) =>
+  apiFetch(`ads-campaigns/${id}`, { method: 'DELETE' });
