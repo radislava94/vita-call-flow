@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/integrations/supabase/client';
 import type { Session, User } from '@supabase/supabase-js';
 
-type AppRole = 'admin' | 'agent';
+type AppRole = 'admin' | 'agent' | 'warehouse';
 
 interface AuthUser {
   id: string;
@@ -11,6 +11,7 @@ interface AuthUser {
   roles: AppRole[];
   isAdmin: boolean;
   isAgent: boolean;
+  isWarehouse: boolean;
   /** Primary role for display purposes */
   role: AppRole;
 }
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const isAdmin = roles.includes('admin');
       const isAgent = roles.includes('agent');
+      const isWarehouse = roles.includes('warehouse');
 
       setUser({
         id: supabaseUser.id,
@@ -57,7 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         roles,
         isAdmin,
         isAgent,
-        role: isAdmin ? 'admin' : 'agent', // primary role for backward compat
+        isWarehouse,
+        role: isAdmin ? 'admin' : isAgent ? 'agent' : 'warehouse',
       });
     } catch {
       setUser(null);

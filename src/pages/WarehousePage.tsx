@@ -230,6 +230,8 @@ function InventoryTab() {
 function UserWarehouseTab() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin;
+  const isWarehouse = user?.isWarehouse;
+  const canManage = isAdmin || isWarehouse;
   const { toast } = useToast();
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -253,7 +255,7 @@ function UserWarehouseTab() {
 
   useEffect(() => {
     fetchItems();
-    if (isAdmin) {
+    if (canManage) {
       apiGetAgents().then(setAgents).catch(() => {});
       apiGetProducts().then(setProducts).catch(() => {});
     }
@@ -312,7 +314,7 @@ function UserWarehouseTab() {
 
   return (
     <div className="space-y-4">
-      {isAdmin && (
+      {canManage && (
         <div className="flex justify-end">
           <Button onClick={() => { setFormUserId(''); setFormProductId(''); setFormQty('1'); setFormNotes(''); setShowAssign(true); }}>
             <UserPlus className="h-4 w-4 mr-1" /> Assign Item
@@ -333,7 +335,7 @@ function UserWarehouseTab() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Qty</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Notes</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assigned</th>
-                {isAdmin && <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>}
+                {canManage && <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -347,7 +349,7 @@ function UserWarehouseTab() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground max-w-[200px] truncate">{item.notes || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{format(new Date(item.assigned_at), 'MMM d, yyyy')}</td>
-                  {isAdmin && (
+                  {canManage && (
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(item)} className="rounded-md p-1.5 hover:bg-muted transition-colors" title="Edit">
@@ -362,7 +364,7 @@ function UserWarehouseTab() {
                 </tr>
               ))}
               {items.length === 0 && (
-                <tr><td colSpan={isAdmin ? 7 : 6} className="px-4 py-8 text-center text-muted-foreground">No items assigned</td></tr>
+                <tr><td colSpan={canManage ? 7 : 6} className="px-4 py-8 text-center text-muted-foreground">No items assigned</td></tr>
               )}
             </tbody>
           </table>
@@ -430,13 +432,15 @@ function UserWarehouseTab() {
 export default function WarehousePage() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin;
+  const isWarehouse = user?.isWarehouse;
+  const canManage = isAdmin || isWarehouse;
 
   return (
     <AppLayout title="Warehouse">
       <Tabs defaultValue="inventory" className="space-y-4">
         <TabsList>
           <TabsTrigger value="inventory">Inventory</TabsTrigger>
-          {isAdmin && <TabsTrigger value="incoming">Incoming Orders</TabsTrigger>}
+          {canManage && <TabsTrigger value="incoming">Incoming Orders</TabsTrigger>}
           <TabsTrigger value="user-warehouse">User Warehouse</TabsTrigger>
         </TabsList>
 
@@ -444,7 +448,7 @@ export default function WarehousePage() {
           <InventoryTab />
         </TabsContent>
 
-        {isAdmin && (
+        {canManage && (
           <TabsContent value="incoming">
             <IncomingOrdersTab />
           </TabsContent>

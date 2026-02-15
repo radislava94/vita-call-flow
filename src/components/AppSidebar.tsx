@@ -44,6 +44,11 @@ const agentNavItems = [
   { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
 ];
 
+const warehouseNavItems = [
+  { title: 'Dashboard', path: '/', icon: LayoutDashboard },
+  { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
+];
+
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
@@ -51,13 +56,23 @@ export function AppSidebar() {
   // Dual-role users get combined admin + agent nav (deduplicated)
   const isAdmin = user?.isAdmin;
   const isAgent = user?.isAgent;
+  const isWarehouse = user?.isWarehouse;
   const isDualRole = isAdmin && isAgent;
 
-  const navItems = isDualRole
-    ? [...adminNavItems, { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays }]
-    : isAdmin
-      ? adminNavItems
-      : agentNavItems;
+  // Build nav: admin gets full nav, agent gets agent nav, warehouse-only gets warehouse nav
+  // Dual-role combos get merged items
+  let navItems: typeof adminNavItems;
+  if (isAdmin) {
+    navItems = isDualRole
+      ? [...adminNavItems, { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays }]
+      : adminNavItems;
+  } else if (isAgent) {
+    navItems = agentNavItems;
+  } else if (isWarehouse) {
+    navItems = warehouseNavItems;
+  } else {
+    navItems = warehouseNavItems; // fallback
+  }
 
   return (
     <aside

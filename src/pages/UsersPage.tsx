@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
-import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2 } from 'lucide-react';
+import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2, Package } from 'lucide-react';
 import { apiGetUsers, apiCreateUser, apiToggleUserActive, apiSetUserRoles, apiDeleteUser } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,11 +15,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 
-const AVAILABLE_ROLES = ['admin', 'agent'] as const;
-const ROLE_ICONS: Record<string, any> = { admin: Shield, agent: Headphones };
+const AVAILABLE_ROLES = ['admin', 'agent', 'warehouse'] as const;
+const ROLE_ICONS: Record<string, any> = { admin: Shield, agent: Headphones, warehouse: Package };
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-primary/10 text-primary',
   agent: 'bg-accent text-accent-foreground',
+  warehouse: 'bg-chart-4/10 text-chart-4',
 };
 
 interface UserRow {
