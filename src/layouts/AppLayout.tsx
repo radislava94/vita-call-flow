@@ -60,7 +60,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                   </div>
                   <div className="text-left">
                     <span className="block text-sm font-medium text-card-foreground">{user?.full_name || 'User'}</span>
-                    <span className="block text-xs text-muted-foreground capitalize">{user?.role || ''}</span>
+                    <span className="block text-xs text-muted-foreground capitalize">{user?.roles?.join(' + ') || ''}</span>
                   </div>
                 </button>
               </DropdownMenuTrigger>

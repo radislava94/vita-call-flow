@@ -42,7 +42,16 @@ export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const { user } = useAuth();
-  const navItems = user?.role === 'admin' ? adminNavItems : agentNavItems;
+  // Dual-role users get combined admin + agent nav (deduplicated)
+  const isAdmin = user?.isAdmin;
+  const isAgent = user?.isAgent;
+  const isDualRole = isAdmin && isAgent;
+
+  const navItems = isDualRole
+    ? [...adminNavItems, { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays }]
+    : isAdmin
+      ? adminNavItems
+      : agentNavItems;
 
   return (
     <aside

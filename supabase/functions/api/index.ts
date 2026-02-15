@@ -35,14 +35,15 @@ serve(async (req) => {
       return json({ error: "Unauthorized" }, 401);
     }
 
-    // Get user role
-    const { data: roleData } = await adminClient
+    // Get user roles (support multiple roles)
+    const { data: roleRows } = await adminClient
       .from("user_roles")
       .select("role")
-      .eq("user_id", user.id)
-      .single();
-    const role = roleData?.role || "agent";
-    const isAdmin = role === "admin";
+      .eq("user_id", user.id);
+    const roles = (roleRows || []).map((r: any) => r.role);
+    const isAdmin = roles.includes("admin");
+    const isAgent = roles.includes("agent");
+    const isDualRole = isAdmin && isAgent;
 
     // ============================================================
     // ROUTING
@@ -181,14 +182,14 @@ serve(async (req) => {
       return json(enriched);
     }
 
-    // GET /api/users/agents (list active agents)
+    // GET /api/users/agents (list active agents - includes users with agent role even if also admin)
     if (req.method === "GET" && path === "users/agents") {
       const { data: agents } = await adminClient
         .from("profiles")
         .select("user_id, full_name, email")
         .eq("is_active", true);
 
-      // Filter to those with agent role
+      // Filter to those with agent role (includes dual-role users)
       const agentUsers = [];
       for (const a of agents || []) {
         const { data: r } = await adminClient
@@ -481,64 +482,78 @@ serve(async (req) => {
         toDate = now.toISOString();
       }
 
-      // For agents, force filter to their own data
-      const effectiveAgentId = isAdmin ? (agentFilter || null) : user.id;
+      // Helper to compute metrics for a given agent filter
+      async function computeMetrics(effectiveAgentId: string | null) {
+        let ordersQ = adminClient.from("orders").select("id, status, price, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
+        if (effectiveAgentId) ordersQ = ordersQ.eq("assigned_agent_id", effectiveAgentId);
+        const { data: periodOrders } = await ordersQ;
 
-      // Orders in period
-      let ordersQ = adminClient.from("orders").select("id, status, price, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
-      if (effectiveAgentId) ordersQ = ordersQ.eq("assigned_agent_id", effectiveAgentId);
-      const { data: periodOrders } = await ordersQ;
+        let leadsQ = adminClient.from("prediction_leads").select("id, status, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
+        if (effectiveAgentId) leadsQ = leadsQ.eq("assigned_agent_id", effectiveAgentId);
+        const { data: periodLeads } = await leadsQ;
 
-      // Leads in period
-      let leadsQ = adminClient.from("prediction_leads").select("id, status, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
-      if (effectiveAgentId) leadsQ = leadsQ.eq("assigned_agent_id", effectiveAgentId);
-      const { data: periodLeads } = await leadsQ;
+        let callsQ = adminClient.from("call_logs").select("id, agent_id, created_at").gte("created_at", fromDate).lte("created_at", toDate);
+        if (effectiveAgentId) callsQ = callsQ.eq("agent_id", effectiveAgentId);
+        const { data: periodCalls } = await callsQ;
 
-      // Call logs in period (as "tasks completed")
-      let callsQ = adminClient.from("call_logs").select("id, agent_id, created_at").gte("created_at", fromDate).lte("created_at", toDate);
-      if (effectiveAgentId) callsQ = callsQ.eq("agent_id", effectiveAgentId);
-      const { data: periodCalls } = await callsQ;
+        const orders = periodOrders || [];
+        const leads = periodLeads || [];
+        const calls = periodCalls || [];
 
-      const orders = periodOrders || [];
-      const leads = periodLeads || [];
-      const calls = periodCalls || [];
+        const lead_count = leads.length;
+        const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
+        const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
+        const total_value = orders.filter((o: any) => ["confirmed", "paid", "shipped"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
+        const tasks_completed = calls.length;
+        const total_orders = orders.length;
 
-      const lead_count = leads.length;
-      const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
-      const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
-      const total_value = orders.filter((o: any) => ["confirmed", "paid", "shipped"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
-      const tasks_completed = calls.length;
-      const total_orders = orders.length;
+        const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
+        for (const o of orders) {
+          const day = o.created_at.substring(0, 10);
+          if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+          dailyBreakdown[day].orders++;
+          if (["confirmed", "paid"].includes(o.status)) dailyBreakdown[day].deals_won++;
+          if (["returned", "cancelled", "trashed"].includes(o.status)) dailyBreakdown[day].deals_lost++;
+        }
+        for (const l of leads) {
+          const day = l.created_at.substring(0, 10);
+          if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+          dailyBreakdown[day].leads++;
+        }
+        for (const c of calls) {
+          const day = c.created_at.substring(0, 10);
+          if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
+          dailyBreakdown[day].calls++;
+        }
 
-      // Daily breakdown for charts (last 7 or 30 days depending on period)
-      const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
-      for (const o of orders) {
-        const day = o.created_at.substring(0, 10);
-        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
-        dailyBreakdown[day].orders++;
-        if (["confirmed", "paid"].includes(o.status)) dailyBreakdown[day].deals_won++;
-        if (["returned", "cancelled", "trashed"].includes(o.status)) dailyBreakdown[day].deals_lost++;
+        const statusCounts: Record<string, number> = {};
+        for (const o of orders) {
+          statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
+        }
+
+        return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts };
       }
-      for (const l of leads) {
-        const day = l.created_at.substring(0, 10);
-        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
-        dailyBreakdown[day].leads++;
-      }
-      for (const c of calls) {
-        const day = c.created_at.substring(0, 10);
-        if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
-        dailyBreakdown[day].calls++;
+
+      if (!isAdmin) {
+        // Pure agent: personal stats only
+        const metrics = await computeMetrics(user.id);
+        return json({ ...metrics, period, from: fromDate, to: toDate });
       }
 
-      // Status breakdown for pie
-      const statusCounts: Record<string, number> = {};
-      for (const o of orders) {
-        statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
+      // Admin or dual-role: compute admin-level metrics (with optional agent filter)
+      const effectiveAgentId = agentFilter || null;
+      const adminMetrics = await computeMetrics(effectiveAgentId);
+
+      // For dual-role users, also compute personal metrics
+      let personalMetrics = null;
+      if (isDualRole && !agentFilter) {
+        personalMetrics = await computeMetrics(user.id);
       }
 
       return json({
-        lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders,
-        daily: dailyBreakdown, statusCounts,
+        ...adminMetrics,
+        personalMetrics,
+        isDualRole,
         period, from: fromDate, to: toDate,
       });
     }

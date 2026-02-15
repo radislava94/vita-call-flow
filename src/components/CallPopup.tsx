@@ -30,7 +30,7 @@ interface CallPopupProps {
 export function CallPopup({ open, onClose, contextType, contextId, customerName, phoneNumber, productName }: CallPopupProps) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.isAdmin;
 
   const [script, setScript] = useState('');
   const [editingScript, setEditingScript] = useState(false);
