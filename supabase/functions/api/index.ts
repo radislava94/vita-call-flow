@@ -1244,6 +1244,122 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // ============================================================
+    // WAREHOUSE
+    // ============================================================
+
+    // GET /api/warehouse/incoming-orders (confirmed orders)
+    if (req.method === "GET" && path === "warehouse/incoming-orders") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const agentFilter = url.searchParams.get("agent_id");
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
+      const productFilter = url.searchParams.get("product");
+
+      let query = adminClient.from("orders").select("*").eq("status", "confirmed").order("created_at", { ascending: false });
+      if (agentFilter) query = query.eq("assigned_agent_id", agentFilter);
+      if (from) query = query.gte("created_at", from);
+      if (to) query = query.lte("created_at", to);
+      if (productFilter) query = query.ilike("product_name", `%${productFilter}%`);
+
+      const { data, error } = await query;
+      if (error) return json({ error: error.message }, 400);
+      return json(data || []);
+    }
+
+    // GET /api/warehouse/user-items (admin: all, agent: own)
+    if (req.method === "GET" && path === "warehouse/user-items") {
+      let query = adminClient.from("user_warehouse").select("*, products(name, sku, price, stock_quantity)").order("created_at", { ascending: false });
+      if (!isAdmin) {
+        query = query.eq("user_id", user.id);
+      }
+      const { data, error } = await query;
+      if (error) return json({ error: error.message }, 400);
+
+      // Enrich with user names
+      const userIds = [...new Set((data || []).map((d: any) => d.user_id))];
+      let userMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", userIds);
+        for (const p of profiles || []) userMap[p.user_id] = p.full_name;
+      }
+
+      const enriched = (data || []).map((d: any) => ({
+        ...d,
+        user_name: userMap[d.user_id] || "Unknown",
+        product_name: d.products?.name || "Unknown",
+        product_sku: d.products?.sku || null,
+        product_price: d.products?.price || 0,
+      }));
+      return json(enriched);
+    }
+
+    // POST /api/warehouse/user-items (admin: assign product to user)
+    if (req.method === "POST" && path === "warehouse/user-items") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { user_id: targetUserId, product_id, quantity, notes: itemNotes } = body;
+      if (!targetUserId || !product_id) return json({ error: "user_id and product_id are required" }, 400);
+
+      // Upsert: if exists, add quantity
+      const { data: existing } = await adminClient
+        .from("user_warehouse")
+        .select("id, quantity")
+        .eq("user_id", targetUserId)
+        .eq("product_id", product_id)
+        .single();
+
+      let result;
+      if (existing) {
+        const { data, error } = await adminClient
+          .from("user_warehouse")
+          .update({ quantity: existing.quantity + (quantity || 1), assigned_by: user.id, notes: itemNotes || "" })
+          .eq("id", existing.id)
+          .select()
+          .single();
+        if (error) return json({ error: error.message }, 400);
+        result = data;
+      } else {
+        const { data, error } = await adminClient
+          .from("user_warehouse")
+          .insert({ user_id: targetUserId, product_id, quantity: quantity || 1, assigned_by: user.id, notes: itemNotes || "" })
+          .select()
+          .single();
+        if (error) return json({ error: error.message }, 400);
+        result = data;
+      }
+      return json(result);
+    }
+
+    // PATCH /api/warehouse/user-items/:id (admin: update assignment)
+    if (req.method === "PATCH" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const itemId = segments[2];
+      const body = await req.json();
+      const updates: Record<string, any> = {};
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.user_id !== undefined) updates.user_id = body.user_id;
+      if (body.notes !== undefined) updates.notes = body.notes;
+
+      const { data, error } = await adminClient
+        .from("user_warehouse")
+        .update(updates)
+        .eq("id", itemId)
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+      return json(data);
+    }
+
+    // DELETE /api/warehouse/user-items/:id (admin only)
+    if (req.method === "DELETE" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const itemId = segments[2];
+      const { error } = await adminClient.from("user_warehouse").delete().eq("id", itemId);
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true });
+    }
+
     // GET /api/me
     if (req.method === "GET" && path === "me") {
       const { data: profile } = await supabase

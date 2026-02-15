@@ -18,6 +18,7 @@ import AgentPerformancePage from "./pages/AgentPerformancePage";
 import ShiftsManagementPage from "./pages/ShiftsManagementPage";
 import MyShiftsPage from "./pages/MyShiftsPage";
 import CallScriptsPage from "./pages/CallScriptsPage";
+import WarehousePage from "./pages/WarehousePage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/shifts" element={<ProtectedRoute><ShiftsManagementPage /></ProtectedRoute>} />
             <Route path="/my-shifts" element={<ProtectedRoute><MyShiftsPage /></ProtectedRoute>} />
             <Route path="/call-scripts" element={<ProtectedRoute><CallScriptsPage /></ProtectedRoute>} />
+            <Route path="/warehouse" element={<ProtectedRoute><WarehousePage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
