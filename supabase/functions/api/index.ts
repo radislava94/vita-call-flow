@@ -43,6 +43,7 @@ serve(async (req) => {
     const roles = (roleRows || []).map((r: any) => r.role);
     const isAdmin = roles.includes("admin");
     const isAgent = roles.includes("agent");
+    const isWarehouse = roles.includes("warehouse");
     const isDualRole = isAdmin && isAgent;
 
     // ============================================================
@@ -60,7 +61,7 @@ serve(async (req) => {
       if (!email || !password || !full_name || rolesToAssign.length === 0) {
         return json({ error: "Missing required fields: email, password, full_name, roles" }, 400);
       }
-      const validRoles = ["admin", "agent"];
+      const validRoles = ["admin", "agent", "warehouse"];
       if (rolesToAssign.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
       }
@@ -91,7 +92,7 @@ serve(async (req) => {
       if (!newRoles || !Array.isArray(newRoles) || newRoles.length === 0) {
         return json({ error: "At least one role is required" }, 400);
       }
-      const validRoles = ["admin", "agent"];
+      const validRoles = ["admin", "agent", "warehouse"];
       if (newRoles.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
       }
@@ -115,7 +116,7 @@ serve(async (req) => {
       const userId = segments[1];
       const body = await req.json();
       const { role: newRole } = body;
-      if (!newRole || !["admin", "agent"].includes(newRole)) {
+      if (!newRole || !["admin", "agent", "warehouse"].includes(newRole)) {
         return json({ error: "Role must be admin or agent" }, 400);
       }
       if (userId === user.id) {
@@ -1282,7 +1283,7 @@ serve(async (req) => {
 
     // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const agentFilter = url.searchParams.get("agent_id");
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
@@ -1350,7 +1351,7 @@ serve(async (req) => {
     // GET /api/warehouse/user-items (admin: all, agent: own)
     if (req.method === "GET" && path === "warehouse/user-items") {
       let query = adminClient.from("user_warehouse").select("*, products(name, sku, price, stock_quantity)").order("created_at", { ascending: false });
-      if (!isAdmin) {
+      if (!isAdmin && !isWarehouse) {
         query = query.eq("user_id", user.id);
       }
       const { data, error } = await query;
@@ -1376,7 +1377,7 @@ serve(async (req) => {
 
     // POST /api/warehouse/user-items (admin: assign product to user)
     if (req.method === "POST" && path === "warehouse/user-items") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const body = await req.json();
       const { user_id: targetUserId, product_id, quantity, notes: itemNotes } = body;
       if (!targetUserId || !product_id) return json({ error: "user_id and product_id are required" }, 400);
@@ -1413,7 +1414,7 @@ serve(async (req) => {
 
     // PATCH /api/warehouse/user-items/:id (admin: update assignment)
     if (req.method === "PATCH" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const itemId = segments[2];
       const body = await req.json();
       const updates: Record<string, any> = {};
@@ -1433,7 +1434,7 @@ serve(async (req) => {
 
     // DELETE /api/warehouse/user-items/:id (admin only)
     if (req.method === "DELETE" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const itemId = segments[2];
       const { error } = await adminClient.from("user_warehouse").delete().eq("id", itemId);
       if (error) return json({ error: error.message }, 400);
