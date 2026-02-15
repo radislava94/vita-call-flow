@@ -44,6 +44,7 @@ serve(async (req) => {
     const isAdmin = roles.includes("admin");
     const isAgent = roles.includes("agent");
     const isWarehouse = roles.includes("warehouse");
+    const isAdsAdmin = roles.includes("ads_admin");
     const isDualRole = isAdmin && isAgent;
 
     // ============================================================
@@ -61,7 +62,7 @@ serve(async (req) => {
       if (!email || !password || !full_name || rolesToAssign.length === 0) {
         return json({ error: "Missing required fields: email, password, full_name, roles" }, 400);
       }
-      const validRoles = ["admin", "agent", "warehouse"];
+      const validRoles = ["admin", "agent", "warehouse", "ads_admin"];
       if (rolesToAssign.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
       }
@@ -92,7 +93,7 @@ serve(async (req) => {
       if (!newRoles || !Array.isArray(newRoles) || newRoles.length === 0) {
         return json({ error: "At least one role is required" }, 400);
       }
-      const validRoles = ["admin", "agent", "warehouse"];
+      const validRoles = ["admin", "agent", "warehouse", "ads_admin"];
       if (newRoles.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
       }
@@ -1632,6 +1633,106 @@ serve(async (req) => {
       activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
       return json(activities.slice(0, limit));
+    }
+
+    // ============================================================
+    // ADS CAMPAIGNS
+    // ============================================================
+
+    // GET /api/ads-campaigns
+    if (req.method === "GET" && path === "ads-campaigns") {
+      if (!isAdmin && !isAdsAdmin) return json({ error: "Forbidden" }, 403);
+      const platform = url.searchParams.get("platform");
+      const status = url.searchParams.get("status");
+      const search = url.searchParams.get("search");
+
+      let query = adminClient
+        .from("ads_campaigns")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (platform) query = query.eq("platform", platform);
+      if (status) query = query.eq("status", status);
+      if (search) query = query.ilike("campaign_name", `%${search}%`);
+
+      const { data, error } = await query;
+      if (error) return json({ error: error.message }, 400);
+      return json(data || []);
+    }
+
+    // POST /api/ads-campaigns
+    if (req.method === "POST" && path === "ads-campaigns") {
+      if (!isAdmin && !isAdsAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { campaign_name, platform, budget, notes } = body;
+      if (!campaign_name) return json({ error: "Campaign name is required" }, 400);
+
+      const { data, error } = await adminClient
+        .from("ads_campaigns")
+        .insert({ campaign_name, platform: platform || "meta", budget: budget || 0, notes: notes || "" })
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+
+      // Audit log
+      await adminClient.from("ads_audit_logs").insert({
+        campaign_id: data.id,
+        action: "created",
+        details: `Campaign "${campaign_name}" created on ${platform}`,
+        performed_by: user.id,
+      });
+
+      return json(data);
+    }
+
+    // PATCH /api/ads-campaigns/:id
+    if (req.method === "PATCH" && segments[0] === "ads-campaigns" && segments.length === 2) {
+      if (!isAdmin && !isAdsAdmin) return json({ error: "Forbidden" }, 403);
+      const campaignId = segments[1];
+      const body = await req.json();
+
+      const updates: Record<string, any> = {};
+      if (body.campaign_name !== undefined) updates.campaign_name = body.campaign_name;
+      if (body.platform !== undefined) updates.platform = body.platform;
+      if (body.status !== undefined) updates.status = body.status;
+      if (body.budget !== undefined) updates.budget = body.budget;
+      if (body.notes !== undefined) updates.notes = body.notes;
+
+      const { data, error } = await adminClient
+        .from("ads_campaigns")
+        .update(updates)
+        .eq("id", campaignId)
+        .select()
+        .single();
+      if (error) return json({ error: error.message }, 400);
+
+      // Audit log
+      await adminClient.from("ads_audit_logs").insert({
+        campaign_id: campaignId,
+        action: "updated",
+        details: `Updated fields: ${Object.keys(updates).join(", ")}`,
+        performed_by: user.id,
+      });
+
+      return json(data);
+    }
+
+    // DELETE /api/ads-campaigns/:id
+    if (req.method === "DELETE" && segments[0] === "ads-campaigns" && segments.length === 2) {
+      if (!isAdmin && !isAdsAdmin) return json({ error: "Forbidden" }, 403);
+      const campaignId = segments[1];
+
+      // Audit log before delete
+      await adminClient.from("ads_audit_logs").insert({
+        campaign_id: campaignId,
+        action: "deleted",
+        details: `Campaign deleted`,
+        performed_by: user.id,
+      });
+
+      const { error } = await adminClient.from("ads_campaigns").delete().eq("id", campaignId);
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true });
     }
 
     return json({ error: "Not found" }, 404);

@@ -14,6 +14,92 @@ export type Database = {
   }
   public: {
     Tables: {
+      ads_audit_logs: {
+        Row: {
+          action: string
+          campaign_id: string | null
+          created_at: string
+          details: string | null
+          id: string
+          performed_by: string
+        }
+        Insert: {
+          action: string
+          campaign_id?: string | null
+          created_at?: string
+          details?: string | null
+          id?: string
+          performed_by: string
+        }
+        Update: {
+          action?: string
+          campaign_id?: string | null
+          created_at?: string
+          details?: string | null
+          id?: string
+          performed_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ads_audit_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "ads_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ads_campaigns: {
+        Row: {
+          assigned_leads: string[] | null
+          assigned_products: string[] | null
+          budget: number
+          campaign_name: string
+          clicks: number
+          conversions: number
+          created_at: string
+          id: string
+          impressions: number
+          notes: string | null
+          platform: string
+          spent: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          assigned_leads?: string[] | null
+          assigned_products?: string[] | null
+          budget?: number
+          campaign_name: string
+          clicks?: number
+          conversions?: number
+          created_at?: string
+          id?: string
+          impressions?: number
+          notes?: string | null
+          platform?: string
+          spent?: number
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          assigned_leads?: string[] | null
+          assigned_products?: string[] | null
+          budget?: number
+          campaign_name?: string
+          clicks?: number
+          conversions?: number
+          created_at?: string
+          id?: string
+          impressions?: number
+          notes?: string | null
+          platform?: string
+          spent?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           agent_id: string

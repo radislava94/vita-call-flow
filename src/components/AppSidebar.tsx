@@ -41,7 +41,7 @@ interface NavSection {
   label: string;
   items: NavItem[];
   /** Which roles can see this section (empty = all) */
-  roles?: ('admin' | 'agent' | 'warehouse')[];
+  roles?: ('admin' | 'agent' | 'warehouse' | 'ads_admin')[];
 }
 
 const sections: NavSection[] = [
@@ -86,6 +86,13 @@ const sections: NavSection[] = [
     ],
   },
   {
+    label: 'Ads',
+    roles: ['admin', 'ads_admin'],
+    items: [
+      { title: 'Ads Panel', path: '/ads', icon: BarChart3 },
+    ],
+  },
+  {
     label: '',
     roles: ['admin'],
     items: [
@@ -99,6 +106,7 @@ function getVisibleSections(
   isAdmin: boolean,
   isAgent: boolean,
   isWarehouse: boolean,
+  isAdsAdmin: boolean,
 ): NavSection[] {
   return sections
     .map((section) => {
@@ -109,7 +117,8 @@ function getVisibleSections(
       const visible =
         (isAdmin && section.roles.includes('admin')) ||
         (isAgent && section.roles.includes('agent')) ||
-        (isWarehouse && section.roles.includes('warehouse'));
+        (isWarehouse && section.roles.includes('warehouse')) ||
+        (isAdsAdmin && section.roles.includes('ads_admin'));
       if (!visible) return null;
 
       // Filter individual items by special rules
@@ -146,11 +155,12 @@ export function AppSidebar() {
   const isAdmin = user?.isAdmin ?? false;
   const isAgent = user?.isAgent ?? false;
   const isWarehouse = user?.isWarehouse ?? false;
+  const isAdsAdmin = user?.isAdsAdmin ?? false;
 
   const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const visibleSections = getVisibleSections(isAdmin, isAgent, isWarehouse);
+  const visibleSections = getVisibleSections(isAdmin, isAgent, isWarehouse, isAdsAdmin);
 
   // Initialize open sections (all open by default)
   useEffect(() => {
@@ -159,7 +169,7 @@ export function AppSidebar() {
       if (s.label) initial[s.label] = true;
     });
     setOpenSections(initial);
-  }, [isAdmin, isAgent, isWarehouse]);
+  }, [isAdmin, isAgent, isWarehouse, isAdsAdmin]);
 
   const toggleSection = (label: string) => {
     if (collapsed) return; // Don't toggle in collapsed mode
