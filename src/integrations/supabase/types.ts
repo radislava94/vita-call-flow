@@ -154,6 +154,36 @@ export type Database = {
         }
         Relationships: []
       }
+      inbound_leads: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          phone: string
+          source: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          phone?: string
+          source?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       inventory_logs: {
         Row: {
           change_amount: number

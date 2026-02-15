@@ -22,6 +22,7 @@ import {
   Warehouse,
   PackageSearch,
   Settings,
+  Inbox,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -54,6 +55,7 @@ const sections: NavSection[] = [
     roles: ['admin', 'agent'],
     items: [
       { title: 'Orders', path: '/orders', icon: ShoppingCart },
+      { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox },
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
       { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
       { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },

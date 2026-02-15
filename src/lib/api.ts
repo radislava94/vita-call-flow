@@ -180,3 +180,14 @@ export const apiUpdateAdsCampaign = (id: string, body: any) =>
   apiFetch(`ads-campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteAdsCampaign = (id: string) =>
   apiFetch(`ads-campaigns/${id}`, { method: 'DELETE' });
+
+// Inbound Leads (webhook)
+export const apiGetInboundLeads = (status?: string) => {
+  const sp = new URLSearchParams();
+  if (status && status !== 'all') sp.set('status', status);
+  return apiFetch(`inbound-leads?${sp.toString()}`);
+};
+export const apiUpdateInboundLead = (id: string, body: any) =>
+  apiFetch(`inbound-leads/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteInboundLead = (id: string) =>
+  apiFetch(`inbound-leads/${id}`, { method: 'DELETE' });
