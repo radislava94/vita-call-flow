@@ -100,3 +100,19 @@ export const apiLogCall = (body: { context_type: string; context_id: string; out
   apiFetch('call-logs', { method: 'POST', body: JSON.stringify(body) });
 export const apiGetCallLogs = (contextType: string, contextId: string) =>
   apiFetch(`call-logs/${contextType}/${contextId}`);
+
+// Shifts
+export const apiGetShifts = (params?: { agent_id?: string; from?: string; to?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  return apiFetch(`shifts?${sp.toString()}`);
+};
+export const apiGetMyShifts = () => apiFetch('shifts/my');
+export const apiCreateShift = (body: { name: string; date: string; date_end?: string; start_time: string; end_time: string; agent_ids?: string[] }) =>
+  apiFetch('shifts', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateShift = (id: string, body: any) =>
+  apiFetch(`shifts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteShift = (id: string) =>
+  apiFetch(`shifts/${id}`, { method: 'DELETE' });

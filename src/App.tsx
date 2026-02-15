@@ -15,6 +15,8 @@ import PredictionListsPage from "./pages/PredictionListsPage";
 import PredictionListDetail from "./pages/PredictionListDetail";
 import PredictionLeadsPage from "./pages/PredictionLeadsPage";
 import AgentPerformancePage from "./pages/AgentPerformancePage";
+import ShiftsManagementPage from "./pages/ShiftsManagementPage";
+import MyShiftsPage from "./pages/MyShiftsPage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -39,6 +41,8 @@ const App = () => (
             <Route path="/predictions/:id" element={<ProtectedRoute><PredictionListDetail /></ProtectedRoute>} />
             <Route path="/prediction-leads" element={<ProtectedRoute><PredictionLeadsPage /></ProtectedRoute>} />
             <Route path="/performance" element={<ProtectedRoute><AgentPerformancePage /></ProtectedRoute>} />
+            <Route path="/shifts" element={<ProtectedRoute><ShiftsManagementPage /></ProtectedRoute>} />
+            <Route path="/my-shifts" element={<ProtectedRoute><MyShiftsPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
