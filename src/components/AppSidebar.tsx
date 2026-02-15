@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -13,22 +14,35 @@ import {
   ClipboardList,
   FileSpreadsheet,
   BarChart3,
+  CalendarDays,
 } from 'lucide-react';
 
-const navItems = [
+const adminNavItems = [
   { title: 'Dashboard', path: '/', icon: LayoutDashboard },
   { title: 'Orders', path: '/orders', icon: ShoppingCart },
   { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
   { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
   { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
   { title: 'Performance', path: '/performance', icon: BarChart3 },
+  { title: 'Shifts Management', path: '/shifts', icon: CalendarDays },
   { title: 'Users', path: '/users', icon: Users },
   { title: 'Products', path: '/products', icon: Package },
+];
+
+const agentNavItems = [
+  { title: 'Dashboard', path: '/', icon: LayoutDashboard },
+  { title: 'Orders', path: '/orders', icon: ShoppingCart },
+  { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
+  { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
+  { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
+  { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays },
 ];
 
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+  const navItems = user?.role === 'admin' ? adminNavItems : agentNavItems;
 
   return (
     <aside

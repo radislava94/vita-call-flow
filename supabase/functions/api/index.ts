@@ -913,6 +913,138 @@ serve(async (req) => {
       return json(data);
     }
 
+    // ============================================================
+    // SHIFTS
+    // ============================================================
+
+    // POST /api/shifts (admin only)
+    if (req.method === "POST" && path === "shifts") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { name, date, start_time, end_time, agent_ids } = body;
+      if (!name?.trim() || !date || !start_time || !end_time) {
+        return json({ error: "name, date, start_time, end_time are required" }, 400);
+      }
+
+      // Support date range
+      const dates: string[] = [];
+      if (body.date_end && body.date_end !== date) {
+        let cur = new Date(date);
+        const end = new Date(body.date_end);
+        while (cur <= end) {
+          dates.push(cur.toISOString().substring(0, 10));
+          cur.setDate(cur.getDate() + 1);
+        }
+      } else {
+        dates.push(date);
+      }
+
+      const createdShifts = [];
+      for (const d of dates) {
+        const { data: shift, error: shiftErr } = await adminClient
+          .from("shifts")
+          .insert({ name: name.trim(), date: d, start_time, end_time, created_by: user.id })
+          .select()
+          .single();
+        if (shiftErr) return json({ error: shiftErr.message }, 400);
+
+        if (agent_ids?.length) {
+          const assignments = agent_ids.map((aid: string) => ({ shift_id: shift.id, user_id: aid }));
+          await adminClient.from("shift_assignments").insert(assignments);
+        }
+        createdShifts.push(shift);
+      }
+
+      return json(createdShifts.length === 1 ? createdShifts[0] : createdShifts);
+    }
+
+    // GET /api/shifts
+    if (req.method === "GET" && path === "shifts") {
+      const agentFilter = url.searchParams.get("agent_id");
+      const dateFrom = url.searchParams.get("from");
+      const dateTo = url.searchParams.get("to");
+
+      let query = adminClient.from("shifts").select("*").order("date", { ascending: true }).order("start_time", { ascending: true });
+      if (dateFrom) query = query.gte("date", dateFrom);
+      if (dateTo) query = query.lte("date", dateTo);
+
+      const { data: shifts, error } = await query;
+      if (error) return json({ error: error.message }, 400);
+
+      // Get all assignments
+      const shiftIds = (shifts || []).map((s: any) => s.id);
+      let assignments: any[] = [];
+      if (shiftIds.length > 0) {
+        const { data: a } = await adminClient.from("shift_assignments").select("shift_id, user_id").in("shift_id", shiftIds);
+        assignments = a || [];
+      }
+
+      // Get agent profiles
+      const agentUserIds = [...new Set(assignments.map((a: any) => a.user_id))];
+      let agentMap: Record<string, string> = {};
+      if (agentUserIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", agentUserIds);
+        for (const p of profiles || []) agentMap[p.user_id] = p.full_name;
+      }
+
+      const enriched = (shifts || []).map((s: any) => {
+        const sAssignments = assignments.filter((a: any) => a.shift_id === s.id);
+        return {
+          ...s,
+          agents: sAssignments.map((a: any) => ({ user_id: a.user_id, full_name: agentMap[a.user_id] || "Unknown" })),
+        };
+      });
+
+      // Filter by agent if requested
+      const result = agentFilter
+        ? enriched.filter((s: any) => s.agents.some((a: any) => a.user_id === agentFilter))
+        : enriched;
+
+      return json(result);
+    }
+
+    // GET /api/shifts/my (agent's shifts)
+    if (req.method === "GET" && path === "shifts/my") {
+      const { data: myAssignments } = await adminClient.from("shift_assignments").select("shift_id").eq("user_id", user.id);
+      const myShiftIds = (myAssignments || []).map((a: any) => a.shift_id);
+      if (myShiftIds.length === 0) return json([]);
+
+      const { data: shifts } = await adminClient.from("shifts").select("*").in("id", myShiftIds).order("date", { ascending: true }).order("start_time", { ascending: true });
+      return json(shifts || []);
+    }
+
+    // PATCH /api/shifts/:id (admin only)
+    if (req.method === "PATCH" && segments[0] === "shifts" && segments.length === 2 && segments[1] !== "my") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const shiftId = segments[1];
+      const body = await req.json();
+      const { agent_ids, ...shiftUpdates } = body;
+
+      if (Object.keys(shiftUpdates).length > 0) {
+        const { error } = await adminClient.from("shifts").update(shiftUpdates).eq("id", shiftId);
+        if (error) return json({ error: error.message }, 400);
+      }
+
+      if (agent_ids !== undefined) {
+        await adminClient.from("shift_assignments").delete().eq("shift_id", shiftId);
+        if (agent_ids.length > 0) {
+          const assignments = agent_ids.map((aid: string) => ({ shift_id: shiftId, user_id: aid }));
+          await adminClient.from("shift_assignments").insert(assignments);
+        }
+      }
+
+      return json({ success: true });
+    }
+
+    // DELETE /api/shifts/:id (admin only)
+    if (req.method === "DELETE" && segments[0] === "shifts" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const shiftId = segments[1];
+      const { error } = await adminClient.from("shifts").delete().eq("id", shiftId);
+      if (error) return json({ error: error.message }, 400);
+      return json({ success: true });
+    }
+
     // GET /api/me
     if (req.method === "GET" && path === "me") {
       const { data: profile } = await supabase
