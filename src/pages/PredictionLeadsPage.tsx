@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import {
   PredictionLeadStatus,
@@ -9,8 +9,13 @@ import {
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Loader2, Pencil, Check, X, Phone } from 'lucide-react';
+import { MessageSquare, Loader2, Pencil, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag } from 'lucide-react';
+import { format } from 'date-fns';
 import { apiGetMyLeads, apiUpdateLead } from '@/lib/api';
 import { CallPopup, CallOutcome } from '@/components/CallPopup';
 
@@ -23,8 +28,19 @@ interface LeadRow {
   product: string | null;
   status: PredictionLeadStatus;
   notes: string | null;
+  created_at?: string;
+  updated_at?: string;
   prediction_lists?: { name: string } | null;
 }
+
+// ── Status color chips ──
+const STATUS_CHIP_COLORS: Record<PredictionLeadStatus, string> = {
+  not_contacted: 'bg-amber-100 text-amber-800 border-amber-200',
+  no_answer: 'bg-violet-100 text-violet-800 border-violet-200',
+  interested: 'bg-blue-100 text-blue-800 border-blue-200',
+  not_interested: 'bg-rose-100 text-rose-800 border-rose-200',
+  confirmed: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+};
 
 export default function PredictionLeadsPage() {
   const { toast } = useToast();
@@ -34,6 +50,13 @@ export default function PredictionLeadsPage() {
   const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [callPopupLead, setCallPopupLead] = useState<LeadRow | null>(null);
+
+  // ── Filter state ──
+  const [search, setSearch] = useState('');
+  const [selectedStatuses, setSelectedStatuses] = useState<PredictionLeadStatus[]>([]);
+  const [selectedProduct, setSelectedProduct] = useState('all');
+  const [dateFrom, setDateFrom] = useState<Date | undefined>();
+  const [dateTo, setDateTo] = useState<Date | undefined>();
 
   const fetchLeads = () => {
     setLoading(true);
@@ -45,6 +68,62 @@ export default function PredictionLeadsPage() {
 
   useEffect(() => { fetchLeads(); }, []);
 
+  // ── Derived data ──
+  const uniqueProducts = useMemo(() => {
+    const prods = new Set<string>();
+    leads.forEach(l => { if (l.product) prods.add(l.product); });
+    return Array.from(prods).sort();
+  }, [leads]);
+
+  const filteredLeads = useMemo(() => {
+    let result = leads;
+
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      result = result.filter(l =>
+        l.name.toLowerCase().includes(s) ||
+        l.telephone.includes(s) ||
+        l.city?.toLowerCase().includes(s)
+      );
+    }
+
+    if (selectedStatuses.length > 0) {
+      result = result.filter(l => selectedStatuses.includes(l.status));
+    }
+
+    if (selectedProduct !== 'all') {
+      result = result.filter(l => l.product === selectedProduct);
+    }
+
+    if (dateFrom) {
+      result = result.filter(l => l.created_at && new Date(l.created_at) >= dateFrom);
+    }
+    if (dateTo) {
+      const end = new Date(dateTo);
+      end.setHours(23, 59, 59, 999);
+      result = result.filter(l => l.created_at && new Date(l.created_at) <= end);
+    }
+
+    return result;
+  }, [leads, search, selectedStatuses, selectedProduct, dateFrom, dateTo]);
+
+  const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || selectedProduct !== 'all' || dateFrom || dateTo;
+
+  const clearAllFilters = () => {
+    setSearch('');
+    setSelectedStatuses([]);
+    setSelectedProduct('all');
+    setDateFrom(undefined);
+    setDateTo(undefined);
+  };
+
+  const toggleStatus = (status: PredictionLeadStatus) => {
+    setSelectedStatuses(prev =>
+      prev.includes(status) ? prev.filter(s => s !== status) : [...prev, status]
+    );
+  };
+
+  // ── Lead CRUD ──
   const updateStatus = async (id: string, status: PredictionLeadStatus) => {
     try {
       await apiUpdateLead(id, { status });
@@ -118,7 +197,7 @@ export default function PredictionLeadsPage() {
               <Check className="h-4 w-4" />
             </button>
             <button onClick={cancelEdit} className="p-1 text-destructive hover:bg-destructive/10 rounded">
-              <X className="h-4 w-4" />
+              <XIcon className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -152,10 +231,196 @@ export default function PredictionLeadsPage() {
 
   return (
     <AppLayout title="Prediction Leads">
-      <p className="mb-4 text-sm text-muted-foreground">{leads.length} prediction leads assigned to you</p>
+      {/* ══════ Filter Bar ══════ */}
+      <div className="sticky top-0 z-10 mb-4 space-y-3">
+        <div className="rounded-xl border bg-card/80 backdrop-blur-sm p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[180px] max-w-xs">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search name, phone, city..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 pl-8 text-sm rounded-lg bg-background"
+              />
+            </div>
 
+            {/* Status multi-select */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
+                  <Filter className="h-3.5 w-3.5" />
+                  Status
+                  {selectedStatuses.length > 0 && (
+                    <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+                      {selectedStatuses.length}
+                    </span>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="space-y-1">
+                  {PREDICTION_LEAD_STATUSES.map(s => (
+                    <button
+                      key={s}
+                      onClick={() => toggleStatus(s)}
+                      className={cn(
+                        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
+                        selectedStatuses.includes(s)
+                          ? 'bg-primary/10 text-primary font-medium'
+                          : 'hover:bg-muted text-foreground'
+                      )}
+                    >
+                      <div className={cn(
+                        'h-3.5 w-3.5 rounded border-2 flex items-center justify-center transition-colors',
+                        selectedStatuses.includes(s)
+                          ? 'border-primary bg-primary'
+                          : 'border-muted-foreground/30'
+                      )}>
+                        {selectedStatuses.includes(s) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                      </div>
+                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium border', STATUS_CHIP_COLORS[s])}>
+                        {PREDICTION_LEAD_LABELS[s]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Product dropdown */}
+            {uniqueProducts.length > 0 && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
+                    <Tag className="h-3.5 w-3.5" />
+                    {selectedProduct === 'all' ? 'Product' : selectedProduct}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-52 p-2" align="start">
+                  <div className="space-y-0.5">
+                    <button
+                      onClick={() => setSelectedProduct('all')}
+                      className={cn(
+                        'flex w-full rounded-lg px-3 py-2 text-sm transition-colors',
+                        selectedProduct === 'all' ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
+                      )}
+                    >
+                      All Products
+                    </button>
+                    {uniqueProducts.map(p => (
+                      <button
+                        key={p}
+                        onClick={() => setSelectedProduct(p)}
+                        className={cn(
+                          'flex w-full rounded-lg px-3 py-2 text-sm transition-colors',
+                          selectedProduct === p ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
+                        )}
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+
+            {/* Date from */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {dateFrom ? format(dateFrom, 'MMM d') : 'From'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateFrom}
+                  onSelect={setDateFrom}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Date to */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  {dateTo ? format(dateTo, 'MMM d') : 'To'}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={dateTo}
+                  onSelect={setDateTo}
+                  className={cn("p-3 pointer-events-auto")}
+                />
+              </PopoverContent>
+            </Popover>
+
+            {/* Clear all */}
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>
+                Clear all
+              </Button>
+            )}
+
+            {/* Count */}
+            <span className="ml-auto text-xs text-muted-foreground whitespace-nowrap">
+              {filteredLeads.length} of {leads.length} leads
+            </span>
+          </div>
+        </div>
+
+        {/* Active filter pills */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5 px-1">
+            {selectedStatuses.map(s => (
+              <Badge
+                key={s}
+                variant="secondary"
+                className={cn('gap-1 cursor-pointer border text-xs', STATUS_CHIP_COLORS[s])}
+                onClick={() => toggleStatus(s)}
+              >
+                {PREDICTION_LEAD_LABELS[s]}
+                <XIcon className="h-3 w-3" />
+              </Badge>
+            ))}
+            {selectedProduct !== 'all' && (
+              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setSelectedProduct('all')}>
+                {selectedProduct}
+                <XIcon className="h-3 w-3" />
+              </Badge>
+            )}
+            {dateFrom && (
+              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateFrom(undefined)}>
+                From: {format(dateFrom, 'MMM d')}
+                <XIcon className="h-3 w-3" />
+              </Badge>
+            )}
+            {dateTo && (
+              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateTo(undefined)}>
+                To: {format(dateTo, 'MMM d')}
+                <XIcon className="h-3 w-3" />
+              </Badge>
+            )}
+            {search.trim() && (
+              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setSearch('')}>
+                "{search}"
+                <XIcon className="h-3 w-3" />
+              </Badge>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ══════ Leads List ══════ */}
       <div className="space-y-3">
-        {leads.map(lead => {
+        {filteredLeads.map(lead => {
           const isExpanded = expandedId === lead.id;
           return (
             <div key={lead.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -163,7 +428,7 @@ export default function PredictionLeadsPage() {
                 className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
                 onClick={() => setExpandedId(isExpanded ? null : lead.id)}
               >
-                <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold', PREDICTION_LEAD_COLORS[lead.status])}>
+                <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border', STATUS_CHIP_COLORS[lead.status])}>
                   {PREDICTION_LEAD_LABELS[lead.status]}
                 </span>
                 <span className="font-medium">{lead.name}</span>
@@ -174,7 +439,6 @@ export default function PredictionLeadsPage() {
 
               {isExpanded && (
                 <div className="border-t px-4 py-4 space-y-4 bg-muted/10">
-                  {/* Call button */}
                   <button
                     onClick={(e) => { e.stopPropagation(); setCallPopupLead(lead); }}
                     className="flex items-center gap-2 w-full rounded-lg bg-primary text-primary-foreground py-2.5 font-medium text-sm hover:bg-primary/90 transition-colors justify-center"
@@ -228,6 +492,13 @@ export default function PredictionLeadsPage() {
           );
         })}
 
+        {filteredLeads.length === 0 && leads.length > 0 && (
+          <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
+            No leads match your filters.
+            <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
+          </div>
+        )}
+
         {leads.length === 0 && (
           <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
             No prediction leads assigned to you yet.
@@ -239,7 +510,6 @@ export default function PredictionLeadsPage() {
         open={!!callPopupLead}
         onClose={(outcome) => {
           if (outcome && callPopupLead) {
-            // Auto-update lead status in local state based on outcome
             const statusMap: Record<string, PredictionLeadStatus> = {
               no_answer: 'no_answer',
               interested: 'interested',
