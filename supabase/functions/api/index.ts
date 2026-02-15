@@ -1,5 +1,111 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { z } from "https://esm.sh/zod@3.23.8";
+
+// ============================================================
+// INPUT VALIDATION SCHEMAS
+// ============================================================
+
+const createUserSchema = z.object({
+  email: z.string().trim().email("Invalid email format").max(255),
+  password: z.string().min(8, "Password must be at least 8 characters").max(128),
+  full_name: z.string().trim().min(1, "Name is required").max(200),
+  roles: z.array(z.enum(["admin", "agent", "warehouse", "ads_admin"])).min(1).optional(),
+  role: z.string().optional(),
+});
+
+const createOrderSchema = z.object({
+  product_id: z.string().uuid().nullable().optional(),
+  product_name: z.string().trim().min(1, "Product name is required").max(200),
+  customer_name: z.string().max(200).optional().default(""),
+  customer_phone: z.string().max(30).optional().default(""),
+  customer_city: z.string().max(200).optional().default(""),
+  customer_address: z.string().max(500).optional().default(""),
+  postal_code: z.string().max(20).optional().default(""),
+  birthday: z.string().nullable().optional().default(null),
+  price: z.number().min(0).max(10000000).optional().default(0),
+});
+
+const updateCustomerSchema = z.object({
+  customer_name: z.string().max(200).optional(),
+  customer_phone: z.string().max(30).optional(),
+  customer_city: z.string().max(200).optional(),
+  customer_address: z.string().max(500).optional(),
+  postal_code: z.string().max(20).optional(),
+  birthday: z.string().nullable().optional(),
+});
+
+const updateStatusSchema = z.object({
+  status: z.enum(["pending", "take", "call_again", "confirmed", "shipped", "returned", "paid", "trashed", "cancelled"]),
+});
+
+const createProductSchema = z.object({
+  name: z.string().trim().min(1, "Product name is required").max(200),
+  description: z.string().max(2000).optional().default(""),
+  price: z.number().min(0).max(10000000).optional().default(0),
+  sku: z.string().max(50).nullable().optional().default(null),
+  stock_quantity: z.number().int().min(0).max(1000000).optional().default(0),
+  low_stock_threshold: z.number().int().min(0).max(100000).optional().default(5),
+  photo_url: z.string().url().max(2000).nullable().optional().default(null),
+  is_active: z.boolean().optional().default(true),
+});
+
+const createCampaignSchema = z.object({
+  campaign_name: z.string().trim().min(1, "Campaign name is required").max(200),
+  platform: z.string().max(50).optional().default("meta"),
+  budget: z.number().min(0).max(100000000).optional().default(0),
+  notes: z.string().max(5000).optional().default(""),
+});
+
+const createShiftSchema = z.object({
+  name: z.string().trim().min(1, "Shift name is required").max(200),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format"),
+  date_end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Invalid time format"),
+  end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/, "Invalid time format"),
+  agent_ids: z.array(z.string().uuid()).optional(),
+});
+
+const callLogSchema = z.object({
+  context_type: z.enum(["order", "prediction_lead"]),
+  context_id: z.string().uuid(),
+  outcome: z.string().min(1).max(100),
+  notes: z.string().max(5000).optional().default(""),
+});
+
+const predictionListSchema = z.object({
+  name: z.string().trim().min(1, "List name is required").max(200),
+  entries: z.array(z.object({
+    name: z.string().max(200).optional().default(""),
+    telephone: z.string().max(30).optional().default(""),
+    address: z.string().max(500).optional().default(""),
+    city: z.string().max(200).optional().default(""),
+    product: z.string().max(200).optional().default(""),
+  })).min(1, "No entries provided"),
+});
+
+const warehouseItemSchema = z.object({
+  user_id: z.string().uuid("Invalid user ID"),
+  product_id: z.string().uuid("Invalid product ID"),
+  quantity: z.number().int().min(1).max(100000).optional().default(1),
+  notes: z.string().max(1000).optional().default(""),
+});
+
+function parseBody<T>(schema: z.ZodSchema<T>, data: unknown): T {
+  const result = schema.safeParse(data);
+  if (!result.success) {
+    const msg = result.error.errors.map(e => e.message).join("; ");
+    throw new ValidationError(msg);
+  }
+  return result.data;
+}
+
+class ValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ValidationError";
+  }
+}
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -54,13 +160,13 @@ serve(async (req) => {
     // POST /api/users/create (admin only)
     if (req.method === "POST" && path === "users/create") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
-      const { email, password, full_name, roles: newRoles } = body;
-      // Support legacy single role field
-      const rolesToAssign: string[] = newRoles || (body.role ? [body.role] : []);
+      let body;
+      try { body = parseBody(createUserSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+      const { email, password, full_name } = body;
+      const rolesToAssign: string[] = body.roles || (body.role ? [body.role] : []);
 
-      if (!email || !password || !full_name || rolesToAssign.length === 0) {
-        return json({ error: "Missing required fields: email, password, full_name, roles" }, 400);
+      if (rolesToAssign.length === 0) {
+        return json({ error: "At least one role is required" }, 400);
       }
       const validRoles = ["admin", "agent", "warehouse", "ads_admin"];
       if (rolesToAssign.some((r: string) => !validRoles.includes(r))) {
@@ -254,23 +360,21 @@ serve(async (req) => {
     // POST /api/orders (create order)
     if (req.method === "POST" && path === "orders") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
-      const { product_id, product_name, customer_name, customer_phone, customer_city, customer_address, postal_code, birthday, price } = body;
-
-      if (!product_name) return json({ error: "Product name is required" }, 400);
+      let body;
+      try { body = parseBody(createOrderSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
       const { data: order, error: orderErr } = await adminClient
         .from("orders")
         .insert({
-          product_id,
-          product_name,
-          customer_name: customer_name || "",
-          customer_phone: customer_phone || "",
-          customer_city: customer_city || "",
-          customer_address: customer_address || "",
-          postal_code: postal_code || "",
-          birthday: birthday || null,
-          price: price || 0,
+          product_id: body.product_id,
+          product_name: body.product_name,
+          customer_name: body.customer_name,
+          customer_phone: body.customer_phone,
+          customer_city: body.customer_city,
+          customer_address: body.customer_address,
+          postal_code: body.postal_code,
+          birthday: body.birthday,
+          price: body.price,
           status: "pending",
         })
         .select()
@@ -346,16 +450,16 @@ serve(async (req) => {
     // PATCH /api/orders/:id/customer (update editable fields)
     if (req.method === "PATCH" && segments[0] === "orders" && segments[2] === "customer") {
       const orderId = segments[1];
-      const body = await req.json();
-      const { customer_name, customer_phone, customer_city, customer_address, postal_code, birthday } = body;
+      let body;
+      try { body = parseBody(updateCustomerSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
       const updates: Record<string, any> = {};
-      if (customer_name !== undefined) updates.customer_name = customer_name;
-      if (customer_phone !== undefined) updates.customer_phone = customer_phone;
-      if (customer_city !== undefined) updates.customer_city = customer_city;
-      if (customer_address !== undefined) updates.customer_address = customer_address;
-      if (postal_code !== undefined) updates.postal_code = postal_code;
-      if (birthday !== undefined) updates.birthday = birthday;
+      if (body.customer_name !== undefined) updates.customer_name = body.customer_name;
+      if (body.customer_phone !== undefined) updates.customer_phone = body.customer_phone;
+      if (body.customer_city !== undefined) updates.customer_city = body.customer_city;
+      if (body.customer_address !== undefined) updates.customer_address = body.customer_address;
+      if (body.postal_code !== undefined) updates.postal_code = body.postal_code;
+      if (body.birthday !== undefined) updates.birthday = body.birthday;
 
       const { data, error } = await supabase
         .from("orders")
@@ -371,8 +475,9 @@ serve(async (req) => {
     // PATCH /api/orders/:id/status
     if (req.method === "PATCH" && segments[0] === "orders" && segments[2] === "status") {
       const orderId = segments[1];
-      const body = await req.json();
-      const { status: newStatus } = body;
+      let body;
+      try { body = parseBody(updateStatusSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+      const newStatus = body.status;
 
       // Get current order
       const { data: order } = await adminClient
@@ -683,20 +788,20 @@ serve(async (req) => {
     // POST /api/products
     if (req.method === "POST" && path === "products") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
-      if (!body.name?.trim()) return json({ error: "Product name is required" }, 400);
+      let body;
+      try { body = parseBody(createProductSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
       const { data, error } = await adminClient
         .from("products")
         .insert({
-          name: body.name.trim(),
-          description: body.description || "",
-          price: body.price || 0,
-          sku: body.sku || null,
-          stock_quantity: body.stock_quantity ?? 0,
-          low_stock_threshold: body.low_stock_threshold ?? 5,
-          photo_url: body.photo_url || null,
-          is_active: body.is_active ?? true,
+          name: body.name,
+          description: body.description,
+          price: body.price,
+          sku: body.sku,
+          stock_quantity: body.stock_quantity,
+          low_stock_threshold: body.low_stock_threshold,
+          photo_url: body.photo_url,
+          is_active: body.is_active,
         })
         .select()
         .single();
@@ -769,11 +874,9 @@ serve(async (req) => {
     // POST /api/prediction-lists (upload)
     if (req.method === "POST" && path === "prediction-lists") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
+      let body;
+      try { body = parseBody(predictionListSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { name, entries } = body;
-
-      if (!name?.trim()) return json({ error: "List name is required" }, 400);
-      if (!entries?.length) return json({ error: "No entries provided" }, 400);
 
       const { data: list, error: listErr } = await adminClient
         .from("prediction_lists")
@@ -1105,11 +1208,9 @@ serve(async (req) => {
 
     // POST /api/call-logs
     if (req.method === "POST" && path === "call-logs") {
-      const body = await req.json();
+      let body;
+      try { body = parseBody(callLogSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { context_type, context_id, outcome, notes } = body;
-      if (!context_type || !context_id || !outcome) {
-        return json({ error: "context_type, context_id, and outcome are required" }, 400);
-      }
 
       const { data, error } = await adminClient
         .from("call_logs")
@@ -1247,11 +1348,9 @@ serve(async (req) => {
     // POST /api/shifts (admin only)
     if (req.method === "POST" && path === "shifts") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
+      let body;
+      try { body = parseBody(createShiftSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { name, date, start_time, end_time, agent_ids } = body;
-      if (!name?.trim() || !date || !start_time || !end_time) {
-        return json({ error: "name, date, start_time, end_time are required" }, 400);
-      }
 
       // Support date range
       const dates: string[] = [];
@@ -1473,9 +1572,9 @@ serve(async (req) => {
     // POST /api/warehouse/user-items (admin: assign product to user)
     if (req.method === "POST" && path === "warehouse/user-items") {
       if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
+      let body;
+      try { body = parseBody(warehouseItemSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { user_id: targetUserId, product_id, quantity, notes: itemNotes } = body;
-      if (!targetUserId || !product_id) return json({ error: "user_id and product_id are required" }, 400);
 
       // Upsert: if exists, add quantity
       const { data: existing } = await adminClient
@@ -1676,13 +1775,12 @@ serve(async (req) => {
     // POST /api/ads-campaigns
     if (req.method === "POST" && path === "ads-campaigns") {
       if (!isAdmin && !isAdsAdmin) return json({ error: "Forbidden" }, 403);
-      const body = await req.json();
-      const { campaign_name, platform, budget, notes } = body;
-      if (!campaign_name) return json({ error: "Campaign name is required" }, 400);
+      let body;
+      try { body = parseBody(createCampaignSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
       const { data, error } = await adminClient
         .from("ads_campaigns")
-        .insert({ campaign_name, platform: platform || "meta", budget: budget || 0, notes: notes || "" })
+        .insert({ campaign_name: body.campaign_name, platform: body.platform, budget: body.budget, notes: body.notes })
         .select()
         .single();
       if (error) return json({ error: sanitizeDbError(error) }, 400);
@@ -1691,7 +1789,7 @@ serve(async (req) => {
       await adminClient.from("ads_audit_logs").insert({
         campaign_id: data.id,
         action: "created",
-        details: `Campaign "${campaign_name}" created on ${platform}`,
+        details: `Campaign "${body.campaign_name}" created on ${body.platform}`,
         performed_by: user.id,
       });
 
