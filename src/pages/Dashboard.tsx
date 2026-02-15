@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/layouts/AppLayout';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiGetDashboardStats, apiGetOrderStats, apiGetAgents, apiGetProducts } from '@/lib/api';
+import { apiGetDashboardStats, apiGetOrderStats, apiGetAgents, apiGetProducts, apiGetRecentActivity } from '@/lib/api';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +16,7 @@ import {
   Clock, CheckCircle2, Truck, Package, Users, Loader2, TrendingUp, TrendingDown,
   Target, Download, CalendarDays, ShoppingCart, ArrowUpRight, ArrowDownRight,
   BarChart3, PieChart as PieChartIcon, Activity, Warehouse, UserCheck, Percent,
-  CalendarIcon, X,
+  CalendarIcon, X, MessageSquare, Phone, ArrowRightLeft, FileText,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -95,6 +96,18 @@ function MetricCard({ title, value, icon: Icon, trend, trendLabel, color }: {
   );
 }
 
+// Time ago helper
+function getTimeAgo(timestamp: string): string {
+  const diff = Date.now() - new Date(timestamp).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 // Tooltip for recharts
 const chartTooltipStyle = {
   backgroundColor: 'hsl(var(--card))',
@@ -147,6 +160,12 @@ export default function Dashboard() {
     queryKey: ['products'],
     queryFn: apiGetProducts,
     enabled: !!isAdmin,
+  });
+
+  const { data: recentActivity = [] } = useQuery<any[]>({
+    queryKey: ['recent-activity'],
+    queryFn: () => apiGetRecentActivity(25),
+    refetchInterval: 30000,
   });
 
   const statusCounts = orderStats?.statusCounts || {};
@@ -505,24 +524,108 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {/* Status counters grid */}
-      <div className="grid grid-cols-3 gap-3 lg:grid-cols-5 xl:grid-cols-9">
-        {ALL_STATUSES.map(status => {
-          const Icon = ({
-            pending: Clock, take: ShoppingCart, call_again: Activity,
-            confirmed: CheckCircle2, shipped: Truck, returned: Package,
-            paid: Target, trashed: X, cancelled: X,
-          } as Record<string, any>)[status] || Clock;
-          return (
-            <div key={status} className="rounded-xl border bg-card p-3.5 shadow-sm text-center hover:shadow-md transition-shadow">
-              <div className="flex items-center justify-center mb-1.5">
-                <Icon className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <p className="text-xl font-bold text-card-foreground">{statusCounts[status] || 0}</p>
-              <p className="text-[10px] font-medium text-muted-foreground mt-0.5">{STATUS_LABELS[status]}</p>
+      {/* Recent Activity + Status Counters */}
+      <div className="grid gap-6 lg:grid-cols-3 mb-6">
+        {/* Activity Feed */}
+        <Card className="lg:col-span-2 border-none shadow-sm">
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              Recent Activity
+            </CardTitle>
+            <span className="text-xs text-muted-foreground">{recentActivity.length} events</span>
+          </CardHeader>
+          <CardContent>
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-6 text-center">No recent activity</p>
+            ) : (
+              <ScrollArea className="h-[360px] pr-3">
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-[15px] top-2 bottom-2 w-px bg-border" />
+                  <div className="space-y-1">
+                    {recentActivity.map((item: any) => {
+                      const isCall = item.type === 'call';
+                      const isNote = item.type === 'note';
+                      const isStatus = item.type === 'status_change';
+                      const icon = isCall ? Phone : isNote ? MessageSquare : ArrowRightLeft;
+                      const IconComp = icon;
+                      const iconBg = isCall
+                        ? 'bg-[hsl(var(--info))]/15 text-[hsl(var(--info))]'
+                        : isNote
+                        ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]'
+                        : 'bg-primary/10 text-primary';
+
+                      const timeAgo = getTimeAgo(item.timestamp);
+
+                      return (
+                        <div key={item.id} className="flex gap-3 py-2.5 pl-0 relative group">
+                          <div className={`flex h-[30px] w-[30px] items-center justify-center rounded-full shrink-0 z-10 ${iconBg}`}>
+                            <IconComp className="h-3.5 w-3.5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs font-semibold text-card-foreground">{item.actor}</span>
+                              {isStatus && item.metadata?.to && (
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  item.metadata.to === 'confirmed' ? 'bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]' :
+                                  item.metadata.to === 'shipped' ? 'bg-[hsl(var(--info))]/15 text-[hsl(var(--info))]' :
+                                  item.metadata.to === 'cancelled' || item.metadata.to === 'trashed' ? 'bg-destructive/15 text-destructive' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {STATUS_LABELS[item.metadata.to as OrderStatus] || item.metadata.to}
+                                </span>
+                              )}
+                              {isCall && item.metadata?.outcome && (
+                                <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                  item.metadata.outcome === 'confirmed' ? 'bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]' :
+                                  item.metadata.outcome === 'no_answer' ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]' :
+                                  'bg-muted text-muted-foreground'
+                                }`}>
+                                  {item.metadata.outcome}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{item.description}</p>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground whitespace-nowrap shrink-0 mt-0.5">{timeAgo}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </ScrollArea>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Status Counters - vertical */}
+        <Card className="border-none shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+              <FileText className="h-4 w-4 text-primary" />
+              Order Statuses
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {ALL_STATUSES.map(status => {
+                const count = Number(statusCounts[status] || 0);
+                const total = (Object.values(statusCounts) as number[]).reduce((s, v) => s + v, 0) || 1;
+                const pct = Math.round((count / total) * 100);
+                return (
+                  <div key={status} className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-muted-foreground w-20 truncate">{STATUS_LABELS[status]}</span>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-primary/60 transition-all duration-500" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-xs font-bold text-card-foreground w-8 text-right">{count}</span>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
