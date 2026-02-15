@@ -91,6 +91,8 @@ export const apiAssignLeads = (listId: string, agentId: string, leadIds: string[
 export const apiGetMyLeads = () => apiFetch('prediction-leads/my');
 export const apiUpdateLead = (id: string, body: { status?: string; notes?: string; address?: string; city?: string; telephone?: string; product?: string }) =>
   apiFetch(`prediction-leads/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiUnassignLeads = (leadIds: string[]) =>
+  apiFetch('prediction-leads/unassign', { method: 'POST', body: JSON.stringify({ lead_ids: leadIds }) });
 
 // Phone duplicate check
 export const apiCheckPhoneDuplicates = (phone: string, excludeOrderId?: string) =>
