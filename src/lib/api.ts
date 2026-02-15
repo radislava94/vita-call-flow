@@ -112,12 +112,13 @@ export const apiGetCallLogs = (contextType: string, contextId: string) =>
   apiFetch(`call-logs/${contextType}/${contextId}`);
 
 // Warehouse
-export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string }) => {
+export const apiGetIncomingOrders = (params?: { agent_id?: string; from?: string; to?: string; product?: string; source?: string }) => {
   const sp = new URLSearchParams();
   if (params?.agent_id) sp.set('agent_id', params.agent_id);
   if (params?.from) sp.set('from', params.from);
   if (params?.to) sp.set('to', params.to);
   if (params?.product) sp.set('product', params.product);
+  if (params?.source) sp.set('source', params.source);
   return apiFetch(`warehouse/incoming-orders?${sp.toString()}`);
 };
 export const apiGetUserWarehouseItems = () => apiFetch('warehouse/user-items');
