@@ -35,6 +35,8 @@ interface DashStats {
   total_value: number; tasks_completed: number; total_orders: number;
   daily: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }>;
   statusCounts: Record<string, number>;
+  orders_from_standard?: number;
+  orders_from_leads?: number;
   personalMetrics?: DashStats | null;
   isDualRole?: boolean;
 }
@@ -81,7 +83,7 @@ function PeriodCard({ title, data, icon: Icon, onExport }: { title: string; data
           <Download className="h-3.5 w-3.5" />
         </Button>
       </CardHeader>
-      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-6">
         <div className="text-center">
           <p className="text-2xl font-bold text-foreground">{data.lead_count}</p>
           <p className="text-[11px] text-muted-foreground">Leads</p>
@@ -101,6 +103,17 @@ function PeriodCard({ title, data, icon: Icon, onExport }: { title: string; data
         <div className="text-center">
           <p className="text-2xl font-bold text-info">{data.tasks_completed}</p>
           <p className="text-[11px] text-muted-foreground">Calls</p>
+        </div>
+        <div className="text-center">
+          <p className="text-2xl font-bold text-foreground">{data.total_orders}</p>
+          <p className="text-[11px] text-muted-foreground flex flex-col items-center">
+            <span>Orders</span>
+            {(data.orders_from_standard !== undefined || data.orders_from_leads !== undefined) && (
+              <span className="text-[9px] text-muted-foreground/70">
+                {data.orders_from_standard || 0}std / {data.orders_from_leads || 0}lead
+              </span>
+            )}
+          </p>
         </div>
       </CardContent>
     </Card>
