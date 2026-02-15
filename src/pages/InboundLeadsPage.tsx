@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AppLayout } from '@/layouts/AppLayout';
-import { apiGetInboundLeads, apiUpdateInboundLead, apiDeleteInboundLead } from '@/lib/api';
+import { apiGetInboundLeads, apiUpdateInboundLead, apiDeleteInboundLead, apiCreateOrder } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Search, Phone, User, Clock, Trash2, CheckCircle2, XCircle, ArrowRight } from 'lucide-react';
+import { Loader2, Search, Phone, User, Clock, Trash2, CheckCircle2, XCircle, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ interface InboundLead {
 
 export default function InboundLeadsPage() {
   const { toast } = useToast();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -61,6 +63,22 @@ export default function InboundLeadsPage() {
     },
     onError: (err: any) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
   });
+
+  const convertToOrder = async (lead: InboundLead) => {
+    try {
+      const order = await apiCreateOrder({
+        product_name: 'From Landing Page',
+        customer_name: lead.name,
+        customer_phone: lead.phone,
+      });
+      await apiUpdateInboundLead(lead.id, { status: 'converted' });
+      queryClient.invalidateQueries({ queryKey: ['inbound-leads'] });
+      toast({ title: 'Order created' });
+      navigate(`/orders/${order.id}`);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
 
   const filtered = search.trim()
     ? leads.filter(l =>
@@ -194,7 +212,16 @@ export default function InboundLeadsPage() {
                   <td className="px-4 py-3 text-muted-foreground text-xs">
                     {format(new Date(lead.created_at), 'MMM d, HH:mm')}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-primary hover:bg-primary/10"
+                      title="Convert to order"
+                      onClick={() => convertToOrder(lead)}
+                    >
+                      <ShoppingCart className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                       variant="ghost"
                       size="icon"
