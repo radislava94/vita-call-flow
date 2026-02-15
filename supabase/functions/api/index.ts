@@ -509,7 +509,7 @@ serve(async (req) => {
 
       // Permission check for non-admins
       const agentAllowed = ["pending", "take", "call_again", "confirmed"];
-      const warehouseAllowed = ["confirmed", "shipped"];
+      const warehouseAllowed = ["confirmed", "shipped", "delivered", "paid"];
       if (!isAdmin) {
         if (isWarehouse && warehouseAllowed.includes(newStatus)) {
           // Warehouse users can set confirmed/shipped
@@ -1588,7 +1588,7 @@ serve(async (req) => {
         if (statusFilter) {
           oQuery = oQuery.eq("status", statusFilter);
         } else {
-          oQuery = oQuery.in("status", ["confirmed", "shipped", "delivered"]);
+          oQuery = oQuery.in("status", ["confirmed", "shipped", "delivered", "paid"]);
         }
         if (agentFilter && agentFilter !== "all") oQuery = oQuery.eq("assigned_agent_id", agentFilter);
         if (from) oQuery = oQuery.gte("created_at", from);
