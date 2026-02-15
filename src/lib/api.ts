@@ -158,3 +158,10 @@ export const apiUpdateShift = (id: string, body: any) =>
   apiFetch(`shifts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteShift = (id: string) =>
   apiFetch(`shifts/${id}`, { method: 'DELETE' });
+
+// Recent Activity
+export const apiGetRecentActivity = (limit?: number) => {
+  const sp = new URLSearchParams();
+  if (limit) sp.set('limit', String(limit));
+  return apiFetch(`recent-activity?${sp.toString()}`);
+};

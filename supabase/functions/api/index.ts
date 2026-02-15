@@ -1533,6 +1533,107 @@ serve(async (req) => {
       return json({ ...profile, role });
     }
 
+    // GET /api/recent-activity
+    if (req.method === "GET" && path === "recent-activity") {
+      const limit = parseInt(url.searchParams.get("limit") || "20");
+
+      // Fetch recent order status changes
+      const { data: statusChanges } = await adminClient
+        .from("order_history")
+        .select("id, order_id, from_status, to_status, changed_by_name, changed_at")
+        .order("changed_at", { ascending: false })
+        .limit(limit);
+
+      // Fetch recent call logs
+      const { data: callLogs } = await adminClient
+        .from("call_logs")
+        .select("id, context_type, context_id, outcome, notes, agent_id, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      // Fetch recent order notes
+      const { data: orderNotes } = await adminClient
+        .from("order_notes")
+        .select("id, order_id, author_name, text, created_at")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      // Get agent names for call logs
+      const agentIds = [...new Set((callLogs || []).map((c: any) => c.agent_id))];
+      const agentNameMap: Record<string, string> = {};
+      if (agentIds.length > 0) {
+        const { data: profiles } = await adminClient
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", agentIds);
+        for (const p of profiles || []) {
+          agentNameMap[p.user_id] = p.full_name;
+        }
+      }
+
+      // Get display_ids for orders referenced in status changes and notes
+      const orderIds = [
+        ...new Set([
+          ...(statusChanges || []).map((s: any) => s.order_id),
+          ...(orderNotes || []).map((n: any) => n.order_id),
+        ]),
+      ];
+      const orderDisplayMap: Record<string, string> = {};
+      if (orderIds.length > 0) {
+        const { data: orders } = await adminClient
+          .from("orders")
+          .select("id, display_id")
+          .in("id", orderIds);
+        for (const o of orders || []) {
+          orderDisplayMap[o.id] = o.display_id;
+        }
+      }
+
+      // Merge into unified activity feed
+      const activities: any[] = [];
+
+      for (const s of statusChanges || []) {
+        activities.push({
+          id: s.id,
+          type: "status_change",
+          actor: s.changed_by_name || "System",
+          description: `Changed order ${orderDisplayMap[s.order_id] || "?"} from ${s.from_status || "new"} to ${s.to_status}`,
+          order_id: s.order_id,
+          display_id: orderDisplayMap[s.order_id],
+          metadata: { from: s.from_status, to: s.to_status },
+          timestamp: s.changed_at,
+        });
+      }
+
+      for (const c of callLogs || []) {
+        activities.push({
+          id: c.id,
+          type: "call",
+          actor: agentNameMap[c.agent_id] || "Agent",
+          description: `Made a ${c.outcome} call (${c.context_type})`,
+          metadata: { outcome: c.outcome, context_type: c.context_type, notes: c.notes },
+          timestamp: c.created_at,
+        });
+      }
+
+      for (const n of orderNotes || []) {
+        activities.push({
+          id: n.id,
+          type: "note",
+          actor: n.author_name,
+          description: `Added note on ${orderDisplayMap[n.order_id] || "order"}: "${n.text.substring(0, 60)}${n.text.length > 60 ? "..." : ""}"`,
+          order_id: n.order_id,
+          display_id: orderDisplayMap[n.order_id],
+          timestamp: n.created_at,
+        });
+      }
+
+      // Sort by timestamp descending
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+      return json(activities.slice(0, limit));
+    }
+
     return json({ error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);
