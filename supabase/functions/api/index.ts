@@ -217,25 +217,38 @@ serve(async (req) => {
       return json(enriched);
     }
 
-    // GET /api/users/agents (list active agents - includes users with agent role even if also admin)
+    // GET /api/users/agents (list active assignable users - agents and admins)
     if (req.method === "GET" && path === "users/agents") {
-      const { data: agents } = await adminClient
+      const { data: allUsers } = await adminClient
         .from("profiles")
         .select("user_id, full_name, email")
         .eq("is_active", true);
 
-      // Filter to those with agent role (includes dual-role users)
-      const agentUsers = [];
-      for (const a of agents || []) {
-        const { data: r } = await adminClient
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", a.user_id)
-          .eq("role", "agent")
-          .single();
-        if (r) agentUsers.push(a);
+      // Get all roles for active users
+      const userIds = (allUsers || []).map((u: any) => u.user_id);
+      const { data: allRoles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
+
+      const roleMap: Record<string, string[]> = {};
+      for (const r of allRoles || []) {
+        if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
+        roleMap[r.user_id].push(r.role);
       }
-      return json(agentUsers);
+
+      // Filter to users with agent OR admin role (assignable users)
+      const assignableUsers = (allUsers || [])
+        .filter((u: any) => {
+          const roles = roleMap[u.user_id] || [];
+          return roles.includes("agent") || roles.includes("admin");
+        })
+        .map((u: any) => ({
+          ...u,
+          roles: roleMap[u.user_id] || [],
+        }));
+
+      return json(assignableUsers);
     }
 
     // POST /api/orders (create order)

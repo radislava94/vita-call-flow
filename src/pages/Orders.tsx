@@ -148,7 +148,7 @@ export default function Orders() {
   }, [orders]);
 
   const exportCSV = () => {
-    const header = 'Order ID,Product,Price,Status,Customer,Agent,Date\n';
+    const header = 'Order ID,Product,Price,Status,Customer,Assignee,Date\n';
     const rows = filteredOrders.map(o =>
       `${o.display_id},${o.product_name},${o.price},${o.status},${o.customer_name},${o.assigned_agent_name || 'Unassigned'},${new Date(o.created_at).toLocaleDateString()}`
     ).join('\n');
@@ -226,7 +226,7 @@ export default function Orders() {
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
                     <User className="h-3.5 w-3.5" />
-                    {agentFilter === 'all' ? 'Agent' : (agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || 'Agent'}
+                    {agentFilter === 'all' ? 'Assignee' : (agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || 'Assignee'}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-2" align="start">
@@ -238,7 +238,7 @@ export default function Orders() {
                         agentFilter === 'all' ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
                       )}
                     >
-                      All Agents
+                      All Users
                     </button>
                     {(agentsData || []).map((a: any) => (
                       <button
@@ -252,7 +252,10 @@ export default function Orders() {
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary shrink-0">
                           {a.full_name?.charAt(0)?.toUpperCase() || '?'}
                         </span>
-                        {a.full_name}
+                        <span className="flex-1 text-left">{a.full_name}</span>
+                        {a.roles && (
+                          <span className="text-[10px] text-muted-foreground capitalize">{a.roles.join(' + ')}</span>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -320,7 +323,7 @@ export default function Orders() {
             ))}
             {agentFilter !== 'all' && (
               <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setAgentFilter('all')}>
-                Agent: {(agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || agentFilter.slice(0, 8)}
+                Assignee: {(agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || agentFilter.slice(0, 8)}
                 <X className="h-3 w-3" />
               </Badge>
             )}
@@ -364,7 +367,7 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Agent</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
               </tr>

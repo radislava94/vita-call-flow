@@ -265,8 +265,8 @@ export default function PredictionListDetail() {
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{selectionMode === 'assigned' ? 'Reassign to Agent' : 'Assign to Agent'}</DialogTitle>
-            <DialogDescription>Select an agent to {selectionMode === 'assigned' ? 'reassign' : 'assign'} {selected.size} entries to.</DialogDescription>
+            <DialogTitle>{selectionMode === 'assigned' ? 'Reassign User' : 'Assign User'}</DialogTitle>
+            <DialogDescription>Select a user to {selectionMode === 'assigned' ? 'reassign' : 'assign'} {selected.size} entries to.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {agents.map(agent => (
@@ -278,10 +278,13 @@ export default function PredictionListDetail() {
                 <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                   {agent.full_name.charAt(0)}
                 </span>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium">{agent.full_name}</p>
                   <p className="text-xs text-muted-foreground">{agent.email}</p>
                 </div>
+                {(agent as any).roles && (
+                  <span className="text-[10px] text-muted-foreground capitalize">{(agent as any).roles.join(' + ')}</span>
+                )}
               </button>
             ))}
           </div>
