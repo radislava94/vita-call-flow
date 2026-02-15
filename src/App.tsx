@@ -14,6 +14,7 @@ import AssignedPage from "./pages/AssignedPage";
 import PredictionListsPage from "./pages/PredictionListsPage";
 import PredictionListDetail from "./pages/PredictionListDetail";
 import PredictionLeadsPage from "./pages/PredictionLeadsPage";
+import AgentPerformancePage from "./pages/AgentPerformancePage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -37,6 +38,7 @@ const App = () => (
             <Route path="/predictions" element={<ProtectedRoute><PredictionListsPage /></ProtectedRoute>} />
             <Route path="/predictions/:id" element={<ProtectedRoute><PredictionListDetail /></ProtectedRoute>} />
             <Route path="/prediction-leads" element={<ProtectedRoute><PredictionLeadsPage /></ProtectedRoute>} />
+            <Route path="/performance" element={<ProtectedRoute><AgentPerformancePage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
