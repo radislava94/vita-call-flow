@@ -21,6 +21,7 @@ import {
   Phone,
   Warehouse,
   PackageSearch,
+  Settings,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -82,6 +83,13 @@ const sections: NavSection[] = [
     roles: ['admin'],
     items: [
       { title: 'Products', path: '/products', icon: Package },
+    ],
+  },
+  {
+    label: '',
+    roles: ['admin'],
+    items: [
+      { title: 'Settings', path: '/settings', icon: Settings },
     ],
   },
 ];
