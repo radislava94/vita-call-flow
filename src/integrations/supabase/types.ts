@@ -14,6 +14,47 @@ export type Database = {
   }
   public: {
     Tables: {
+      inventory_logs: {
+        Row: {
+          change_amount: number
+          created_at: string
+          id: string
+          new_stock: number
+          previous_stock: number
+          product_id: string
+          reason: string
+          user_id: string | null
+        }
+        Insert: {
+          change_amount: number
+          created_at?: string
+          id?: string
+          new_stock: number
+          previous_stock: number
+          product_id: string
+          reason?: string
+          user_id?: string | null
+        }
+        Update: {
+          change_amount?: number
+          created_at?: string
+          id?: string
+          new_stock?: number
+          previous_stock?: number
+          product_id?: string
+          reason?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_logs_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       order_history: {
         Row: {
           changed_at: string
@@ -247,9 +288,12 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          low_stock_threshold: number
           name: string
           photo_url: string | null
           price: number
+          sku: string | null
+          stock_quantity: number
           updated_at: string
         }
         Insert: {
@@ -257,9 +301,12 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          low_stock_threshold?: number
           name: string
           photo_url?: string | null
           price?: number
+          sku?: string | null
+          stock_quantity?: number
           updated_at?: string
         }
         Update: {
@@ -267,9 +314,12 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          low_stock_threshold?: number
           name?: string
           photo_url?: string | null
           price?: number
+          sku?: string | null
+          stock_quantity?: number
           updated_at?: string
         }
         Relationships: []

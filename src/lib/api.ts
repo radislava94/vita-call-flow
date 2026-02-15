@@ -66,6 +66,8 @@ export const apiCreateProduct = (body: any) =>
   apiFetch('products', { method: 'POST', body: JSON.stringify(body) });
 export const apiUpdateProduct = (id: string, body: any) =>
   apiFetch(`products/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiGetInventoryLogs = (productId: string) =>
+  apiFetch(`products/${productId}/inventory-logs`);
 
 // Prediction Lists
 export const apiGetPredictionLists = () => apiFetch('prediction-lists');
