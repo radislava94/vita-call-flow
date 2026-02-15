@@ -95,8 +95,8 @@ function IncomingOrdersTab() {
   };
 
   const handleStatusChange = async (orderId: string, source: string, newStatus: string) => {
-    if (source !== 'order') {
-      toast({ title: 'Cannot change status', description: 'Only standard orders can be shipped', variant: 'destructive' });
+    if (source === 'prediction_lead_direct') {
+      toast({ title: 'Cannot change status', description: 'This lead has no linked order yet', variant: 'destructive' });
       return;
     }
     setUpdatingId(orderId);
@@ -226,23 +226,26 @@ function IncomingOrdersTab() {
                         </tr>
                       </thead>
                       <tbody>
-                        {dayOrders.map((o: any) => (
-                          <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        {dayOrders.map((o: any) => {
+                          const canChangeStatus = o.source === 'order' || o.source === 'prediction_lead';
+                          const isFromLead = o.source_type === 'prediction_lead' || o.source === 'prediction_lead';
+                          return (
+                          <tr key={o.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isFromLead && "bg-accent/30")}>
                             <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
                             <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                             <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
                             <td className="px-4 py-2.5 text-xs">{o.product_name}</td>
                             <td className="px-4 py-2.5 font-semibold text-primary text-xs">
-                              {o.source === 'order' ? `$${Number(o.price).toFixed(2)}` : '—'}
+                              {o.price ? `$${Number(o.price).toFixed(2)}` : '—'}
                             </td>
                             <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
                             <td className="px-4 py-2.5 text-xs">
-                              <Badge variant={o.source === 'prediction_lead' ? 'secondary' : 'default'} className="text-[10px]">
-                                {o.source === 'prediction_lead' ? 'Lead' : 'Order'}
+                              <Badge variant={isFromLead ? 'secondary' : 'default'} className="text-[10px]">
+                                {isFromLead ? 'Lead' : 'Order'}
                               </Badge>
                             </td>
                             <td className="px-4 py-2.5">
-                              {o.source === 'order' ? (
+                              {canChangeStatus ? (
                                 <Select
                                   value={o.status}
                                   onValueChange={(val) => handleStatusChange(o.id, o.source, val)}
@@ -272,7 +275,8 @@ function IncomingOrdersTab() {
                             </td>
                             <td className="px-4 py-2.5 text-muted-foreground text-xs">{format(new Date(o.created_at), 'HH:mm')}</td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
