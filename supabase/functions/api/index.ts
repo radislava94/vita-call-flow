@@ -521,7 +521,7 @@ serve(async (req) => {
         if (effectiveAgentId) ordersQ = ordersQ.eq("assigned_agent_id", effectiveAgentId);
         const { data: periodOrders } = await ordersQ;
 
-        let leadsQ = adminClient.from("prediction_leads").select("id, status, created_at, assigned_agent_id").gte("created_at", fromDate).lte("created_at", toDate);
+        let leadsQ = adminClient.from("prediction_leads").select("id, status, created_at, assigned_agent_id, product").gte("created_at", fromDate).lte("created_at", toDate);
         if (effectiveAgentId) leadsQ = leadsQ.eq("assigned_agent_id", effectiveAgentId);
         const { data: periodLeads } = await leadsQ;
 
@@ -534,11 +534,18 @@ serve(async (req) => {
         const calls = periodCalls || [];
 
         const lead_count = leads.length;
-        const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
+        const confirmedLeads = leads.filter((l: any) => l.status === "confirmed");
+        // deals_won includes confirmed/paid orders AND confirmed prediction leads
+        const deals_won = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length + confirmedLeads.length;
         const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
         const total_value = orders.filter((o: any) => ["confirmed", "paid", "shipped"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
         const tasks_completed = calls.length;
-        const total_orders = orders.length;
+        // total_orders includes standard orders + confirmed prediction leads
+        const total_orders = orders.length + confirmedLeads.length;
+
+        // Source breakdown
+        const orders_from_standard = orders.filter((o: any) => ["confirmed", "paid"].includes(o.status)).length;
+        const orders_from_leads = confirmedLeads.length;
 
         const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
         for (const o of orders) {
@@ -552,6 +559,10 @@ serve(async (req) => {
           const day = l.created_at.substring(0, 10);
           if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
           dailyBreakdown[day].leads++;
+          if (l.status === "confirmed") {
+            dailyBreakdown[day].deals_won++;
+            dailyBreakdown[day].orders++;
+          }
         }
         for (const c of calls) {
           const day = c.created_at.substring(0, 10);
@@ -563,8 +574,12 @@ serve(async (req) => {
         for (const o of orders) {
           statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
         }
+        // Add confirmed leads to the confirmed status count
+        if (confirmedLeads.length > 0) {
+          statusCounts["confirmed"] = (statusCounts["confirmed"] || 0) + confirmedLeads.length;
+        }
 
-        return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts };
+        return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts, orders_from_standard, orders_from_leads };
       }
 
       if (!isAdmin) {
@@ -601,6 +616,12 @@ serve(async (req) => {
       if (to) query = query.lte("created_at", to);
 
       const { data: orders } = await query;
+
+      // Also fetch confirmed prediction leads
+      let leadsQuery = adminClient.from("prediction_leads").select("status, created_at, assigned_agent_id, assigned_agent_name").eq("status", "confirmed");
+      if (from) leadsQuery = leadsQuery.gte("created_at", from);
+      if (to) leadsQuery = leadsQuery.lte("created_at", to);
+      const { data: confirmedLeads } = await leadsQuery;
       
       // Status counts
       const statusCounts: Record<string, number> = {};
@@ -616,7 +637,18 @@ serve(async (req) => {
         dailyCounts[day] = (dailyCounts[day] || 0) + 1;
       }
 
-      return json({ statusCounts, agentCounts, dailyCounts, total: orders?.length || 0 });
+      // Include confirmed prediction leads in counts
+      for (const l of confirmedLeads || []) {
+        statusCounts["confirmed"] = (statusCounts["confirmed"] || 0) + 1;
+        if (l.assigned_agent_name) {
+          agentCounts[l.assigned_agent_name] = (agentCounts[l.assigned_agent_name] || 0) + 1;
+        }
+        const day = l.created_at.substring(0, 10);
+        dailyCounts[day] = (dailyCounts[day] || 0) + 1;
+      }
+
+      const total = (orders?.length || 0) + (confirmedLeads?.length || 0);
+      return json({ statusCounts, agentCounts, dailyCounts, total });
     }
 
     // ============================================================
