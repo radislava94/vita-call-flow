@@ -74,10 +74,35 @@ serve(async (req) => {
       return json({ success: true, user_id: newUser.user.id });
     }
 
+    // PATCH /api/users/:id/role (admin only)
+    if (req.method === "PATCH" && segments[0] === "users" && segments[2] === "role") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const userId = segments[1];
+      const body = await req.json();
+      const { role: newRole } = body;
+      if (!newRole || !["admin", "agent"].includes(newRole)) {
+        return json({ error: "Role must be admin or agent" }, 400);
+      }
+      // Prevent admin from changing own role
+      if (userId === user.id) {
+        return json({ error: "Cannot change your own role" }, 400);
+      }
+      const { error: roleErr } = await adminClient
+        .from("user_roles")
+        .update({ role: newRole })
+        .eq("user_id", userId);
+      if (roleErr) return json({ error: roleErr.message }, 400);
+      return json({ success: true });
+    }
+
     // POST /api/users/:id/toggle-active (admin only)
     if (req.method === "POST" && segments[0] === "users" && segments[2] === "toggle-active") {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
+      // Prevent admin from suspending themselves
+      if (userId === user.id) {
+        return json({ error: "Cannot suspend yourself" }, 400);
+      }
       const { data: profile } = await adminClient
         .from("profiles")
         .select("is_active")
@@ -91,6 +116,22 @@ serve(async (req) => {
         .eq("user_id", userId);
 
       return json({ success: true, is_active: !profile.is_active });
+    }
+
+    // DELETE /api/users/:id (admin only)
+    if (req.method === "DELETE" && segments[0] === "users" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const userId = segments[1];
+      // Prevent admin from deleting themselves
+      if (userId === user.id) {
+        return json({ error: "Cannot delete yourself" }, 400);
+      }
+      // Delete role, profile, then auth user
+      await adminClient.from("user_roles").delete().eq("user_id", userId);
+      await adminClient.from("profiles").delete().eq("user_id", userId);
+      const { error: delErr } = await adminClient.auth.admin.deleteUser(userId);
+      if (delErr) return json({ error: delErr.message }, 400);
+      return json({ success: true });
     }
 
     // GET /api/users (admin only)
