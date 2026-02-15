@@ -7,12 +7,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { apiGetDashboardStats, apiGetOrderStats, apiGetAgents } from '@/lib/api';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Clock, PhoneCall, PhoneForwarded, CheckCircle2, Truck, RotateCcw,
   DollarSign, Trash2, XCircle, BarChart3, Users, Loader2, TrendingUp,
-  TrendingDown, FileText, Target, Download, CalendarDays, Phone,
+  FileText, Target, Download, CalendarDays, UserCircle,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -36,12 +35,15 @@ interface DashStats {
   total_value: number; tasks_completed: number; total_orders: number;
   daily: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }>;
   statusCounts: Record<string, number>;
+  personalMetrics?: DashStats | null;
+  isDualRole?: boolean;
 }
 
-function exportCSV(data: DashStats, period: string) {
+function exportCSV(data: DashStats, period: string, label?: string) {
   const rows = [
     ['Metric', 'Value'],
     ['Period', period],
+    ...(label ? [['Section', label]] : []),
     ['Leads Created', String(data.lead_count)],
     ['Deals Won', String(data.deals_won)],
     ['Deals Lost', String(data.deals_lost)],
@@ -61,7 +63,7 @@ function exportCSV(data: DashStats, period: string) {
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `dashboard-${period}-${new Date().toISOString().substring(0, 10)}.csv`;
+  a.href = url; a.download = `dashboard-${label || 'stats'}-${period}-${new Date().toISOString().substring(0, 10)}.csv`;
   a.click(); URL.revokeObjectURL(url);
 }
 
@@ -107,7 +109,8 @@ function PeriodCard({ title, data, icon: Icon, onExport }: { title: string; data
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.isAdmin;
+  const isDualRole = user?.isAdmin && user?.isAgent;
   const [agentFilter, setAgentFilter] = useState('all');
 
   const effectiveAgent = agentFilter !== 'all' ? agentFilter : undefined;
@@ -137,7 +140,7 @@ export default function Dashboard() {
   const { data: agents = [] } = useQuery<{ user_id: string; full_name: string }[]>({
     queryKey: ['agents'],
     queryFn: apiGetAgents,
-    enabled: isAdmin,
+    enabled: !!isAdmin,
   });
 
   const statusCounts = orderStats?.statusCounts || {};
@@ -154,7 +157,6 @@ export default function Dashboard() {
 
   const agentStats = Object.entries(agentCounts).map(([name, count]) => ({ name, count: count as number }));
 
-  // Monthly trend chart from monthStats
   const trendData = monthStats ? Object.entries(monthStats.daily)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, v]) => ({
@@ -162,10 +164,14 @@ export default function Dashboard() {
       leads: v.leads, won: v.deals_won, lost: v.deals_lost, calls: v.calls,
     })) : [];
 
-  // Pie chart from month status counts
   const pieData = monthStats ? Object.entries(monthStats.statusCounts)
     .filter(([, v]) => v > 0)
     .map(([name, value]) => ({ name: STATUS_LABELS[name as OrderStatus] || name, value })) : [];
+
+  // Personal metrics for dual-role users
+  const personalToday = todayStats?.personalMetrics;
+  const personalYesterday = yesterdayStats?.personalMetrics;
+  const personalMonth = monthStats?.personalMetrics;
 
   return (
     <AppLayout title="Dashboard">
@@ -187,12 +193,46 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Period stat cards */}
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
-        <PeriodCard title="Today" data={todayStats} icon={CalendarDays} onExport={() => todayStats && exportCSV(todayStats, 'today')} />
-        <PeriodCard title="Yesterday" data={yesterdayStats} icon={Clock} onExport={() => yesterdayStats && exportCSV(yesterdayStats, 'yesterday')} />
-        <PeriodCard title="This Month" data={monthStats} icon={Target} onExport={() => monthStats && exportCSV(monthStats, 'month')} />
-      </div>
+      {/* Admin metrics section */}
+      {isAdmin && (
+        <>
+          {isDualRole && (
+            <div className="mb-3 flex items-center gap-2">
+              <Users className="h-5 w-5 text-primary" />
+              <h2 className="text-lg font-semibold text-foreground">Team Overview</h2>
+            </div>
+          )}
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
+            <PeriodCard title="Today" data={todayStats} icon={CalendarDays} onExport={() => todayStats && exportCSV(todayStats, 'today', 'team')} />
+            <PeriodCard title="Yesterday" data={yesterdayStats} icon={Clock} onExport={() => yesterdayStats && exportCSV(yesterdayStats, 'yesterday', 'team')} />
+            <PeriodCard title="This Month" data={monthStats} icon={Target} onExport={() => monthStats && exportCSV(monthStats, 'month', 'team')} />
+          </div>
+        </>
+      )}
+
+      {/* Personal metrics for dual-role users */}
+      {isDualRole && agentFilter === 'all' && (
+        <>
+          <div className="mb-3 flex items-center gap-2">
+            <UserCircle className="h-5 w-5 text-primary" />
+            <h2 className="text-lg font-semibold text-foreground">My Personal Stats</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3 mb-6">
+            <PeriodCard title="My Today" data={personalToday || undefined} icon={CalendarDays} onExport={() => personalToday && exportCSV(personalToday, 'today', 'personal')} />
+            <PeriodCard title="My Yesterday" data={personalYesterday || undefined} icon={Clock} onExport={() => personalYesterday && exportCSV(personalYesterday, 'yesterday', 'personal')} />
+            <PeriodCard title="My Month" data={personalMonth || undefined} icon={Target} onExport={() => personalMonth && exportCSV(personalMonth, 'month', 'personal')} />
+          </div>
+        </>
+      )}
+
+      {/* Agent-only stats (non-admin agents) */}
+      {!isAdmin && (
+        <div className="grid gap-4 md:grid-cols-3 mb-6">
+          <PeriodCard title="Today" data={todayStats} icon={CalendarDays} onExport={() => todayStats && exportCSV(todayStats, 'today', 'personal')} />
+          <PeriodCard title="Yesterday" data={yesterdayStats} icon={Clock} onExport={() => yesterdayStats && exportCSV(yesterdayStats, 'yesterday', 'personal')} />
+          <PeriodCard title="This Month" data={monthStats} icon={Target} onExport={() => monthStats && exportCSV(monthStats, 'month', 'personal')} />
+        </div>
+      )}
 
       {/* Status counters */}
       <div className="grid grid-cols-3 gap-4 lg:grid-cols-5 xl:grid-cols-9 mb-6">
@@ -208,7 +248,6 @@ export default function Dashboard() {
 
       {/* Charts row */}
       <div className="grid gap-6 lg:grid-cols-3 mb-6">
-        {/* Orders per day */}
         <div className="col-span-2 rounded-xl border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <BarChart3 className="h-5 w-5 text-primary" />
@@ -225,7 +264,6 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
 
-        {/* Agent assignments */}
         <div className="rounded-xl border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
@@ -250,7 +288,6 @@ export default function Dashboard() {
 
       {/* Monthly trends + pie chart */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Trend line chart */}
         <div className="col-span-2 rounded-xl border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <TrendingUp className="h-5 w-5 text-primary" />
@@ -275,7 +312,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Pie chart */}
         <div className="rounded-xl border bg-card p-6 shadow-sm">
           <div className="mb-4 flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />

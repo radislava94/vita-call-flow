@@ -58,7 +58,7 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.isAdmin;
 
   const fetchProducts = () => {
     setLoading(true);

@@ -108,7 +108,7 @@ export default function ShiftsManagementPage() {
   const calendarDays = eachDayOfInterval({ start: startOfWeek(monthStart, { weekStartsOn: 1 }), end: endOfWeek(monthEnd, { weekStartsOn: 1 }) });
   const getShiftsForDay = (day: Date) => shifts.filter(s => isSameDay(new Date(s.date), day));
 
-  if (user?.role !== 'admin') return <AppLayout title="Access Denied"><div className="p-6">Access denied</div></AppLayout>;
+  if (!user?.isAdmin) return <AppLayout title="Access Denied"><div className="p-6">Access denied</div></AppLayout>;
 
   return (
     <AppLayout title="Shifts Management">

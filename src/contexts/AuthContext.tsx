@@ -2,11 +2,17 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/integrations/supabase/client';
 import type { Session, User } from '@supabase/supabase-js';
 
+type AppRole = 'admin' | 'agent';
+
 interface AuthUser {
   id: string;
   email: string;
   full_name: string;
-  role: 'admin' | 'agent';
+  roles: AppRole[];
+  isAdmin: boolean;
+  isAgent: boolean;
+  /** Primary role for display purposes */
+  role: AppRole;
 }
 
 interface AuthContextType {
@@ -32,17 +38,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', supabaseUser.id)
         .single();
 
-      const { data: roleData } = await supabase
+      // Fetch ALL roles for this user (supports dual-role)
+      const { data: roleRows } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', supabaseUser.id)
-        .single();
+        .eq('user_id', supabaseUser.id);
+
+      const roles: AppRole[] = (roleRows || []).map(r => r.role as AppRole);
+      if (roles.length === 0) roles.push('agent'); // fallback
+
+      const isAdmin = roles.includes('admin');
+      const isAgent = roles.includes('agent');
 
       setUser({
         id: supabaseUser.id,
         email: profile?.email || supabaseUser.email || '',
         full_name: profile?.full_name || supabaseUser.email || '',
-        role: (roleData?.role as 'admin' | 'agent') || 'agent',
+        roles,
+        isAdmin,
+        isAgent,
+        role: isAdmin ? 'admin' : 'agent', // primary role for backward compat
       });
     } catch {
       setUser(null);
@@ -52,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
     
-    // Safety timeout to prevent infinite loading
     const timeout = setTimeout(() => {
       if (mounted && loading) {
         console.warn('Auth loading timeout - forcing load complete');
@@ -65,7 +79,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
         setSession(newSession);
         if (newSession?.user) {
-          // Don't await - fire and forget to avoid blocking the auth flow
           fetchProfile(newSession.user).finally(() => {
             if (mounted) setLoading(false);
           });

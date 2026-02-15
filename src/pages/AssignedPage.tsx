@@ -20,7 +20,7 @@ export default function AssignedPage() {
   }, []);
 
   // For agents, RLS already filters. For admins viewing this page, filter client-side
-  const myOrders = user?.role === 'admin'
+  const myOrders = user?.isAdmin
     ? orders.filter(o => o.assigned_agent_id === user.id)
     : orders;
 
