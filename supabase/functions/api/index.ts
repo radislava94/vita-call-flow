@@ -73,7 +73,7 @@ serve(async (req) => {
         email_confirm: true,
         user_metadata: { full_name },
       });
-      if (createErr) return json({ error: createErr.message }, 400);
+      if (createErr) return json({ error: sanitizeDbError(createErr) }, 400);
 
       // Assign all roles
       for (const r of rolesToAssign) {
@@ -164,7 +164,7 @@ serve(async (req) => {
       await adminClient.from("user_roles").delete().eq("user_id", userId);
       await adminClient.from("profiles").delete().eq("user_id", userId);
       const { error: delErr } = await adminClient.auth.admin.deleteUser(userId);
-      if (delErr) return json({ error: delErr.message }, 400);
+      if (delErr) return json({ error: sanitizeDbError(delErr) }, 400);
       return json({ success: true });
     }
 
@@ -276,7 +276,7 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (orderErr) return json({ error: orderErr.message }, 400);
+      if (orderErr) return json({ error: sanitizeDbError(orderErr) }, 400);
 
       // Log initial status
       await adminClient.from("order_history").insert({
@@ -306,7 +306,7 @@ serve(async (req) => {
       if (search) query = query.or(`display_id.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`);
 
       const { data: orders, count, error } = await query;
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       return json({ orders, total: count, page, limit });
     }
@@ -364,7 +364,7 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -432,7 +432,7 @@ serve(async (req) => {
         .from("orders")
         .update({ status: newStatus })
         .eq("id", orderId);
-      if (updateErr) return json({ error: updateErr.message }, 400);
+      if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
 
       // Log history
       await adminClient.from("order_history").insert({
@@ -502,7 +502,7 @@ serve(async (req) => {
         .select()
         .single();
 
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(note);
     }
 
@@ -676,7 +676,7 @@ serve(async (req) => {
         .from("products")
         .select("*")
         .order("created_at", { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -700,7 +700,7 @@ serve(async (req) => {
         })
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -735,7 +735,7 @@ serve(async (req) => {
         .eq("id", productId)
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -748,7 +748,7 @@ serve(async (req) => {
         .eq("product_id", productId)
         .order("created_at", { ascending: false })
         .limit(50);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -762,7 +762,7 @@ serve(async (req) => {
         .from("prediction_lists")
         .select("*")
         .order("uploaded_at", { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -785,7 +785,7 @@ serve(async (req) => {
         })
         .select()
         .single();
-      if (listErr) return json({ error: listErr.message }, 400);
+      if (listErr) return json({ error: sanitizeDbError(listErr) }, 400);
 
       // Insert leads
       const leads = entries.map((e: any) => ({
@@ -798,7 +798,7 @@ serve(async (req) => {
       }));
 
       const { error: leadsErr } = await adminClient.from("prediction_leads").insert(leads);
-      if (leadsErr) return json({ error: leadsErr.message }, 400);
+      if (leadsErr) return json({ error: sanitizeDbError(leadsErr) }, 400);
 
       return json(list);
     }
@@ -844,7 +844,7 @@ serve(async (req) => {
         })
         .in("id", lead_ids)
         .eq("list_id", listId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Update assigned count
       const { count } = await adminClient
@@ -868,7 +868,7 @@ serve(async (req) => {
         .select("*, prediction_lists(name)")
         .eq("assigned_agent_id", user.id)
         .order("created_at", { ascending: false });
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -891,7 +891,7 @@ serve(async (req) => {
         .from("prediction_leads")
         .update({ assigned_agent_id: null, assigned_agent_name: null })
         .in("id", lead_ids);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Update assigned_count for affected lists
       const affectedListIds = [...new Set((leadsToUnassign || []).map((l: any) => l.list_id))];
@@ -929,7 +929,7 @@ serve(async (req) => {
         .eq("id", leadId)
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -943,7 +943,7 @@ serve(async (req) => {
         _phone: phone,
         _exclude_order_id: exclude_order_id || null,
       });
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -1055,7 +1055,7 @@ serve(async (req) => {
         .from("call_scripts")
         .select("*")
         .order("context_type");
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data || []);
     }
 
@@ -1099,7 +1099,7 @@ serve(async (req) => {
           .select()
           .single());
       }
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -1122,7 +1122,7 @@ serve(async (req) => {
         })
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Auto-update prediction lead status based on outcome
       if (context_type === "prediction_lead") {
@@ -1171,7 +1171,7 @@ serve(async (req) => {
 
       query = query.range((page - 1) * limit, page * limit - 1);
       const { data: logs, count, error: logsErr } = await query;
-      if (logsErr) return json({ error: logsErr.message }, 400);
+      if (logsErr) return json({ error: sanitizeDbError(logsErr) }, 400);
 
       // Enrich with agent names, customer info
       const agentIds = [...new Set((logs || []).map((l: any) => l.agent_id))];
@@ -1236,7 +1236,7 @@ serve(async (req) => {
         .eq("context_id", contextId)
         .order("created_at", { ascending: false })
         .limit(20);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -1273,7 +1273,7 @@ serve(async (req) => {
           .insert({ name: name.trim(), date: d, start_time, end_time, created_by: user.id })
           .select()
           .single();
-        if (shiftErr) return json({ error: shiftErr.message }, 400);
+        if (shiftErr) return json({ error: sanitizeDbError(shiftErr) }, 400);
 
         if (agent_ids?.length) {
           const assignments = agent_ids.map((aid: string) => ({ shift_id: shift.id, user_id: aid }));
@@ -1296,7 +1296,7 @@ serve(async (req) => {
       if (dateTo) query = query.lte("date", dateTo);
 
       const { data: shifts, error } = await query;
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Get all assignments
       const shiftIds = (shifts || []).map((s: any) => s.id);
@@ -1349,7 +1349,7 @@ serve(async (req) => {
 
       if (Object.keys(shiftUpdates).length > 0) {
         const { error } = await adminClient.from("shifts").update(shiftUpdates).eq("id", shiftId);
-        if (error) return json({ error: error.message }, 400);
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
       }
 
       if (agent_ids !== undefined) {
@@ -1368,7 +1368,7 @@ serve(async (req) => {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const shiftId = segments[1];
       const { error } = await adminClient.from("shifts").delete().eq("id", shiftId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
     }
 
@@ -1450,7 +1450,7 @@ serve(async (req) => {
         query = query.eq("user_id", user.id);
       }
       const { data, error } = await query;
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Enrich with user names
       const userIds = [...new Set((data || []).map((d: any) => d.user_id))];
@@ -1493,7 +1493,7 @@ serve(async (req) => {
           .eq("id", existing.id)
           .select()
           .single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
         result = data;
       } else {
         const { data, error } = await adminClient
@@ -1501,7 +1501,7 @@ serve(async (req) => {
           .insert({ user_id: targetUserId, product_id, quantity: quantity || 1, assigned_by: user.id, notes: itemNotes || "" })
           .select()
           .single();
-        if (error) return json({ error: error.message }, 400);
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
         result = data;
       }
       return json(result);
@@ -1523,7 +1523,7 @@ serve(async (req) => {
         .eq("id", itemId)
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
     }
 
@@ -1532,7 +1532,7 @@ serve(async (req) => {
       if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const itemId = segments[2];
       const { error } = await adminClient.from("user_warehouse").delete().eq("id", itemId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
     }
 
@@ -1669,7 +1669,7 @@ serve(async (req) => {
       if (search) query = query.ilike("campaign_name", `%${search}%`);
 
       const { data, error } = await query;
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data || []);
     }
 
@@ -1685,7 +1685,7 @@ serve(async (req) => {
         .insert({ campaign_name, platform: platform || "meta", budget: budget || 0, notes: notes || "" })
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Audit log
       await adminClient.from("ads_audit_logs").insert({
@@ -1717,7 +1717,7 @@ serve(async (req) => {
         .eq("id", campaignId)
         .select()
         .single();
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
       // Audit log
       await adminClient.from("ads_audit_logs").insert({
@@ -1744,7 +1744,7 @@ serve(async (req) => {
       });
 
       const { error } = await adminClient.from("ads_campaigns").delete().eq("id", campaignId);
-      if (error) return json({ error: error.message }, 400);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
     }
 
@@ -1754,6 +1754,16 @@ serve(async (req) => {
     return json({ error: "Internal server error" }, 500);
   }
 });
+
+function sanitizeDbError(err: any): string {
+  if (err?.code === '23505') return 'Duplicate entry';
+  if (err?.code === '23503') return 'Referenced record not found';
+  if (err?.code === '23502') return 'Required field missing';
+  if (err?.code === '42P01') return 'Operation failed';
+  if (err?.code === '42703') return 'Operation failed';
+  console.error('Database error:', JSON.stringify(err));
+  return 'Operation failed';
+}
 
 function json(data: any, status = 200) {
   return new Response(JSON.stringify(data), {
