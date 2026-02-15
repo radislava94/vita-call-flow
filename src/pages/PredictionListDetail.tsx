@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
 import { PREDICTION_LEAD_LABELS, PREDICTION_LEAD_COLORS } from '@/types';
-import { UserPlus, ArrowLeft, CheckSquare, Loader2 } from 'lucide-react';
+import { UserPlus, UserMinus, ArrowLeft, CheckSquare, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Dialog,
@@ -14,7 +14,8 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { apiGetPredictionList, apiGetAgents, apiAssignLeads } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { apiGetPredictionList, apiGetAgents, apiAssignLeads, apiUnassignLeads } from '@/lib/api';
 
 interface LeadEntry {
   id: string;
@@ -36,6 +37,8 @@ interface Agent {
 export default function PredictionListDetail() {
   const { id } = useParams();
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin;
 
   const [list, setList] = useState<any>(null);
   const [entries, setEntries] = useState<LeadEntry[]>([]);
@@ -43,6 +46,9 @@ export default function PredictionListDetail() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [unassigning, setUnassigning] = useState(false);
+  // Mode: 'unassigned' selects unassigned leads for assign, 'assigned' selects assigned leads for unassign/reassign
+  const [selectionMode, setSelectionMode] = useState<'unassigned' | 'assigned'>('unassigned');
 
   const fetchList = () => {
     if (!id) return;
@@ -90,12 +96,19 @@ export default function PredictionListDetail() {
   };
 
   const toggleAll = () => {
-    const unassigned = entries.filter(e => !e.assigned_agent_id);
-    if (selected.size === unassigned.length) {
+    const pool = selectionMode === 'unassigned'
+      ? entries.filter(e => !e.assigned_agent_id)
+      : entries.filter(e => !!e.assigned_agent_id);
+    if (selected.size === pool.length && pool.length > 0) {
       setSelected(new Set());
     } else {
-      setSelected(new Set(unassigned.map(e => e.id)));
+      setSelected(new Set(pool.map(e => e.id)));
     }
+  };
+
+  const switchMode = (mode: 'unassigned' | 'assigned') => {
+    setSelectionMode(mode);
+    setSelected(new Set());
   };
 
   const handleBulkAssign = async (agentId: string) => {
@@ -110,7 +123,27 @@ export default function PredictionListDetail() {
     }
   };
 
+  const handleBulkUnassign = async () => {
+    setUnassigning(true);
+    try {
+      await apiUnassignLeads(Array.from(selected));
+      toast({ title: `${selected.size} lead(s) unassigned` });
+      setSelected(new Set());
+      fetchList();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setUnassigning(false);
+    }
+  };
+
   const unassignedCount = entries.filter(e => !e.assigned_agent_id).length;
+  const assignedCount = entries.filter(e => !!e.assigned_agent_id).length;
+
+  const isSelectable = (entry: LeadEntry) => {
+    if (selectionMode === 'unassigned') return !entry.assigned_agent_id;
+    return !!entry.assigned_agent_id;
+  };
 
   return (
     <AppLayout title={list.name}>
@@ -126,11 +159,47 @@ export default function PredictionListDetail() {
           <span>{list.assigned_count} assigned</span>
           <span>{unassignedCount} unassigned</span>
         </div>
-        {selected.size > 0 && (
-          <Button onClick={openAssign} className="gap-2">
-            <UserPlus className="h-4 w-4" /> Assign {selected.size} Selected
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Mode toggle for admins */}
+          {isAdmin && (
+            <div className="flex rounded-lg border overflow-hidden">
+              <button
+                onClick={() => switchMode('unassigned')}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-medium transition-colors',
+                  selectionMode === 'unassigned' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted'
+                )}
+              >
+                Select Unassigned ({unassignedCount})
+              </button>
+              <button
+                onClick={() => switchMode('assigned')}
+                className={cn(
+                  'px-3 py-1.5 text-xs font-medium transition-colors',
+                  selectionMode === 'assigned' ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted'
+                )}
+              >
+                Select Assigned ({assignedCount})
+              </button>
+            </div>
+          )}
+
+          {selected.size > 0 && selectionMode === 'unassigned' && (
+            <Button onClick={openAssign} className="gap-2">
+              <UserPlus className="h-4 w-4" /> Assign {selected.size} Selected
+            </Button>
+          )}
+          {selected.size > 0 && selectionMode === 'assigned' && isAdmin && (
+            <>
+              <Button variant="destructive" onClick={handleBulkUnassign} disabled={unassigning} className="gap-2">
+                <UserMinus className="h-4 w-4" /> Unassign {selected.size} Selected
+              </Button>
+              <Button onClick={openAssign} variant="outline" className="gap-2">
+                <UserPlus className="h-4 w-4" /> Reassign
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
@@ -154,7 +223,7 @@ export default function PredictionListDetail() {
             {entries.map(entry => (
               <tr key={entry.id} className={cn('border-b last:border-0 transition-colors', selected.has(entry.id) ? 'bg-primary/5' : 'hover:bg-muted/30')}>
                 <td className="px-4 py-3">
-                  {!entry.assigned_agent_id ? (
+                  {isSelectable(entry) ? (
                     <input
                       type="checkbox"
                       checked={selected.has(entry.id)}
@@ -192,12 +261,12 @@ export default function PredictionListDetail() {
         </table>
       </div>
 
-      {/* Bulk Assign Dialog */}
+      {/* Bulk Assign/Reassign Dialog */}
       <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Assign to Agent</DialogTitle>
-            <DialogDescription>Select an agent to assign {selected.size} entries to.</DialogDescription>
+            <DialogTitle>{selectionMode === 'assigned' ? 'Reassign to Agent' : 'Assign to Agent'}</DialogTitle>
+            <DialogDescription>Select an agent to {selectionMode === 'assigned' ? 'reassign' : 'assign'} {selected.size} entries to.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             {agents.map(agent => (

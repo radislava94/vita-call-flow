@@ -792,6 +792,44 @@ serve(async (req) => {
       return json(data);
     }
 
+    // POST /api/prediction-leads/unassign (admin: bulk unassign leads)
+    if (req.method === "POST" && path === "prediction-leads/unassign") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { lead_ids } = body;
+      if (!lead_ids || !Array.isArray(lead_ids) || lead_ids.length === 0) {
+        return json({ error: "lead_ids array is required" }, 400);
+      }
+
+      // Get leads to find their list_ids for updating assigned_count
+      const { data: leadsToUnassign } = await adminClient
+        .from("prediction_leads")
+        .select("id, list_id, assigned_agent_name")
+        .in("id", lead_ids);
+
+      const { error } = await adminClient
+        .from("prediction_leads")
+        .update({ assigned_agent_id: null, assigned_agent_name: null })
+        .in("id", lead_ids);
+      if (error) return json({ error: error.message }, 400);
+
+      // Update assigned_count for affected lists
+      const affectedListIds = [...new Set((leadsToUnassign || []).map((l: any) => l.list_id))];
+      for (const listId of affectedListIds) {
+        const { count } = await adminClient
+          .from("prediction_leads")
+          .select("id", { count: "exact", head: true })
+          .eq("list_id", listId)
+          .not("assigned_agent_id", "is", null);
+        await adminClient
+          .from("prediction_lists")
+          .update({ assigned_count: count || 0 })
+          .eq("id", listId);
+      }
+
+      return json({ success: true, unassigned: lead_ids.length });
+    }
+
     // PATCH /api/prediction-leads/:id (update status/notes/details)
     if (req.method === "PATCH" && segments[0] === "prediction-leads" && segments.length === 2) {
       const leadId = segments[1];
