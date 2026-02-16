@@ -38,7 +38,7 @@ export default function InboundLeadsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('pending');
 
   const { data: leads = [], isLoading } = useQuery<InboundLead[]>({
     queryKey: ['inbound-leads', statusFilter],
@@ -66,15 +66,10 @@ export default function InboundLeadsPage() {
 
   const convertToOrder = async (lead: InboundLead) => {
     try {
-      const order = await apiCreateOrder({
-        product_name: 'From Landing Page',
-        customer_name: lead.name,
-        customer_phone: lead.phone,
-      });
+      // Orders are auto-created on lead ingestion; just navigate to the linked order
       await apiUpdateInboundLead(lead.id, { status: 'converted' });
       queryClient.invalidateQueries({ queryKey: ['inbound-leads'] });
-      toast({ title: 'Order created' });
-      navigate(`/orders/${order.id}`);
+      toast({ title: 'Lead converted' });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     }
