@@ -395,7 +395,7 @@ export default function OrderDetails() {
                     <p className="mt-1 text-xs text-muted-foreground">Available stock: {selectedProduct.stock_quantity}</p>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">Quantity</p>
                     <input
@@ -410,6 +410,17 @@ export default function OrderDetails() {
                       )}
                     />
                     {fieldErrors.quantity && <p className="mt-1 text-xs text-destructive">{fieldErrors.quantity}</p>}
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Price per Unit</p>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={orderPrice}
+                      onChange={(e) => setOrderPrice(Math.max(0, parseFloat(e.target.value) || 0))}
+                      className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">Total Price</p>
@@ -431,10 +442,14 @@ export default function OrderDetails() {
                     {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 px-1">
+                <div className="grid grid-cols-3 gap-4 px-1">
                   <div>
                     <p className="text-xs text-muted-foreground">Quantity</p>
                     <p className="font-semibold">{order.quantity || 1}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Price per Unit</p>
+                    <p className="font-semibold">{Number(order.price).toFixed(2)}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Total Price</p>
