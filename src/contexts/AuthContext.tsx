@@ -2,17 +2,20 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { supabase } from '@/integrations/supabase/client';
 import type { Session, User } from '@supabase/supabase-js';
 
-type AppRole = 'admin' | 'agent' | 'warehouse' | 'ads_admin';
+export type AppRole = 'admin' | 'manager' | 'pending_agent' | 'prediction_agent' | 'warehouse' | 'ads_admin' | 'agent';
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   email: string;
   full_name: string;
   roles: AppRole[];
   isAdmin: boolean;
-  isAgent: boolean;
+  isManager: boolean;
+  isPendingAgent: boolean;
+  isPredictionAgent: boolean;
   isWarehouse: boolean;
   isAdsAdmin: boolean;
+  isAgent: boolean;
   /** Primary role for display purposes */
   role: AppRole;
 }
@@ -27,6 +30,17 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function determinePrimaryRole(roles: AppRole[]): AppRole {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('manager')) return 'manager';
+  if (roles.includes('prediction_agent')) return 'prediction_agent';
+  if (roles.includes('pending_agent')) return 'pending_agent';
+  if (roles.includes('agent')) return 'agent';
+  if (roles.includes('warehouse')) return 'warehouse';
+  if (roles.includes('ads_admin')) return 'ads_admin';
+  return 'pending_agent';
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -40,30 +54,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', supabaseUser.id)
         .single();
 
-      // Fetch ALL roles for this user (supports dual-role)
       const { data: roleRows } = await supabase
         .from('user_roles')
         .select('role')
         .eq('user_id', supabaseUser.id);
 
       const roles: AppRole[] = (roleRows || []).map(r => r.role as AppRole);
-      if (roles.length === 0) roles.push('agent'); // fallback
-
-      const isAdmin = roles.includes('admin');
-      const isAgent = roles.includes('agent');
-      const isWarehouse = roles.includes('warehouse');
-      const isAdsAdmin = roles.includes('ads_admin');
+      if (roles.length === 0) roles.push('pending_agent');
 
       setUser({
         id: supabaseUser.id,
         email: profile?.email || supabaseUser.email || '',
         full_name: profile?.full_name || supabaseUser.email || '',
         roles,
-        isAdmin,
-        isAgent,
-        isWarehouse,
-        isAdsAdmin,
-        role: isAdmin ? 'admin' : isAgent ? 'agent' : isAdsAdmin ? 'ads_admin' : 'warehouse',
+        isAdmin: roles.includes('admin'),
+        isManager: roles.includes('manager'),
+        isPendingAgent: roles.includes('pending_agent'),
+        isPredictionAgent: roles.includes('prediction_agent'),
+        isAgent: roles.includes('agent') || roles.includes('pending_agent') || roles.includes('prediction_agent'),
+        isWarehouse: roles.includes('warehouse'),
+        isAdsAdmin: roles.includes('ads_admin'),
+        role: determinePrimaryRole(roles),
       });
     } catch {
       setUser(null);

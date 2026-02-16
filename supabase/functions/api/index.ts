@@ -10,7 +10,7 @@ const createUserSchema = z.object({
   email: z.string().trim().email("Invalid email format").max(255),
   password: z.string().min(8, "Password must be at least 8 characters").max(128),
   full_name: z.string().trim().min(1, "Name is required").max(200),
-  roles: z.array(z.enum(["admin", "agent", "warehouse", "ads_admin"])).min(1).optional(),
+  roles: z.array(z.enum(["admin", "manager", "agent", "pending_agent", "prediction_agent", "warehouse", "ads_admin"])).min(1).optional(),
   role: z.string().optional(),
 });
 
@@ -232,9 +232,11 @@ serve(async (req) => {
       .eq("user_id", user.id);
     const roles = (roleRows || []).map((r: any) => r.role);
     const isAdmin = roles.includes("admin");
-    const isAgent = roles.includes("agent");
+    const isManager = roles.includes("manager");
+    const isAgent = roles.includes("agent") || roles.includes("pending_agent") || roles.includes("prediction_agent");
     const isWarehouse = roles.includes("warehouse");
     const isAdsAdmin = roles.includes("ads_admin");
+    const isAdminOrManager = isAdmin || isManager;
     const isDualRole = isAdmin && isAgent;
 
     // ============================================================
@@ -243,7 +245,7 @@ serve(async (req) => {
 
     // POST /api/users/create (admin only)
     if (req.method === "POST" && path === "users/create") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(createUserSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { email, password, full_name } = body;
@@ -252,9 +254,16 @@ serve(async (req) => {
       if (rolesToAssign.length === 0) {
         return json({ error: "At least one role is required" }, 400);
       }
-      const validRoles = ["admin", "agent", "warehouse", "ads_admin"];
+      const validRoles = ["admin", "manager", "agent", "pending_agent", "prediction_agent", "warehouse", "ads_admin"];
       if (rolesToAssign.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
+      }
+      // Managers can only create pending_agent and prediction_agent
+      if (isManager && !isAdmin) {
+        const allowedForManager = ["pending_agent", "prediction_agent"];
+        if (rolesToAssign.some((r: string) => !allowedForManager.includes(r))) {
+          return json({ error: "Managers can only create Pending Agent or Prediction Agent users" }, 400);
+        }
       }
 
       const { data: newUser, error: createErr } = await adminClient.auth.admin.createUser({
@@ -275,7 +284,7 @@ serve(async (req) => {
 
     // PUT /api/users/:id/roles (admin only - set roles array)
     if (req.method === "PUT" && segments[0] === "users" && segments[2] === "roles") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
       const body = await req.json();
       const { roles: newRoles } = body;
@@ -283,9 +292,16 @@ serve(async (req) => {
       if (!newRoles || !Array.isArray(newRoles) || newRoles.length === 0) {
         return json({ error: "At least one role is required" }, 400);
       }
-      const validRoles = ["admin", "agent", "warehouse", "ads_admin"];
+      const validRoles = ["admin", "manager", "agent", "pending_agent", "prediction_agent", "warehouse", "ads_admin"];
       if (newRoles.some((r: string) => !validRoles.includes(r))) {
         return json({ error: `Roles must be one of: ${validRoles.join(", ")}` }, 400);
+      }
+      // Managers can only set agent-level roles
+      if (isManager && !isAdmin) {
+        const allowedForManager = ["pending_agent", "prediction_agent"];
+        if (newRoles.some((r: string) => !allowedForManager.includes(r))) {
+          return json({ error: "Managers can only assign Pending Agent or Prediction Agent roles" }, 400);
+        }
       }
       // Prevent admin from changing own roles
       if (userId === user.id) {
@@ -303,7 +319,7 @@ serve(async (req) => {
 
     // PATCH /api/users/:id/role (legacy - admin only)
     if (req.method === "PATCH" && segments[0] === "users" && segments[2] === "role") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
       const body = await req.json();
       const { role: newRole } = body;
@@ -321,7 +337,7 @@ serve(async (req) => {
 
     // POST /api/users/:id/toggle-active (admin only)
     if (req.method === "POST" && segments[0] === "users" && segments[2] === "toggle-active") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
       // Prevent admin from suspending themselves
       if (userId === user.id) {
@@ -344,7 +360,7 @@ serve(async (req) => {
 
     // DELETE /api/users/:id (admin only)
     if (req.method === "DELETE" && segments[0] === "users" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const userId = segments[1];
       // Prevent admin from deleting themselves
       if (userId === user.id) {
@@ -360,7 +376,7 @@ serve(async (req) => {
 
     // GET /api/users (admin only)
     if (req.method === "GET" && path === "users") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
 
       const { data: users } = await adminClient
         .from("profiles")
@@ -431,7 +447,7 @@ serve(async (req) => {
       const assignableUsers = (allUsers || [])
         .filter((u: any) => {
           const roles = roleMap[u.user_id] || [];
-          return roles.includes("agent") || roles.includes("admin");
+          return roles.includes("agent") || roles.includes("pending_agent") || roles.includes("prediction_agent") || roles.includes("admin");
         })
         .map((u: any) => ({
           ...u,
@@ -443,7 +459,7 @@ serve(async (req) => {
 
     // POST /api/orders (create order)
     if (req.method === "POST" && path === "orders") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(createOrderSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
@@ -501,7 +517,7 @@ serve(async (req) => {
 
     // GET /api/orders/unassigned-pending (admin only - for assigner)
     if (req.method === "GET" && path === "orders/unassigned-pending") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const { data: orders, error } = await adminClient
         .from("orders")
         .select("*")
@@ -514,7 +530,7 @@ serve(async (req) => {
 
     // POST /api/orders/bulk-assign (admin only)
     if (req.method === "POST" && path === "orders/bulk-assign") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const body = await req.json();
       const { order_ids, agent_id } = body;
       if (!order_ids?.length || !agent_id) return json({ error: "order_ids and agent_id required" }, 400);
@@ -548,7 +564,7 @@ serve(async (req) => {
 
     // GET /api/agents/online (admin only - active agents with load info)
     if (req.method === "GET" && path === "agents/online") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
 
       // Get active users with agent or admin role
       const { data: allUsers } = await adminClient
@@ -570,7 +586,7 @@ serve(async (req) => {
 
       const agents = (allUsers || []).filter((u: any) => {
         const roles = roleMap[u.user_id] || [];
-        return roles.includes("agent") || roles.includes("admin");
+        return roles.includes("agent") || roles.includes("pending_agent") || roles.includes("prediction_agent") || roles.includes("admin");
       });
 
       // Get assigned active order counts per agent
@@ -686,7 +702,7 @@ serve(async (req) => {
       // Permission check for non-admins
       const agentAllowed = ["pending", "take", "call_again", "confirmed"];
       const warehouseAllowed = ["confirmed", "shipped", "delivered", "paid"];
-      if (!isAdmin) {
+      if (!isAdminOrManager) {
         if (isWarehouse && warehouseAllowed.includes(newStatus)) {
           // Warehouse users can set confirmed/shipped
         } else if (!agentAllowed.includes(newStatus)) {
@@ -765,7 +781,7 @@ serve(async (req) => {
 
     // POST /api/orders/:id/assign
     if (req.method === "POST" && segments[0] === "orders" && segments[2] === "assign") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const orderId = segments[1];
       const body = await req.json();
       const { agent_id } = body;
@@ -914,7 +930,7 @@ serve(async (req) => {
         return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts, orders_from_standard, orders_from_leads };
       }
 
-      if (!isAdmin) {
+      if (!isAdminOrManager) {
         // Pure agent: personal stats only
         const metrics = await computeMetrics(user.id);
         return json({ ...metrics, period, from: fromDate, to: toDate });
@@ -999,7 +1015,7 @@ serve(async (req) => {
 
     // POST /api/products
     if (req.method === "POST" && path === "products") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(createProductSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
@@ -1023,7 +1039,7 @@ serve(async (req) => {
 
     // PATCH /api/products/:id
     if (req.method === "PATCH" && segments[0] === "products" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const productId = segments[1];
       const body = await req.json();
 
@@ -1085,7 +1101,7 @@ serve(async (req) => {
 
     // POST /api/prediction-lists (upload)
     if (req.method === "POST" && path === "prediction-lists") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(predictionListSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { name, entries } = body;
@@ -1139,7 +1155,7 @@ serve(async (req) => {
 
     // POST /api/prediction-lists/:id/assign (bulk assign)
     if (req.method === "POST" && segments[0] === "prediction-lists" && segments[2] === "assign") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const listId = segments[1];
       const body = await req.json();
       const { agent_id, lead_ids } = body;
@@ -1189,7 +1205,7 @@ serve(async (req) => {
 
     // POST /api/prediction-leads/unassign (admin: bulk unassign leads)
     if (req.method === "POST" && path === "prediction-leads/unassign") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const body = await req.json();
       const { lead_ids } = body;
       if (!lead_ids || !Array.isArray(lead_ids) || lead_ids.length === 0) {
@@ -1332,7 +1348,7 @@ serve(async (req) => {
 
     // GET /api/agent-performance (admin only)
     if (req.method === "GET" && path === "agent-performance") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
 
@@ -1456,7 +1472,7 @@ serve(async (req) => {
 
     // PATCH /api/call-scripts/:contextType (admin only - upsert)
     if (req.method === "PATCH" && segments[0] === "call-scripts" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const contextType = segments[1];
       const body = await req.json();
 
@@ -1539,7 +1555,7 @@ serve(async (req) => {
       let query = adminClient.from("call_logs").select("*", { count: "exact" }).order("created_at", { ascending: false });
 
       // Agent filter: non-admin can only see own
-      if (!isAdmin) {
+      if (!isAdminOrManager) {
         query = query.eq("agent_id", user.id);
       } else if (agentFilter) {
         query = query.eq("agent_id", agentFilter);
@@ -1627,7 +1643,7 @@ serve(async (req) => {
 
     // POST /api/shifts (admin only)
     if (req.method === "POST" && path === "shifts") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(createShiftSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { name, date, start_time, end_time, agent_ids } = body;
@@ -1721,7 +1737,7 @@ serve(async (req) => {
 
     // PATCH /api/shifts/:id (admin only)
     if (req.method === "PATCH" && segments[0] === "shifts" && segments.length === 2 && segments[1] !== "my") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const shiftId = segments[1];
       const body = await req.json();
       const { agent_ids, ...shiftUpdates } = body;
@@ -1744,7 +1760,7 @@ serve(async (req) => {
 
     // DELETE /api/shifts/:id (admin only)
     if (req.method === "DELETE" && segments[0] === "shifts" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const shiftId = segments[1];
       const { error } = await adminClient.from("shifts").delete().eq("id", shiftId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
@@ -2136,7 +2152,7 @@ serve(async (req) => {
 
     // GET /api/inbound-leads (admin only)
     if (req.method === "GET" && path === "inbound-leads") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const status = url.searchParams.get("status");
       let query = adminClient
         .from("inbound_leads")
@@ -2151,7 +2167,7 @@ serve(async (req) => {
 
     // PATCH /api/inbound-leads/:id (admin only)
     if (req.method === "PATCH" && segments[0] === "inbound-leads" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const leadId = segments[1];
       const body = await req.json();
       const allowed: Record<string, boolean> = { status: true, name: true, phone: true, source: true };
@@ -2179,7 +2195,7 @@ serve(async (req) => {
 
     // DELETE /api/inbound-leads/:id (admin only)
     if (req.method === "DELETE" && segments[0] === "inbound-leads" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const leadId = segments[1];
       const { error } = await adminClient.from("inbound_leads").delete().eq("id", leadId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
@@ -2190,7 +2206,7 @@ serve(async (req) => {
 
     // GET /api/webhooks
     if (req.method === "GET" && path === "webhooks") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const { data, error } = await adminClient
         .from("webhooks")
         .select("*")
@@ -2201,7 +2217,7 @@ serve(async (req) => {
 
     // POST /api/webhooks
     if (req.method === "POST" && path === "webhooks") {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const body = await req.json();
       const productName = (body.product_name || "").trim();
       if (!productName || productName.length > 200) return json({ error: "Product name is required (max 200 chars)" }, 400);
@@ -2224,7 +2240,7 @@ serve(async (req) => {
 
     // PATCH /api/webhooks/:id
     if (req.method === "PATCH" && segments[0] === "webhooks" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const webhookId = segments[1];
       const body = await req.json();
       const updates: Record<string, any> = {};
@@ -2245,7 +2261,7 @@ serve(async (req) => {
 
     // DELETE /api/webhooks/:id
     if (req.method === "DELETE" && segments[0] === "webhooks" && segments.length === 2) {
-      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const webhookId = segments[1];
       const { error } = await adminClient.from("webhooks").delete().eq("id", webhookId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
