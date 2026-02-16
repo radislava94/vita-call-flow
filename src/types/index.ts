@@ -96,7 +96,7 @@ export const AGENT_ALLOWED_STATUSES: OrderStatus[] = ['pending', 'take', 'call_a
 export const ALL_STATUSES: OrderStatus[] = ['pending', 'take', 'call_again', 'confirmed', 'shipped', 'delivered', 'returned', 'paid', 'trashed', 'cancelled'];
 
 /** Statuses where product/price/quantity editing is locked */
-export const LOCKED_STATUSES: OrderStatus[] = ['shipped', 'delivered', 'returned', 'paid'];
+export const LOCKED_STATUSES: OrderStatus[] = ['shipped', 'delivered', 'paid'];
 
 /** Returns true if product, price, and quantity fields can be edited for this order status */
 export function canEditOrder(status: OrderStatus | string): boolean {
