@@ -1944,7 +1944,26 @@ serve(async (req) => {
         if (body.quantity !== undefined) leadUpdates.quantity = body.quantity;
         if (body.price !== undefined) leadUpdates.price = body.price;
         if (body.notes !== undefined) leadUpdates.notes = body.notes;
-        if (body.status !== undefined) leadUpdates.status = body.status;
+
+        // Map order/warehouse statuses to valid lead_status enum values
+        if (body.status !== undefined) {
+          const validLeadStatuses = ["not_contacted", "no_answer", "interested", "not_interested", "confirmed"];
+          const orderToLeadStatusMap: Record<string, string> = {
+            pending: "not_contacted",
+            take: "interested",
+            call_again: "no_answer",
+            confirmed: "confirmed",
+            shipped: "confirmed",
+            delivered: "confirmed",
+            returned: "not_interested",
+            paid: "confirmed",
+            trashed: "not_interested",
+            cancelled: "not_interested",
+          };
+          leadUpdates.status = validLeadStatuses.includes(body.status)
+            ? body.status
+            : (orderToLeadStatusMap[body.status] || "not_contacted");
+        }
 
         const { data: updatedLead, error } = await adminClient
           .from("prediction_leads")
