@@ -19,7 +19,10 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await signIn(email, password);
+      // Support plain usernames: auto-append @vitacall.app if no @ present
+      const loginEmail = email.includes('@') ? email : `${email}@vitacall.app`;
+      await signIn(loginEmail, password);
+      // Navigate happens via ProtectedRoute - just go to root, it will redirect agents
       navigate('/', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');
