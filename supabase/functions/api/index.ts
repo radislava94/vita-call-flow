@@ -695,6 +695,18 @@ serve(async (req) => {
       let body;
       try { body = parseBody(updateCustomerSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
 
+      // Check if order is in a locked status for product/price edits
+      const hasProductFields = body.price !== undefined || body.quantity !== undefined || body.product_id !== undefined || body.product_name !== undefined;
+      if (hasProductFields) {
+        const { data: currentOrder } = await supabase.from("orders").select("status").eq("id", orderId).single();
+        if (currentOrder) {
+          const lockedStatuses = ["shipped", "delivered", "paid"];
+          if (lockedStatuses.includes(currentOrder.status)) {
+            return json({ error: "Product and price locked because order is Shipped, Delivered, or Paid." }, 400);
+          }
+        }
+      }
+
       const updates: Record<string, any> = {};
       if (body.customer_name !== undefined) updates.customer_name = body.customer_name;
       if (body.customer_phone !== undefined) updates.customer_phone = body.customer_phone;
@@ -752,9 +764,9 @@ serve(async (req) => {
         }
       }
 
-      // Stock check on confirm
+      // Stock deduction on SHIPPED (not confirmed)
       const orderQty = order.quantity || 1;
-      if (newStatus === "confirmed" && order.status !== "confirmed" && order.product_id) {
+      if (newStatus === "shipped" && order.status !== "shipped" && order.product_id) {
         const { data: product } = await adminClient
           .from("products")
           .select("stock_quantity, name")
@@ -774,7 +786,7 @@ serve(async (req) => {
             reason: "order_deduction",
             movement_type: "order_deduction",
             user_id: user.id,
-            notes: `Order ${order.display_id} confirmed`,
+            notes: `Order ${order.display_id} shipped`,
           });
         }
       }
