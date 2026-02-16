@@ -26,6 +26,7 @@ export default function OrderDetails() {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [editingProduct, setEditingProduct] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerCity, setCustomerCity] = useState('');
@@ -139,10 +140,6 @@ export default function OrderDetails() {
         customer_address: customerAddress.trim(),
         postal_code: postalCode.trim(),
         birthday: birthday ? format(birthday, 'yyyy-MM-dd') : null,
-        product_id: selectedProductId,
-        product_name: selectedProductName.trim(),
-        quantity: orderQuantity,
-        price: orderPrice,
       });
       setEditing(false);
       toast({ title: 'Order info saved' });
@@ -161,11 +158,46 @@ export default function OrderDetails() {
     setCustomerAddress(order.customer_address || '');
     setPostalCode(order.postal_code || '');
     setBirthday(order.birthday ? parse(order.birthday, 'yyyy-MM-dd', new Date()) : undefined);
+    setEditing(false);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!selectedProductName.trim()) {
+      toast({ title: 'Validation error', description: 'Product is required.', variant: 'destructive' });
+      return;
+    }
+    if (orderQuantity < 1) {
+      toast({ title: 'Validation error', description: 'Quantity must be at least 1.', variant: 'destructive' });
+      return;
+    }
+    if (orderPrice < 0) {
+      toast({ title: 'Validation error', description: 'Price must be 0 or more.', variant: 'destructive' });
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiUpdateCustomer(order.id, {
+        product_id: selectedProductId,
+        product_name: selectedProductName.trim(),
+        quantity: orderQuantity,
+        price: orderPrice,
+      });
+      setEditingProduct(false);
+      toast({ title: 'Product & pricing saved' });
+      loadOrder();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelProductEdit = () => {
     setSelectedProductId(order.product_id || null);
     setSelectedProductName(order.product_name || '');
     setOrderQuantity(order.quantity || 1);
     setOrderPrice(Number(order.price) || 0);
-    setEditing(false);
+    setEditingProduct(false);
   };
 
   const handleStatusUpdate = async () => {
@@ -325,10 +357,20 @@ export default function OrderDetails() {
 
           {/* Product & Pricing */}
           <div className="rounded-xl border bg-card p-6 shadow-sm">
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
-              <Package className="h-5 w-5 text-primary" /> Product & Pricing
-            </h2>
-            {editing ? (
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-card-foreground">
+                <Package className="h-5 w-5 text-primary" /> Product & Pricing
+              </h2>
+              {!editingProduct && isEditable && (
+                <Button variant="outline" size="sm" onClick={() => setEditingProduct(true)} className="gap-1.5">
+                  <Pencil className="h-3.5 w-3.5" /> Edit
+                </Button>
+              )}
+              {!editingProduct && !isEditable && (
+                <p className="text-xs text-muted-foreground italic">Locked — order is Shipped, Delivered, or Paid.</p>
+              )}
+            </div>
+            {editingProduct ? (
               <div className="space-y-4">
                 <div>
                   <p className="text-xs font-medium text-muted-foreground mb-1.5">Product</p>
@@ -384,6 +426,12 @@ export default function OrderDetails() {
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">Total</p>
                     <p className="h-9 flex items-center text-lg font-bold text-primary">{totalAmount.toFixed(2)}</p>
                   </div>
+                </div>
+                <div className="mt-4 flex items-center gap-2 border-t pt-4">
+                  <Button onClick={handleSaveProduct} disabled={saving} className="gap-1.5">
+                    <Save className="h-4 w-4" /> Save Changes
+                  </Button>
+                  <Button variant="outline" onClick={handleCancelProductEdit}>Cancel</Button>
                 </div>
               </div>
             ) : (
