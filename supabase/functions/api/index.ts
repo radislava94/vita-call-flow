@@ -1476,11 +1476,22 @@ serve(async (req) => {
       if (to) ordersQuery = ordersQuery.lte("created_at", to);
       const { data: shippedOrders } = await ordersQuery;
 
+      // Also get shipped orders for current month (regardless of date filter)
+      const nowDate = new Date();
+      const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).toISOString();
+      const monthEnd = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString();
+      const { data: thisMonthOrders } = await adminClient.from("orders")
+        .select("id, assigned_agent_id")
+        .eq("status", "shipped")
+        .gte("created_at", monthStart)
+        .lt("created_at", monthEnd);
+
       const results = agentProfiles.map((agent: any) => {
         const agentOrders = (shippedOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
         const totalShipped = agentOrders.length;
         const totalEarned = agentOrders.reduce((sum: number, o: any) => sum + (Number(o.price) * (Number(o.quantity) || 1)), 0);
         const avgOrderValue = totalShipped > 0 ? Math.round((totalEarned / totalShipped) * 100) / 100 : 0;
+        const shippedThisMonth = (thisMonthOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id).length;
 
         return {
           user_id: agent.user_id,
@@ -1489,6 +1500,7 @@ serve(async (req) => {
           total_shipped: totalShipped,
           total_earned: totalEarned,
           avg_order_value: avgOrderValue,
+          shipped_this_month: shippedThisMonth,
         };
       });
 

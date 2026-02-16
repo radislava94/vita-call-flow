@@ -33,6 +33,7 @@ interface AgentPerf {
   total_shipped: number;
   total_earned: number;
   avg_order_value: number;
+  shipped_this_month: number;
 }
 
 type FilterPreset = 'today' | 'week' | 'month' | 'custom';
@@ -47,8 +48,8 @@ function getDateRange(preset: FilterPreset): { from: string; to: string } | null
 }
 
 function exportCSV(data: AgentPerf[]) {
-  const header = 'Agent Name,Email,Total Shipped,Total Earned,Avg Order Value';
-  const rows = data.map(a => `"${a.full_name}","${a.email}",${a.total_shipped},${a.total_earned.toFixed(2)},${a.avg_order_value.toFixed(2)}`);
+  const header = 'Agent Name,Email,Total Shipped,Total Earned,Avg Order Value,Shipped This Month';
+  const rows = data.map(a => `"${a.full_name}","${a.email}",${a.total_shipped},${a.total_earned.toFixed(2)},${a.avg_order_value.toFixed(2)},${a.shipped_this_month}`);
   const csv = [header, ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -152,6 +153,7 @@ export default function AgentPerformancePage() {
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total Shipped</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total Earned</th>
                   <th className="text-right px-4 py-3 font-medium text-muted-foreground">Avg Order Value</th>
+                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Shipped This Month</th>
                 </tr>
               </thead>
               <tbody>
@@ -172,6 +174,11 @@ export default function AgentPerformancePage() {
                     <td className="px-4 py-3 text-right font-semibold">{agent.total_shipped}</td>
                     <td className="px-4 py-3 text-right font-semibold text-primary">{agent.total_earned.toFixed(2)}</td>
                     <td className="px-4 py-3 text-right">{agent.avg_order_value.toFixed(2)}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                        {agent.shipped_this_month}
+                      </span>
+                    </td>
                   </tr>
                 ))}
               </tbody>
