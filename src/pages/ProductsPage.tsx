@@ -66,7 +66,7 @@ export default function ProductsPage() {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
 
   const fetchProducts = () => {
     setLoading(true);
@@ -248,7 +248,21 @@ export default function ProductsPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU (auto if empty)" className={inputClass} />
+              <div>
+                <label className="text-xs text-muted-foreground">SKU (auto if empty)</label>
+                <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Category</label>
+                <input value={formCategory} onChange={e => setFormCategory(e.target.value)} placeholder="Category" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Supplier</label>
+              <select value={formSupplierId} onChange={e => setFormSupplierId(e.target.value)} className={inputClass}>
+                <option value="">No supplier</option>
+                {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -286,7 +300,21 @@ export default function ProductsPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU" className={inputClass} />
+              <div>
+                <label className="text-xs text-muted-foreground">SKU</label>
+                <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Category</label>
+                <input value={formCategory} onChange={e => setFormCategory(e.target.value)} placeholder="Category" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Supplier</label>
+              <select value={formSupplierId} onChange={e => setFormSupplierId(e.target.value)} className={inputClass}>
+                <option value="">No supplier</option>
+                {suppliers.map((s: any) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
