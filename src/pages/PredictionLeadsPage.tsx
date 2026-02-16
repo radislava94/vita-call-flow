@@ -46,6 +46,7 @@ export default function PredictionLeadsPage() {
   const { toast } = useToast();
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -60,9 +61,13 @@ export default function PredictionLeadsPage() {
 
   const fetchLeads = () => {
     setLoading(true);
+    setError(null);
     apiGetMyLeads()
-      .then(setLeads)
-      .catch(() => {})
+      .then((data) => setLeads(data || []))
+      .catch((err) => {
+        console.error('Failed to load prediction leads:', err);
+        setError(err.message || 'Failed to load leads');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -127,7 +132,8 @@ export default function PredictionLeadsPage() {
   const updateStatus = async (id: string, status: PredictionLeadStatus) => {
     try {
       await apiUpdateLead(id, { status });
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l));
+      // Refetch from server to get consistent state (order may have been created)
+      fetchLeads();
       toast({ title: 'Status updated' });
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -224,6 +230,17 @@ export default function PredictionLeadsPage() {
       <AppLayout title="Prediction Leads">
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout title="Prediction Leads">
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={fetchLeads}>Retry</Button>
         </div>
       </AppLayout>
     );

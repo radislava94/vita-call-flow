@@ -47,11 +47,17 @@ export default function PredictionListsPage() {
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
 
+  const [error, setError] = useState<string | null>(null);
+
   const fetchLists = () => {
     setLoading(true);
+    setError(null);
     apiGetPredictionLists()
-      .then(setLists)
-      .catch(() => {})
+      .then((data) => setLists(data || []))
+      .catch((err) => {
+        console.error('Failed to load prediction lists:', err);
+        setError(err.message || 'Failed to load lists');
+      })
       .finally(() => setLoading(false));
   };
 
@@ -151,6 +157,11 @@ export default function PredictionListsPage() {
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <p className="text-sm text-destructive">{error}</p>
+            <Button variant="outline" size="sm" onClick={fetchLists}>Retry</Button>
           </div>
         ) : (
         <table className="w-full text-sm">
