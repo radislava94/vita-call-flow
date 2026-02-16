@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AppRole } from '@/contexts/AuthContext';
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -29,60 +30,61 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-// ────── Nav config ──────
-
 interface NavItem {
   title: string;
   path: string;
   icon: React.ElementType;
+  /** Which roles can see this specific item (empty/undefined = inherit from section) */
+  allowedRoles?: AppRole[];
 }
 
 interface NavSection {
   label: string;
   items: NavItem[];
-  /** Which roles can see this section (empty = all) */
-  roles?: ('admin' | 'agent' | 'warehouse' | 'ads_admin')[];
+  /** Which roles can see this section */
+  allowedRoles?: AppRole[];
 }
 
 const sections: NavSection[] = [
   {
     label: '',
+    allowedRoles: ['admin', 'manager'],
     items: [{ title: 'Dashboard', path: '/', icon: LayoutDashboard }],
   },
   {
     label: 'Sales',
-    roles: ['admin', 'agent'],
+    allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'],
     items: [
-      { title: 'Orders', path: '/orders', icon: ShoppingCart },
-      { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox },
-      { title: 'Assigner', path: '/assigner', icon: UserPlus },
-      { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
-      { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
-      { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
+      { title: 'Orders', path: '/orders', icon: ShoppingCart, allowedRoles: ['admin', 'manager'] },
+      { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, allowedRoles: ['admin', 'manager'] },
+      { title: 'Assigner', path: '/assigner', icon: UserPlus, allowedRoles: ['admin', 'manager'] },
+      { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager', 'prediction_agent'] },
+      { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager'] },
     ],
   },
   {
     label: 'Warehouse',
-    roles: ['admin', 'warehouse'],
+    allowedRoles: ['admin', 'manager', 'warehouse'],
     items: [
       { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
     ],
   },
   {
     label: 'Team',
-    roles: ['admin', 'agent'],
+    allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'],
     items: [
-      { title: 'Users', path: '/users', icon: Users },
-      { title: 'Performance', path: '/performance', icon: BarChart3 },
-      { title: 'Shifts Management', path: '/shifts', icon: CalendarDays },
-      { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays },
-      { title: 'Call Scripts', path: '/call-scripts', icon: FileText },
-      { title: 'Call History', path: '/call-history', icon: History },
+      { title: 'Users', path: '/users', icon: Users, allowedRoles: ['admin', 'manager'] },
+      { title: 'Performance', path: '/performance', icon: BarChart3, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Shifts Management', path: '/shifts', icon: CalendarDays, allowedRoles: ['admin', 'manager'] },
+      { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Call Scripts', path: '/call-scripts', icon: FileText, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Call History', path: '/call-history', icon: History, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
     ],
   },
   {
     label: 'Products',
-    roles: ['admin'],
+    allowedRoles: ['admin', 'manager'],
     items: [
       { title: 'Products', path: '/products', icon: Package },
       { title: 'Webhooks', path: '/webhooks', icon: Webhook },
@@ -90,59 +92,33 @@ const sections: NavSection[] = [
   },
   {
     label: 'Ads',
-    roles: ['admin', 'ads_admin'],
+    allowedRoles: ['admin', 'ads_admin'],
     items: [
       { title: 'Ads Panel', path: '/ads', icon: BarChart3 },
     ],
   },
   {
     label: '',
-    roles: ['admin'],
+    allowedRoles: ['admin'],
     items: [
       { title: 'Settings', path: '/settings', icon: Settings },
     ],
   },
 ];
 
-// Filter items by role
-function getVisibleSections(
-  isAdmin: boolean,
-  isAgent: boolean,
-  isWarehouse: boolean,
-  isAdsAdmin: boolean,
-): NavSection[] {
+function getVisibleSections(userRoles: AppRole[]): NavSection[] {
   return sections
     .map((section) => {
-      // If section has no role restriction, show always
-      if (!section.roles) return section;
+      if (!section.allowedRoles) return section;
 
-      // Check if user has any matching role
-      const visible =
-        (isAdmin && section.roles.includes('admin')) ||
-        (isAgent && section.roles.includes('agent')) ||
-        (isWarehouse && section.roles.includes('warehouse')) ||
-        (isAdsAdmin && section.roles.includes('ads_admin'));
-      if (!visible) return null;
+      const sectionVisible = section.allowedRoles.some(r => userRoles.includes(r));
+      if (!sectionVisible) return null;
 
-      // Filter individual items by special rules
-      let items = section.items;
-
-      // "Users" & "Performance" only for admin
-      if (!isAdmin) {
-        items = items.filter(
-          (i) => i.path !== '/users' && i.path !== '/performance' && i.path !== '/shifts' && i.path !== '/inbound-leads' && i.path !== '/assigner',
-        );
-      }
-
-      // "My Shifts" only for agents (or dual-role agents)
-      if (!isAgent) {
-        items = items.filter((i) => i.path !== '/my-shifts');
-      }
-
-      // "Assigned to Me" only for agents
-      if (!isAgent) {
-        items = items.filter((i) => i.path !== '/assigned');
-      }
+      // Filter items by their individual allowedRoles
+      const items = section.items.filter(item => {
+        if (!item.allowedRoles) return true;
+        return item.allowedRoles.some(r => userRoles.includes(r));
+      });
 
       if (items.length === 0) return null;
       return { ...section, items };
@@ -150,32 +126,26 @@ function getVisibleSections(
     .filter(Boolean) as NavSection[];
 }
 
-// ────── Component ──────
-
 export function AppSidebar() {
   const location = useLocation();
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin ?? false;
-  const isAgent = user?.isAgent ?? false;
-  const isWarehouse = user?.isWarehouse ?? false;
-  const isAdsAdmin = user?.isAdsAdmin ?? false;
+  const userRoles: AppRole[] = user?.roles ?? [];
 
   const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const visibleSections = getVisibleSections(isAdmin, isAgent, isWarehouse, isAdsAdmin);
+  const visibleSections = getVisibleSections(userRoles);
 
-  // Initialize open sections (all open by default)
   useEffect(() => {
     const initial: Record<string, boolean> = {};
     visibleSections.forEach((s) => {
       if (s.label) initial[s.label] = true;
     });
     setOpenSections(initial);
-  }, [isAdmin, isAgent, isWarehouse, isAdsAdmin]);
+  }, [user?.roles?.join(',')]);
 
   const toggleSection = (label: string) => {
-    if (collapsed) return; // Don't toggle in collapsed mode
+    if (collapsed) return;
     setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
   };
 
@@ -205,7 +175,6 @@ export function AppSidebar() {
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-1">
         {visibleSections.map((section, idx) => (
           <div key={section.label || idx}>
-            {/* Section label */}
             {section.label && !collapsed && (
               <button
                 onClick={() => toggleSection(section.label)}
@@ -223,12 +192,10 @@ export function AppSidebar() {
               </button>
             )}
 
-            {/* Collapsed section separator */}
             {section.label && collapsed && (
               <div className="mx-auto my-3 h-px w-6 bg-sidebar-border" />
             )}
 
-            {/* Items */}
             <div
               className={cn(
                 'space-y-0.5 overflow-hidden transition-all duration-200 ease-in-out',

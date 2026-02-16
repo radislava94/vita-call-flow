@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
-import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2, Package } from 'lucide-react';
+import { UserPlus, Shield, Headphones, ToggleLeft, ToggleRight, Loader2, Trash2, Package, Crown, UserCheck, Users as UsersIcon } from 'lucide-react';
 import { apiGetUsers, apiCreateUser, apiToggleUserActive, apiSetUserRoles, apiDeleteUser } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AppRole } from '@/contexts/AuthContext';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,13 +15,39 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { supabase } from '@/integrations/supabase/client';
 
-const AVAILABLE_ROLES = ['admin', 'agent', 'warehouse'] as const;
-const ROLE_ICONS: Record<string, any> = { admin: Shield, agent: Headphones, warehouse: Package };
+const ALL_ROLES: AppRole[] = ['admin', 'manager', 'pending_agent', 'prediction_agent', 'warehouse', 'ads_admin'];
+const MANAGER_ALLOWED_ROLES: AppRole[] = ['pending_agent', 'prediction_agent'];
+
+const ROLE_LABELS: Record<string, string> = {
+  admin: 'Admin',
+  manager: 'Manager',
+  agent: 'Agent',
+  pending_agent: 'Pending Agent',
+  prediction_agent: 'Prediction Agent',
+  warehouse: 'Warehouse',
+  ads_admin: 'Ads Admin',
+};
+
+const ROLE_ICONS: Record<string, any> = {
+  admin: Crown,
+  manager: Shield,
+  agent: Headphones,
+  pending_agent: UserCheck,
+  prediction_agent: UsersIcon,
+  warehouse: Package,
+  ads_admin: Shield,
+};
+
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-primary/10 text-primary',
+  manager: 'bg-chart-2/10 text-chart-2',
   agent: 'bg-accent text-accent-foreground',
+  pending_agent: 'bg-chart-3/10 text-chart-3',
+  prediction_agent: 'bg-chart-5/10 text-chart-5',
   warehouse: 'bg-chart-4/10 text-chart-4',
+  ads_admin: 'bg-chart-1/10 text-chart-1',
 };
 
 interface UserRow {
@@ -28,7 +55,7 @@ interface UserRow {
   full_name: string;
   email: string;
   roles: string[];
-  role: string; // legacy
+  role: string;
   is_active: boolean;
   orders_processed: number;
   leads_processed: number;
@@ -41,7 +68,7 @@ export default function UsersPage() {
   const [showModal, setShowModal] = useState(false);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
-  const [formRoles, setFormRoles] = useState<Set<string>>(new Set(['agent']));
+  const [formRoles, setFormRoles] = useState<Set<string>>(new Set(['pending_agent']));
   const [formPassword, setFormPassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
@@ -49,14 +76,19 @@ export default function UsersPage() {
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
 
+  const isAdmin = currentUser?.isAdmin ?? false;
+  const isManager = currentUser?.isManager ?? false;
+
+  // Roles this user can assign
+  const availableRoles = isAdmin ? ALL_ROLES : MANAGER_ALLOWED_ROLES;
+
   const fetchUsers = () => {
     setLoading(true);
     apiGetUsers()
       .then((data) => {
-        // Normalize: ensure roles array exists
         setUsers(data.map((u: any) => ({
           ...u,
-          roles: u.roles || [u.role || 'agent'],
+          roles: u.roles || [u.role || 'pending_agent'],
         })));
       })
       .catch(() => {})
@@ -69,33 +101,12 @@ export default function UsersPage() {
     setFormRoles(prev => {
       const next = new Set(prev);
       if (next.has(role)) {
-        if (next.size > 1) next.delete(role); // must keep at least one
+        if (next.size > 1) next.delete(role);
       } else {
         next.add(role);
       }
       return next;
     });
-  };
-
-  const handleCreate = async () => {
-    if (!formName.trim() || !formEmail.trim() || !formPassword.trim()) {
-      toast({ title: 'Error', description: 'All fields are required', variant: 'destructive' });
-      return;
-    }
-    setCreating(true);
-    try {
-      await apiCreateUser({ full_name: formName, email: formEmail, role: Array.from(formRoles)[0], password: formPassword });
-      // If multiple roles, set them after creation
-      // The create endpoint now supports roles array via the body
-      toast({ title: 'User created' });
-      setShowModal(false);
-      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRoles(new Set(['agent']));
-      fetchUsers();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setCreating(false);
-    }
   };
 
   const handleCreateWithRoles = async () => {
@@ -109,10 +120,14 @@ export default function UsersPage() {
     }
     setCreating(true);
     try {
-      const headers = await getHeadersForCreate();
-      const res = await fetch(`${getApiBase()}/users/create`, {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api/users/create`, {
         method: 'POST',
-        headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || ''}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
         body: JSON.stringify({
           full_name: formName,
           email: formEmail,
@@ -124,7 +139,7 @@ export default function UsersPage() {
       if (!res.ok) throw new Error(data.error || 'Failed to create user');
       toast({ title: 'User created' });
       setShowModal(false);
-      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRoles(new Set(['agent']));
+      setFormName(''); setFormEmail(''); setFormPassword(''); setFormRoles(new Set(['pending_agent']));
       fetchUsers();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -180,6 +195,16 @@ export default function UsersPage() {
 
   const isSelf = (userId: string) => currentUser?.id === userId;
 
+  // Manager can only manage agents they can create (pending_agent, prediction_agent)
+  const canManageUser = (userRoles: string[]) => {
+    if (isAdmin) return true;
+    if (isManager) {
+      // Managers can manage pending_agent and prediction_agent users
+      return userRoles.every(r => MANAGER_ALLOWED_ROLES.includes(r as AppRole));
+    }
+    return false;
+  };
+
   return (
     <AppLayout title="Users">
       <div className="mb-6 flex items-center justify-between">
@@ -224,21 +249,21 @@ export default function UsersPage() {
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  {isSelf(u.user_id) ? (
+                  {isSelf(u.user_id) || !canManageUser(u.roles) ? (
                     <div className="flex flex-wrap gap-1.5">
                       {u.roles.map(r => {
                         const Icon = ROLE_ICONS[r] || Shield;
                         return (
                           <span key={r} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold ${ROLE_COLORS[r] || 'bg-muted text-muted-foreground'}`}>
                             <Icon className="h-3 w-3" />
-                            {r.charAt(0).toUpperCase() + r.slice(1)}
+                            {ROLE_LABELS[r] || r}
                           </span>
                         );
                       })}
                     </div>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {AVAILABLE_ROLES.map(role => {
+                      {availableRoles.map(role => {
                         const hasRole = u.roles.includes(role);
                         const Icon = ROLE_ICONS[role] || Shield;
                         return (
@@ -250,10 +275,10 @@ export default function UsersPage() {
                                 ? `${ROLE_COLORS[role]} border-current`
                                 : 'border-border text-muted-foreground hover:bg-muted'
                             }`}
-                            title={hasRole ? `Remove ${role} role` : `Add ${role} role`}
+                            title={hasRole ? `Remove ${ROLE_LABELS[role]} role` : `Add ${ROLE_LABELS[role]} role`}
                           >
                             <Icon className="h-3 w-3" />
-                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                            {ROLE_LABELS[role]}
                           </button>
                         );
                       })}
@@ -262,10 +287,10 @@ export default function UsersPage() {
                 </td>
                 <td className="px-4 py-3">
                   <button
-                    onClick={() => !isSelf(u.user_id) && handleToggle(u.user_id)}
-                    disabled={isSelf(u.user_id)}
+                    onClick={() => !isSelf(u.user_id) && canManageUser(u.roles) && handleToggle(u.user_id)}
+                    disabled={isSelf(u.user_id) || !canManageUser(u.roles)}
                     className={`inline-flex items-center gap-1 text-xs font-medium ${
-                      isSelf(u.user_id) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                      isSelf(u.user_id) || !canManageUser(u.roles) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
                     } ${u.is_active ? 'text-success' : 'text-destructive'}`}
                   >
                     {u.is_active ? <ToggleRight className="h-4 w-4" /> : <ToggleLeft className="h-4 w-4" />}
@@ -275,7 +300,7 @@ export default function UsersPage() {
                 <td className="px-4 py-3 font-semibold">{u.orders_processed}</td>
                 <td className="px-4 py-3 font-semibold">{u.leads_processed}</td>
                 <td className="px-4 py-3">
-                  {!isSelf(u.user_id) && (
+                  {!isSelf(u.user_id) && canManageUser(u.roles) && (
                     <button
                       onClick={() => setDeleteTarget(u)}
                       className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors"
@@ -301,11 +326,10 @@ export default function UsersPage() {
               <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Full Name" className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
               <input value={formEmail} onChange={e => setFormEmail(e.target.value)} placeholder="Email" type="email" className="w-full rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
               
-              {/* Multi-role selection */}
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-2">Roles</label>
-                <div className="flex gap-2">
-                  {AVAILABLE_ROLES.map(role => {
+                <div className="flex flex-wrap gap-2">
+                  {availableRoles.map(role => {
                     const isSelected = formRoles.has(role);
                     const Icon = ROLE_ICONS[role] || Shield;
                     return (
@@ -320,7 +344,7 @@ export default function UsersPage() {
                         }`}
                       >
                         <Icon className="h-4 w-4" />
-                        {role.charAt(0).toUpperCase() + role.slice(1)}
+                        {ROLE_LABELS[role]}
                       </button>
                     );
                   })}
@@ -364,18 +388,4 @@ export default function UsersPage() {
       </AlertDialog>
     </AppLayout>
   );
-}
-
-// Helper functions for direct API calls in create
-import { supabase } from '@/integrations/supabase/client';
-function getApiBase() {
-  return `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
-}
-async function getHeadersForCreate() {
-  const { data: { session } } = await supabase.auth.getSession();
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${session?.access_token || ''}`,
-    'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-  };
 }

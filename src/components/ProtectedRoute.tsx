@@ -1,8 +1,15 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import type { AppRole } from '@/contexts/AuthContext';
 
-export function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth();
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+  /** If specified, user must have at least one of these roles */
+  allowedRoles?: AppRole[];
+}
+
+export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
+  const { session, user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -14,6 +21,17 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!session) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (allowedRoles && user) {
+    const hasAccess = allowedRoles.some(r => user.roles.includes(r));
+    if (!hasAccess) {
+      // Redirect agents to /assigned, others to /
+      if (user.isPendingAgent || user.isPredictionAgent) {
+        return <Navigate to="/assigned" replace />;
+      }
+      return <Navigate to="/" replace />;
+    }
   }
 
   return <>{children}</>;
