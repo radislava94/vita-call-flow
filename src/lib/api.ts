@@ -81,6 +81,26 @@ export const apiUpdateProduct = (id: string, body: any) =>
 export const apiGetInventoryLogs = (productId: string) =>
   apiFetch(`products/${productId}/inventory-logs`);
 
+// Suppliers
+export const apiGetSuppliers = () => apiFetch('suppliers');
+export const apiCreateSupplier = (body: { name: string; contact_info?: string; email?: string; phone?: string; address?: string }) =>
+  apiFetch('suppliers', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateSupplier = (id: string, body: any) =>
+  apiFetch(`suppliers/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteSupplier = (id: string) =>
+  apiFetch(`suppliers/${id}`, { method: 'DELETE' });
+
+// Restock & Stock Movements
+export const apiRestock = (body: { product_id: string; quantity: number; supplier_name?: string; invoice_number?: string; notes?: string }) =>
+  apiFetch('restock', { method: 'POST', body: JSON.stringify(body) });
+export const apiGetStockMovements = (params?: { product_id?: string; movement_type?: string; limit?: number }) => {
+  const sp = new URLSearchParams();
+  if (params?.product_id) sp.set('product_id', params.product_id);
+  if (params?.movement_type) sp.set('movement_type', params.movement_type);
+  if (params?.limit) sp.set('limit', String(params.limit));
+  return apiFetch(`stock-movements?${sp.toString()}`);
+};
+
 // Prediction Lists
 export const apiGetPredictionLists = () => apiFetch('prediction-lists');
 export const apiGetPredictionList = (id: string) => apiFetch(`prediction-lists/${id}`);

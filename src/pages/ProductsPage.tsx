@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Plus, Package, Loader2, Edit, History } from 'lucide-react';
-import { apiGetProducts, apiCreateProduct, apiUpdateProduct, apiGetInventoryLogs } from '@/lib/api';
+import { apiGetProducts, apiCreateProduct, apiUpdateProduct, apiGetInventoryLogs, apiGetSuppliers } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -24,6 +24,9 @@ interface ProductRow {
   stock_quantity: number;
   low_stock_threshold: number;
   is_active: boolean;
+  category: string;
+  supplier_id: string | null;
+  suppliers?: { id: string; name: string } | null;
 }
 
 interface InventoryLog {
@@ -57,6 +60,9 @@ export default function ProductsPage() {
   const [formSku, setFormSku] = useState('');
   const [formStock, setFormStock] = useState('0');
   const [formThreshold, setFormThreshold] = useState('5');
+  const [formCategory, setFormCategory] = useState('');
+  const [formSupplierId, setFormSupplierId] = useState('');
+  const [suppliers, setSuppliers] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const { toast } = useToast();
   const { user } = useAuth();
@@ -70,10 +76,10 @@ export default function ProductsPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchProducts(); }, []);
+  useEffect(() => { fetchProducts(); apiGetSuppliers().then(setSuppliers).catch(() => {}); }, []);
 
   const resetForm = () => {
-    setFormName(''); setFormDesc(''); setFormPrice(''); setFormCostPrice(''); setFormSku(''); setFormStock('0'); setFormThreshold('5');
+    setFormName(''); setFormDesc(''); setFormPrice(''); setFormCostPrice(''); setFormSku(''); setFormStock('0'); setFormThreshold('5'); setFormCategory(''); setFormSupplierId('');
   };
 
   const handleCreate = async () => {
@@ -84,6 +90,7 @@ export default function ProductsPage() {
         name: formName, description: formDesc, price: parseFloat(formPrice) || 0,
         cost_price: parseFloat(formCostPrice) || 0,
         sku: formSku || null, stock_quantity: parseInt(formStock) || 0, low_stock_threshold: parseInt(formThreshold) || 5,
+        category: formCategory, supplier_id: formSupplierId || null,
       });
       toast({ title: 'Product created' });
       setShowAdd(false); resetForm(); fetchProducts();
@@ -97,6 +104,7 @@ export default function ProductsPage() {
     setFormName(p.name); setFormDesc(p.description || ''); setFormPrice(String(p.price));
     setFormCostPrice(String(p.cost_price || 0));
     setFormSku(p.sku || ''); setFormStock(String(p.stock_quantity)); setFormThreshold(String(p.low_stock_threshold));
+    setFormCategory(p.category || ''); setFormSupplierId(p.supplier_id || '');
   };
 
   const handleUpdate = async () => {
@@ -107,7 +115,7 @@ export default function ProductsPage() {
         name: formName, description: formDesc, price: parseFloat(formPrice) || 0,
         cost_price: parseFloat(formCostPrice) || 0,
         sku: formSku || null, stock_quantity: parseInt(formStock) || 0, low_stock_threshold: parseInt(formThreshold) || 5,
-        is_active: editProduct.is_active,
+        is_active: editProduct.is_active, category: formCategory, supplier_id: formSupplierId || null,
       });
       toast({ title: 'Product updated' });
       setEditProduct(null); resetForm(); fetchProducts();
@@ -159,6 +167,8 @@ export default function ProductsPage() {
               <tr className="border-b bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">SKU</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Category</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Supplier</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Selling Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
@@ -181,6 +191,8 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{product.sku || '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{product.category || '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{product.suppliers?.name || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{Number(product.cost_price || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 font-semibold text-primary">{Number(product.price).toFixed(2)}</td>
                   <td className="px-4 py-3">

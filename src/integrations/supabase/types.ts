@@ -203,30 +203,42 @@ export type Database = {
           change_amount: number
           created_at: string
           id: string
+          invoice_number: string | null
+          movement_type: string | null
           new_stock: number
+          notes: string | null
           previous_stock: number
           product_id: string
           reason: string
+          supplier_name: string | null
           user_id: string | null
         }
         Insert: {
           change_amount: number
           created_at?: string
           id?: string
+          invoice_number?: string | null
+          movement_type?: string | null
           new_stock: number
+          notes?: string | null
           previous_stock: number
           product_id: string
           reason?: string
+          supplier_name?: string | null
           user_id?: string | null
         }
         Update: {
           change_amount?: number
           created_at?: string
           id?: string
+          invoice_number?: string | null
+          movement_type?: string | null
           new_stock?: number
+          notes?: string | null
           previous_stock?: number
           product_id?: string
           reason?: string
+          supplier_name?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -500,6 +512,7 @@ export type Database = {
       }
       products: {
         Row: {
+          category: string | null
           cost_price: number
           created_at: string
           description: string | null
@@ -511,9 +524,11 @@ export type Database = {
           price: number
           sku: string | null
           stock_quantity: number
+          supplier_id: string | null
           updated_at: string
         }
         Insert: {
+          category?: string | null
           cost_price?: number
           created_at?: string
           description?: string | null
@@ -525,9 +540,11 @@ export type Database = {
           price?: number
           sku?: string | null
           stock_quantity?: number
+          supplier_id?: string | null
           updated_at?: string
         }
         Update: {
+          category?: string | null
           cost_price?: number
           created_at?: string
           description?: string | null
@@ -539,9 +556,18 @@ export type Database = {
           price?: number
           sku?: string | null
           stock_quantity?: number
+          supplier_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -631,6 +657,39 @@ export type Database = {
           id?: string
           name?: string
           start_time?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      suppliers: {
+        Row: {
+          address: string | null
+          contact_info: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          address?: string | null
+          contact_info?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address?: string | null
+          contact_info?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
           updated_at?: string
         }
         Relationships: []
