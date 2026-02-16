@@ -1773,7 +1773,7 @@ serve(async (req) => {
 
     // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {
-      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const agentFilter = url.searchParams.get("agent_id");
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
@@ -1849,7 +1849,7 @@ serve(async (req) => {
     // GET /api/warehouse/user-items (admin: all, agent: own)
     if (req.method === "GET" && path === "warehouse/user-items") {
       let query = adminClient.from("user_warehouse").select("*, products(name, sku, price, stock_quantity)").order("created_at", { ascending: false });
-      if (!isAdmin && !isWarehouse) {
+      if (!isAdminOrManager && !isWarehouse) {
         query = query.eq("user_id", user.id);
       }
       const { data, error } = await query;
@@ -1875,7 +1875,7 @@ serve(async (req) => {
 
     // POST /api/warehouse/user-items (admin: assign product to user)
     if (req.method === "POST" && path === "warehouse/user-items") {
-      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(warehouseItemSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { user_id: targetUserId, product_id, quantity, notes: itemNotes } = body;
@@ -1912,7 +1912,7 @@ serve(async (req) => {
 
     // PATCH /api/warehouse/user-items/:id (admin: update assignment)
     if (req.method === "PATCH" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
-      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const itemId = segments[2];
       const body = await req.json();
       const updates: Record<string, any> = {};
@@ -1932,7 +1932,7 @@ serve(async (req) => {
 
     // DELETE /api/warehouse/user-items/:id (admin only)
     if (req.method === "DELETE" && segments[0] === "warehouse" && segments[1] === "user-items" && segments.length === 3) {
-      if (!isAdmin && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
       const itemId = segments[2];
       const { error } = await adminClient.from("user_warehouse").delete().eq("id", itemId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
