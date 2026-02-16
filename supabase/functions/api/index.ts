@@ -1446,11 +1446,12 @@ serve(async (req) => {
       return json(data);
     }
 
-    // GET /api/agent-performance (admin only)
+    // GET /api/agent-performance (admin only) — shipped orders focus
     if (req.method === "GET" && path === "agent-performance") {
       if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
+      const search = url.searchParams.get("search")?.toLowerCase();
 
       // Get all agents
       const { data: agents } = await adminClient
@@ -1461,85 +1462,38 @@ serve(async (req) => {
       const { data: agentRoles } = await adminClient
         .from("user_roles")
         .select("user_id")
-        .eq("role", "agent");
+        .in("role", ["agent", "pending_agent", "prediction_agent"]);
       const agentUserIds = new Set((agentRoles || []).map((r: any) => r.user_id));
-      const agentProfiles = (agents || []).filter((a: any) => agentUserIds.has(a.user_id));
+      let agentProfiles = (agents || []).filter((a: any) => agentUserIds.has(a.user_id));
 
-      // Get all orders (optionally filtered by date)
-      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, assigned_at, created_at, updated_at");
+      if (search) {
+        agentProfiles = agentProfiles.filter((a: any) => a.full_name.toLowerCase().includes(search) || a.email.toLowerCase().includes(search));
+      }
+
+      // Get shipped orders with price & quantity
+      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, price, quantity, created_at").eq("status", "shipped");
       if (from) ordersQuery = ordersQuery.gte("created_at", from);
       if (to) ordersQuery = ordersQuery.lte("created_at", to);
-      const { data: allOrders } = await ordersQuery;
-
-      // Get all prediction leads
-      let leadsQuery = adminClient.from("prediction_leads").select("id, status, assigned_agent_id, created_at, updated_at");
-      if (from) leadsQuery = leadsQuery.gte("created_at", from);
-      if (to) leadsQuery = leadsQuery.lte("created_at", to);
-      const { data: allLeads } = await leadsQuery;
-
-      // Get call logs for avg time calculation
-      let logsQuery = adminClient.from("call_logs").select("agent_id, context_type, context_id, created_at");
-      if (from) logsQuery = logsQuery.gte("created_at", from);
-      if (to) logsQuery = logsQuery.lte("created_at", to);
-      const { data: callLogs } = await logsQuery;
-
-      const todayStr = new Date().toISOString().substring(0, 10);
+      const { data: shippedOrders } = await ordersQuery;
 
       const results = agentProfiles.map((agent: any) => {
-        const agentOrders = (allOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
-        const agentLeads = (allLeads || []).filter((l: any) => l.assigned_agent_id === agent.user_id);
-        const agentLogs = (callLogs || []).filter((l: any) => l.agent_id === agent.user_id);
-
-        const totalOrders = agentOrders.length;
-        const confirmedOrders = agentOrders.filter((o: any) => o.status === "confirmed").length;
-        const returnedOrders = agentOrders.filter((o: any) => o.status === "returned").length;
-        const totalLeads = agentLeads.length;
-        const leadsContactedToday = agentLeads.filter((l: any) => l.status !== "not_contacted" && l.updated_at?.substring(0, 10) === todayStr).length;
-
-        // Conversion rate: confirmed / total assigned (orders + leads)
-        const totalAssigned = totalOrders + totalLeads;
-        const totalConfirmed = confirmedOrders + agentLeads.filter((l: any) => l.status === "confirmed").length;
-        const conversionRate = totalAssigned > 0 ? Math.round((totalConfirmed / totalAssigned) * 100) : 0;
-
-        // Avg time from assignment to first action (using call logs)
-        let avgTimeMinutes: number | null = null;
-        const orderFirstActions: number[] = [];
-        for (const o of agentOrders) {
-          if (!o.assigned_at) continue;
-          const firstLog = agentLogs
-            .filter((l: any) => l.context_id === o.id && l.context_type === "order")
-            .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
-          if (firstLog) {
-            const diff = new Date(firstLog.created_at).getTime() - new Date(o.assigned_at).getTime();
-            if (diff > 0) orderFirstActions.push(diff);
-          }
-        }
-        for (const l of agentLeads) {
-          const firstLog = agentLogs
-            .filter((lg: any) => lg.context_id === l.id && lg.context_type === "prediction_lead")
-            .sort((a: any, b: any) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
-          if (firstLog) {
-            const diff = new Date(firstLog.created_at).getTime() - new Date(l.created_at).getTime();
-            if (diff > 0) orderFirstActions.push(diff);
-          }
-        }
-        if (orderFirstActions.length > 0) {
-          avgTimeMinutes = Math.round(orderFirstActions.reduce((a, b) => a + b, 0) / orderFirstActions.length / 60000);
-        }
+        const agentOrders = (shippedOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
+        const totalShipped = agentOrders.length;
+        const totalEarned = agentOrders.reduce((sum: number, o: any) => sum + (Number(o.price) * (Number(o.quantity) || 1)), 0);
+        const avgOrderValue = totalShipped > 0 ? Math.round((totalEarned / totalShipped) * 100) / 100 : 0;
 
         return {
           user_id: agent.user_id,
           full_name: agent.full_name,
           email: agent.email,
-          total_orders: totalOrders,
-          confirmed_orders: confirmedOrders,
-          returned_orders: returnedOrders,
-          total_leads: totalLeads,
-          leads_contacted_today: leadsContactedToday,
-          conversion_rate: conversionRate,
-          avg_time_minutes: avgTimeMinutes,
+          total_shipped: totalShipped,
+          total_earned: totalEarned,
+          avg_order_value: avgOrderValue,
         };
       });
+
+      // Sort by total_earned descending
+      results.sort((a: any, b: any) => b.total_earned - a.total_earned);
 
       return json(results);
     }
