@@ -54,6 +54,24 @@ const createProductSchema = z.object({
   low_stock_threshold: z.number().int().min(0).max(100000).optional().default(5),
   photo_url: z.string().url().max(2000).nullable().optional().default(null),
   is_active: z.boolean().optional().default(true),
+  category: z.string().max(200).optional().default(""),
+  supplier_id: z.string().uuid().nullable().optional().default(null),
+});
+
+const createSupplierSchema = z.object({
+  name: z.string().trim().min(1, "Supplier name is required").max(200),
+  contact_info: z.string().max(500).optional().default(""),
+  email: z.string().max(255).optional().default(""),
+  phone: z.string().max(30).optional().default(""),
+  address: z.string().max(500).optional().default(""),
+});
+
+const restockSchema = z.object({
+  product_id: z.string().uuid(),
+  quantity: z.number().int().min(1).max(1000000),
+  supplier_name: z.string().max(200).optional().default(""),
+  invoice_number: z.string().max(100).optional().default(""),
+  notes: z.string().max(1000).optional().default(""),
 });
 
 const createCampaignSchema = z.object({
@@ -753,8 +771,10 @@ serve(async (req) => {
             change_amount: -orderQty,
             previous_stock: product.stock_quantity,
             new_stock: newQty,
-            reason: "order",
+            reason: "order_deduction",
+            movement_type: "order_deduction",
             user_id: user.id,
+            notes: `Order ${order.display_id} confirmed`,
           });
         }
       }
@@ -1024,7 +1044,7 @@ serve(async (req) => {
     if (req.method === "GET" && path === "products") {
       const { data, error } = await supabase
         .from("products")
-        .select("*")
+        .select("*, suppliers:supplier_id(id, name)")
         .order("created_at", { ascending: false });
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data);
@@ -1048,6 +1068,8 @@ serve(async (req) => {
           low_stock_threshold: body.low_stock_threshold,
           photo_url: body.photo_url,
           is_active: body.is_active,
+          category: body.category,
+          supplier_id: body.supplier_id,
         })
         .select()
         .single();
@@ -1075,6 +1097,7 @@ serve(async (req) => {
             previous_stock: current.stock_quantity,
             new_stock: body.stock_quantity,
             reason: "manual",
+            movement_type: "manual_adjust",
             user_id: user.id,
           });
         }
@@ -2287,6 +2310,136 @@ serve(async (req) => {
       const { error } = await adminClient.from("webhooks").delete().eq("id", webhookId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
+    }
+
+    // ============================================================
+    // SUPPLIERS
+    // ============================================================
+
+    // GET /api/suppliers
+    if (req.method === "GET" && path === "suppliers") {
+      const { data, error } = await supabase
+        .from("suppliers")
+        .select("*")
+        .order("name");
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // POST /api/suppliers
+    if (req.method === "POST" && path === "suppliers") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      let body;
+      try { body = parseBody(createSupplierSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+      const { data, error } = await adminClient
+        .from("suppliers")
+        .insert(body)
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/suppliers/:id
+    if (req.method === "PATCH" && segments[0] === "suppliers" && segments.length === 2) {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const supplierId = segments[1];
+      const body = await req.json();
+      const updates: Record<string, any> = {};
+      if (body.name !== undefined) updates.name = body.name;
+      if (body.contact_info !== undefined) updates.contact_info = body.contact_info;
+      if (body.email !== undefined) updates.email = body.email;
+      if (body.phone !== undefined) updates.phone = body.phone;
+      if (body.address !== undefined) updates.address = body.address;
+      const { data, error } = await adminClient
+        .from("suppliers")
+        .update(updates)
+        .eq("id", supplierId)
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // DELETE /api/suppliers/:id
+    if (req.method === "DELETE" && segments[0] === "suppliers" && segments.length === 2) {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const supplierId = segments[1];
+      const { error } = await adminClient.from("suppliers").delete().eq("id", supplierId);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // ============================================================
+    // RESTOCK
+    // ============================================================
+
+    // POST /api/restock
+    if (req.method === "POST" && path === "restock") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      let body;
+      try { body = parseBody(restockSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+
+      const { data: product } = await adminClient
+        .from("products")
+        .select("stock_quantity, name")
+        .eq("id", body.product_id)
+        .single();
+      if (!product) return json({ error: "Product not found" }, 404);
+
+      const newQty = product.stock_quantity + body.quantity;
+      await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", body.product_id);
+      await adminClient.from("inventory_logs").insert({
+        product_id: body.product_id,
+        change_amount: body.quantity,
+        previous_stock: product.stock_quantity,
+        new_stock: newQty,
+        reason: "restock",
+        movement_type: "restock",
+        user_id: user.id,
+        supplier_name: body.supplier_name,
+        invoice_number: body.invoice_number,
+        notes: body.notes,
+      });
+
+      return json({ success: true, product_name: product.name, new_stock: newQty });
+    }
+
+    // GET /api/stock-movements (all movements across products)
+    if (req.method === "GET" && path === "stock-movements") {
+      const productId = url.searchParams.get("product_id");
+      const movementType = url.searchParams.get("movement_type");
+      const limit = parseInt(url.searchParams.get("limit") || "100");
+
+      let query = adminClient
+        .from("inventory_logs")
+        .select("*, products:product_id(name, sku)")
+        .order("created_at", { ascending: false })
+        .limit(limit);
+
+      if (productId) query = query.eq("product_id", productId);
+      if (movementType) query = query.eq("movement_type", movementType);
+
+      const { data, error } = await query;
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Enrich with user names
+      const userIds = [...new Set((data || []).map((d: any) => d.user_id).filter(Boolean))];
+      const { data: profiles } = await adminClient
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
+      const profileMap: Record<string, string> = {};
+      for (const p of profiles || []) profileMap[p.user_id] = p.full_name;
+
+      const enriched = (data || []).map((d: any) => ({
+        ...d,
+        user_name: profileMap[d.user_id] || "System",
+        product_name: d.products?.name || "Unknown",
+        product_sku: d.products?.sku || "",
+      }));
+
+      return json(enriched);
     }
 
     return json({ error: "Not found" }, 404);
