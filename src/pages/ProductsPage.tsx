@@ -19,6 +19,7 @@ interface ProductRow {
   name: string;
   description: string | null;
   price: number;
+  cost_price: number;
   sku: string | null;
   stock_quantity: number;
   low_stock_threshold: number;
@@ -52,6 +53,7 @@ export default function ProductsPage() {
   const [formName, setFormName] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formPrice, setFormPrice] = useState('');
+  const [formCostPrice, setFormCostPrice] = useState('');
   const [formSku, setFormSku] = useState('');
   const [formStock, setFormStock] = useState('0');
   const [formThreshold, setFormThreshold] = useState('5');
@@ -71,7 +73,7 @@ export default function ProductsPage() {
   useEffect(() => { fetchProducts(); }, []);
 
   const resetForm = () => {
-    setFormName(''); setFormDesc(''); setFormPrice(''); setFormSku(''); setFormStock('0'); setFormThreshold('5');
+    setFormName(''); setFormDesc(''); setFormPrice(''); setFormCostPrice(''); setFormSku(''); setFormStock('0'); setFormThreshold('5');
   };
 
   const handleCreate = async () => {
@@ -80,6 +82,7 @@ export default function ProductsPage() {
     try {
       await apiCreateProduct({
         name: formName, description: formDesc, price: parseFloat(formPrice) || 0,
+        cost_price: parseFloat(formCostPrice) || 0,
         sku: formSku || null, stock_quantity: parseInt(formStock) || 0, low_stock_threshold: parseInt(formThreshold) || 5,
       });
       toast({ title: 'Product created' });
@@ -92,6 +95,7 @@ export default function ProductsPage() {
   const openEdit = (p: ProductRow) => {
     setEditProduct(p);
     setFormName(p.name); setFormDesc(p.description || ''); setFormPrice(String(p.price));
+    setFormCostPrice(String(p.cost_price || 0));
     setFormSku(p.sku || ''); setFormStock(String(p.stock_quantity)); setFormThreshold(String(p.low_stock_threshold));
   };
 
@@ -101,6 +105,7 @@ export default function ProductsPage() {
     try {
       await apiUpdateProduct(editProduct.id, {
         name: formName, description: formDesc, price: parseFloat(formPrice) || 0,
+        cost_price: parseFloat(formCostPrice) || 0,
         sku: formSku || null, stock_quantity: parseInt(formStock) || 0, low_stock_threshold: parseInt(formThreshold) || 5,
         is_active: editProduct.is_active,
       });
@@ -154,7 +159,8 @@ export default function ProductsPage() {
               <tr className="border-b bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">SKU</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost Price</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Selling Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
                 <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
@@ -175,6 +181,7 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{product.sku || '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{Number(product.cost_price || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 font-semibold text-primary">{Number(product.price).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <StockBadge qty={product.stock_quantity} threshold={product.low_stock_threshold} />
@@ -204,7 +211,7 @@ export default function ProductsPage() {
                 </tr>
               ))}
               {products.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No products yet</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No products yet</td></tr>
               )}
             </tbody>
           </table>
@@ -219,7 +226,16 @@ export default function ProductsPage() {
             <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Product name *" className={inputClass} />
             <input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Description" className={inputClass} />
             <div className="grid grid-cols-2 gap-3">
-              <input value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Price" type="number" className={inputClass} />
+              <div>
+                <label className="text-xs text-muted-foreground">Cost Price</label>
+                <input value={formCostPrice} onChange={e => setFormCostPrice(e.target.value)} placeholder="Cost Price" type="number" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Selling Price</label>
+                <input value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Selling Price" type="number" className={inputClass} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU (auto if empty)" className={inputClass} />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -248,7 +264,16 @@ export default function ProductsPage() {
             <input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Product name *" className={inputClass} />
             <input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Description" className={inputClass} />
             <div className="grid grid-cols-2 gap-3">
-              <input value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Price" type="number" className={inputClass} />
+              <div>
+                <label className="text-xs text-muted-foreground">Cost Price</label>
+                <input value={formCostPrice} onChange={e => setFormCostPrice(e.target.value)} placeholder="Cost Price" type="number" className={inputClass} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Selling Price</label>
+                <input value={formPrice} onChange={e => setFormPrice(e.target.value)} placeholder="Selling Price" type="number" className={inputClass} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
               <input value={formSku} onChange={e => setFormSku(e.target.value)} placeholder="SKU" className={inputClass} />
             </div>
             <div className="grid grid-cols-2 gap-3">
