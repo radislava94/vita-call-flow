@@ -165,8 +165,9 @@ export const apiDeleteWarehouseItem = (id: string) =>
   apiFetch(`warehouse/user-items/${id}`, { method: 'DELETE' });
 export const apiUpdateWarehouseOrder = (id: string, body: any) =>
   apiFetch(`warehouse/incoming-orders/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteWarehouseOrder = (id: string, source: string) =>
+  apiFetch(`warehouse/incoming-orders/${id}?source=${source}`, { method: 'DELETE' });
 
-// Shifts
 export const apiGetShifts = (params?: { agent_id?: string; from?: string; to?: string }) => {
   const sp = new URLSearchParams();
   if (params?.agent_id) sp.set('agent_id', params.agent_id);

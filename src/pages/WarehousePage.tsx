@@ -25,6 +25,7 @@ import {
   apiRestock,
   apiGetStockMovements,
   apiUpdateWarehouseOrder,
+  apiDeleteWarehouseOrder,
 } from '@/lib/api';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -59,6 +60,7 @@ function IncomingOrdersTab() {
   const [agents, setAgents] = useState<any[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [products, setProducts] = useState<any[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Edit dialog state
   const [editOrder, setEditOrder] = useState<any>(null);
@@ -335,9 +337,22 @@ function IncomingOrdersTab() {
                                 </Select>
                               </td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{format(new Date(o.created_at), 'HH:mm')}</td>
-                              <td className="px-4 py-2.5">
+                              <td className="px-4 py-2.5 flex items-center gap-1">
                                 <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openEditDialog(o)}>
                                   <Edit className="h-3 w-3 mr-1" /> Edit
+                                </Button>
+                                <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={deletingId === o.id} onClick={async () => {
+                                  if (!confirm(`Delete ${o.display_id}?`)) return;
+                                  setDeletingId(o.id);
+                                  try {
+                                    await apiDeleteWarehouseOrder(o.id, o.source);
+                                    toast({ title: 'Deleted' });
+                                    fetchOrders();
+                                  } catch (err: any) {
+                                    toast({ title: 'Error', description: err.message, variant: 'destructive' });
+                                  } finally { setDeletingId(null); }
+                                }}>
+                                  <Trash2 className="h-3 w-3" />
                                 </Button>
                               </td>
                             </tr>

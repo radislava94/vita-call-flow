@@ -1888,8 +1888,13 @@ serve(async (req) => {
         }
       }
 
-      // 2. Prediction leads (source = "prediction_lead") - only confirmed (no shipped status for leads)
+      // 2. Prediction leads (source = "prediction_lead") - only confirmed, excluding those that already have a linked order
       if ((!sourceFilter || sourceFilter === "prediction_lead") && (!statusFilter || statusFilter === "confirmed")) {
+        // Get lead IDs that already have a linked order to avoid duplicates
+        const linkedLeadIds = new Set(
+          results.filter((r: any) => r.source_lead_id).map((r: any) => r.source_lead_id)
+        );
+
         let lQuery = adminClient.from("prediction_leads").select("*, prediction_lists(name)").eq("status", "confirmed").order("created_at", { ascending: false });
         if (agentFilter && agentFilter !== "all") lQuery = lQuery.eq("assigned_agent_id", agentFilter);
         if (from) lQuery = lQuery.gte("created_at", from);
@@ -1897,6 +1902,9 @@ serve(async (req) => {
         if (productFilter) lQuery = lQuery.ilike("product", `%${productFilter}%`);
         const { data: leads } = await lQuery;
         for (const l of leads || []) {
+          // Skip leads that already have a linked order in the results
+          if (linkedLeadIds.has(l.id)) continue;
+
           results.push({
             id: l.id,
             display_id: `LEAD-${l.name?.substring(0, 8) || l.id.substring(0, 8)}`,
@@ -2122,6 +2130,27 @@ serve(async (req) => {
         if (error) return json({ error: sanitizeDbError(error) }, 400);
         return json(data);
       }
+    }
+
+    // DELETE /api/warehouse/incoming-orders/:id
+    if (req.method === "DELETE" && segments[0] === "warehouse" && segments[1] === "incoming-orders" && segments.length === 3) {
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      const itemId = segments[2];
+      const source = url.searchParams.get("source");
+
+      if (source === "prediction_lead") {
+        // Delete linked order first if exists
+        await adminClient.from("orders").delete().eq("source_lead_id", itemId);
+        const { error } = await adminClient.from("prediction_leads").delete().eq("id", itemId);
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
+      } else {
+        // Delete order notes and history first
+        await adminClient.from("order_notes").delete().eq("order_id", itemId);
+        await adminClient.from("order_history").delete().eq("order_id", itemId);
+        const { error } = await adminClient.from("orders").delete().eq("id", itemId);
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
+      }
+      return json({ success: true });
     }
 
     // GET /api/warehouse/user-items (admin: all, agent: own)
