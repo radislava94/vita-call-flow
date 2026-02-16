@@ -257,7 +257,7 @@ export default function OrderDetails() {
                 </Button>
               )}
               {!editing && !isEditable && (
-                <p className="text-xs text-muted-foreground italic">Product and price locked because order is already shipped.</p>
+                <p className="text-xs text-muted-foreground italic">Product and price locked because order is Shipped, Delivered, or Paid.</p>
               )}
             </div>
 
