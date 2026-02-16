@@ -1189,7 +1189,8 @@ serve(async (req) => {
         .from("prediction_leads")
         .select("*")
         .eq("list_id", listId)
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .limit(5000);
 
       return json({ ...list, entries: leads || [] });
     }
@@ -1235,13 +1236,22 @@ serve(async (req) => {
 
     // GET /api/prediction-leads/my (agent's assigned leads)
     if (req.method === "GET" && path === "prediction-leads/my") {
-      const { data, error } = await supabase
-        .from("prediction_leads")
-        .select("*, prediction_lists(name)")
-        .eq("assigned_agent_id", user.id)
-        .order("created_at", { ascending: false });
+      // Admins/managers see all assigned leads; agents see only their own
+      let query = isAdminOrManager
+        ? adminClient
+            .from("prediction_leads")
+            .select("*, prediction_lists(name)")
+            .not("assigned_agent_id", "is", null)
+        : supabase
+            .from("prediction_leads")
+            .select("*, prediction_lists(name)")
+            .eq("assigned_agent_id", user.id);
+
+      const { data, error } = await query
+        .order("updated_at", { ascending: false })
+        .limit(3000);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
-      return json(data);
+      return json(data || []);
     }
 
     // POST /api/prediction-leads/unassign (admin: bulk unassign leads)

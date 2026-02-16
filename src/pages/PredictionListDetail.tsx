@@ -43,22 +43,27 @@ export default function PredictionListDetail() {
   const [list, setList] = useState<any>(null);
   const [entries, setEntries] = useState<LeadEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [assignOpen, setAssignOpen] = useState(false);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [unassigning, setUnassigning] = useState(false);
-  // Mode: 'unassigned' selects unassigned leads for assign, 'assigned' selects assigned leads for unassign/reassign
   const [selectionMode, setSelectionMode] = useState<'unassigned' | 'assigned'>('unassigned');
 
   const fetchList = () => {
     if (!id) return;
     setLoading(true);
+    setError(null);
     apiGetPredictionList(id)
       .then((data) => {
         setList(data);
         setEntries(data.entries || []);
       })
-      .catch(() => setList(null))
+      .catch((err) => {
+        console.error('Failed to load prediction list:', err);
+        setError(err.message || 'Failed to load list');
+        setList(null);
+      })
       .finally(() => setLoading(false));
   };
 
@@ -79,10 +84,21 @@ export default function PredictionListDetail() {
     );
   }
 
-  if (!list) {
+  if (!list && !error) {
     return (
       <AppLayout title="Prediction List">
         <p className="text-muted-foreground">List not found.</p>
+      </AppLayout>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppLayout title="Prediction List">
+        <div className="flex flex-col items-center justify-center py-20 gap-3">
+          <p className="text-sm text-destructive">{error}</p>
+          <Button variant="outline" size="sm" onClick={fetchList}>Retry</Button>
+        </div>
       </AppLayout>
     );
   }
