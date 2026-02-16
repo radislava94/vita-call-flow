@@ -499,6 +499,118 @@ serve(async (req) => {
       return json({ orders, total: count, page, limit });
     }
 
+    // GET /api/orders/unassigned-pending (admin only - for assigner)
+    if (req.method === "GET" && path === "orders/unassigned-pending") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const { data: orders, error } = await adminClient
+        .from("orders")
+        .select("*")
+        .eq("status", "pending")
+        .is("assigned_agent_id", null)
+        .order("created_at", { ascending: false });
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(orders || []);
+    }
+
+    // POST /api/orders/bulk-assign (admin only)
+    if (req.method === "POST" && path === "orders/bulk-assign") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { order_ids, agent_id } = body;
+      if (!order_ids?.length || !agent_id) return json({ error: "order_ids and agent_id required" }, 400);
+
+      const { data: agentProfile } = await adminClient
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", agent_id)
+        .single();
+      if (!agentProfile) return json({ error: "Agent not found" }, 404);
+
+      const { data: adminProfile } = await adminClient
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single();
+
+      const { error: updateErr } = await adminClient
+        .from("orders")
+        .update({
+          assigned_agent_id: agent_id,
+          assigned_agent_name: agentProfile.full_name,
+          assigned_at: new Date().toISOString(),
+          assigned_by: adminProfile?.full_name || "Admin",
+        })
+        .in("id", order_ids);
+      if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+
+      return json({ success: true, assigned: order_ids.length });
+    }
+
+    // GET /api/agents/online (admin only - active agents with load info)
+    if (req.method === "GET" && path === "agents/online") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+
+      // Get active users with agent or admin role
+      const { data: allUsers } = await adminClient
+        .from("profiles")
+        .select("user_id, full_name, email")
+        .eq("is_active", true);
+
+      const userIds = (allUsers || []).map((u: any) => u.user_id);
+      const { data: allRoles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
+
+      const roleMap: Record<string, string[]> = {};
+      for (const r of allRoles || []) {
+        if (!roleMap[r.user_id]) roleMap[r.user_id] = [];
+        roleMap[r.user_id].push(r.role);
+      }
+
+      const agents = (allUsers || []).filter((u: any) => {
+        const roles = roleMap[u.user_id] || [];
+        return roles.includes("agent") || roles.includes("admin");
+      });
+
+      // Get assigned active order counts per agent
+      const agentIds = agents.map((a: any) => a.user_id);
+      const { data: orderCounts } = await adminClient
+        .from("orders")
+        .select("assigned_agent_id")
+        .in("assigned_agent_id", agentIds.length > 0 ? agentIds : ["__none__"])
+        .in("status", ["pending", "take", "call_again"]);
+
+      const countMap: Record<string, number> = {};
+      for (const o of orderCounts || []) {
+        countMap[o.assigned_agent_id] = (countMap[o.assigned_agent_id] || 0) + 1;
+      }
+
+      // Check today's shifts
+      const today = new Date().toISOString().split("T")[0];
+      const { data: todayShifts } = await adminClient
+        .from("shift_assignments")
+        .select("user_id, shift_id, shifts(start_time, end_time)")
+        .in("user_id", agentIds.length > 0 ? agentIds : ["__none__"]);
+
+      const shiftMap: Record<string, any> = {};
+      for (const sa of todayShifts || []) {
+        shiftMap[sa.user_id] = sa.shifts;
+      }
+
+      const result = agents.map((a: any) => ({
+        user_id: a.user_id,
+        full_name: a.full_name,
+        email: a.email,
+        roles: roleMap[a.user_id] || [],
+        active_leads: countMap[a.user_id] || 0,
+        shift: shiftMap[a.user_id] || null,
+        is_online: true, // Active users are considered online
+      }));
+
+      return json(result);
+    }
+
     // GET /api/orders/:id
     if (req.method === "GET" && segments[0] === "orders" && segments.length === 2 && segments[1] !== "stats") {
       const orderId = segments[1];

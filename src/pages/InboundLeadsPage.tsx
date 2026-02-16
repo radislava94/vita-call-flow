@@ -248,31 +248,6 @@ export default function InboundLeadsPage() {
         </div>
       </div>
 
-      {/* Webhook info */}
-      <Card className="mt-6 border-none shadow-sm">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold">Webhook Endpoint</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-xs text-muted-foreground">Send a POST request with JSON body to receive leads:</p>
-          <code className="block rounded-lg bg-muted p-3 text-xs font-mono break-all">
-            POST {import.meta.env.VITE_SUPABASE_URL}/functions/v1/api/webhook/leads
-          </code>
-          <p className="text-xs text-muted-foreground">Body:</p>
-          <pre className="rounded-lg bg-muted p-3 text-xs font-mono">
-{`{
-  "name": "John Doe",
-  "phone": "+1234567890",
-  "status": "pending",
-  "source": "landing_page"
-}`}
-          </pre>
-          <p className="text-xs text-muted-foreground">
-            Headers: <code className="bg-muted px-1 rounded">Content-Type: application/json</code>,{' '}
-            <code className="bg-muted px-1 rounded">apikey: YOUR_ANON_KEY</code>
-          </p>
-        </CardContent>
-      </Card>
     </AppLayout>
   );
 }
