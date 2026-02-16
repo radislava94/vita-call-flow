@@ -307,10 +307,11 @@ function InventoryTab() {
     <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b bg-muted/50">
+         <tr className="border-b bg-muted/50">
             <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
             <th className="px-4 py-3 text-left font-medium text-muted-foreground">SKU</th>
-            <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
+            <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost Price</th>
+            <th className="px-4 py-3 text-left font-medium text-muted-foreground">Selling Price</th>
             <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
             <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
           </tr>
@@ -330,6 +331,7 @@ function InventoryTab() {
                 </div>
               </td>
               <td className="px-4 py-3 text-muted-foreground">{p.sku || '—'}</td>
+              <td className="px-4 py-3 text-muted-foreground">{Number(p.cost_price || 0).toFixed(2)}</td>
               <td className="px-4 py-3 font-semibold text-primary">{Number(p.price).toFixed(2)}</td>
               <td className="px-4 py-3">
                 {p.stock_quantity <= 0 ? (
@@ -348,7 +350,7 @@ function InventoryTab() {
             </tr>
           ))}
           {products.length === 0 && (
-            <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No products</td></tr>
+            <tr><td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">No products</td></tr>
           )}
         </tbody>
       </table>

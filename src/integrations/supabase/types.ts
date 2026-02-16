@@ -331,6 +331,7 @@ export type Database = {
           price: number
           product_id: string | null
           product_name: string
+          quantity: number
           source_lead_id: string | null
           source_type: string | null
           status: Database["public"]["Enums"]["order_status"]
@@ -354,6 +355,7 @@ export type Database = {
           price?: number
           product_id?: string | null
           product_name: string
+          quantity?: number
           source_lead_id?: string | null
           source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
@@ -377,6 +379,7 @@ export type Database = {
           price?: number
           product_id?: string | null
           product_name?: string
+          quantity?: number
           source_lead_id?: string | null
           source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
@@ -417,7 +420,9 @@ export type Database = {
           list_id: string
           name: string
           notes: string | null
+          price: number
           product: string | null
+          quantity: number
           status: Database["public"]["Enums"]["lead_status"]
           telephone: string
           updated_at: string
@@ -432,7 +437,9 @@ export type Database = {
           list_id: string
           name?: string
           notes?: string | null
+          price?: number
           product?: string | null
+          quantity?: number
           status?: Database["public"]["Enums"]["lead_status"]
           telephone?: string
           updated_at?: string
@@ -447,7 +454,9 @@ export type Database = {
           list_id?: string
           name?: string
           notes?: string | null
+          price?: number
           product?: string | null
+          quantity?: number
           status?: Database["public"]["Enums"]["lead_status"]
           telephone?: string
           updated_at?: string
@@ -491,6 +500,7 @@ export type Database = {
       }
       products: {
         Row: {
+          cost_price: number
           created_at: string
           description: string | null
           id: string
@@ -504,6 +514,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cost_price?: number
           created_at?: string
           description?: string | null
           id?: string
@@ -517,6 +528,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cost_price?: number
           created_at?: string
           description?: string | null
           id?: string

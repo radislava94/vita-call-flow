@@ -9,9 +9,10 @@ import { isValidPhone } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote } from '@/lib/api';
+import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote, apiGetProducts } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { CallPopup } from '@/components/CallPopup';
 
@@ -31,11 +32,17 @@ export default function OrderDetails() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [birthday, setBirthday] = useState<Date | undefined>(undefined);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedProductName, setSelectedProductName] = useState('');
+  const [orderQuantity, setOrderQuantity] = useState(1);
+  const [orderPrice, setOrderPrice] = useState(0);
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus>('pending');
   const [statusError, setStatusError] = useState('');
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [showCallPopup, setShowCallPopup] = useState(false);
+  const [products, setProducts] = useState<any[]>([]);
+
   const loadOrder = () => {
     if (!id) return;
     setLoading(true);
@@ -48,6 +55,10 @@ export default function OrderDetails() {
         setCustomerAddress(data.customer_address || '');
         setPostalCode(data.postal_code || '');
         setBirthday(data.birthday ? parse(data.birthday, 'yyyy-MM-dd', new Date()) : undefined);
+        setSelectedProductId(data.product_id || null);
+        setSelectedProductName(data.product_name || '');
+        setOrderQuantity(data.quantity || 1);
+        setOrderPrice(Number(data.price) || 0);
         setSelectedStatus(data.status);
       })
       .catch(() => setOrder(null))
@@ -55,6 +66,12 @@ export default function OrderDetails() {
   };
 
   useEffect(() => { loadOrder(); }, [id]);
+  useEffect(() => {
+    apiGetProducts().then(setProducts).catch(() => {});
+  }, []);
+
+  const selectedProduct = products.find(p => p.id === selectedProductId);
+  const totalAmount = orderQuantity * orderPrice;
 
   const phoneDuplicates = order?.phone_duplicates || [];
 
@@ -66,8 +83,11 @@ export default function OrderDetails() {
     else if (!isValidPhone(customerPhone)) errors.phone = 'Invalid phone format (8-15 digits)';
     if (!customerCity.trim()) errors.city = 'City is required';
     if (!customerAddress.trim()) errors.address = 'Address is required';
+    if (selectedProductId && selectedProduct && orderQuantity > selectedProduct.stock_quantity) {
+      errors.quantity = `Only ${selectedProduct.stock_quantity} available in stock`;
+    }
     return errors;
-  }, [editing, customerName, customerPhone, customerCity, customerAddress]);
+  }, [editing, customerName, customerPhone, customerCity, customerAddress, orderQuantity, selectedProductId, selectedProduct]);
 
   const hasRequiredFieldsComplete = customerName.trim() && customerPhone.trim() && customerCity.trim() && customerAddress.trim();
 
@@ -92,6 +112,18 @@ export default function OrderDetails() {
     );
   }
 
+  const handleProductChange = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      setSelectedProductId(product.id);
+      setSelectedProductName(product.name);
+      setOrderPrice(Number(product.price) || 0);
+      if (orderQuantity > product.stock_quantity) {
+        setOrderQuantity(Math.max(1, product.stock_quantity));
+      }
+    }
+  };
+
   const handleSaveCustomer = async () => {
     if (Object.keys(fieldErrors).length > 0) {
       toast({ title: 'Validation error', description: 'Please fix all required fields.', variant: 'destructive' });
@@ -106,9 +138,13 @@ export default function OrderDetails() {
         customer_address: customerAddress.trim(),
         postal_code: postalCode.trim(),
         birthday: birthday ? format(birthday, 'yyyy-MM-dd') : null,
+        product_id: selectedProductId,
+        product_name: selectedProductName.trim(),
+        quantity: orderQuantity,
+        price: orderPrice,
       });
       setEditing(false);
-      toast({ title: 'Customer info saved' });
+      toast({ title: 'Order info saved' });
       loadOrder();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
@@ -124,6 +160,10 @@ export default function OrderDetails() {
     setCustomerAddress(order.customer_address || '');
     setPostalCode(order.postal_code || '');
     setBirthday(order.birthday ? parse(order.birthday, 'yyyy-MM-dd', new Date()) : undefined);
+    setSelectedProductId(order.product_id || null);
+    setSelectedProductName(order.product_name || '');
+    setOrderQuantity(order.quantity || 1);
+    setOrderPrice(Number(order.price) || 0);
     setEditing(false);
   };
 
@@ -279,18 +319,93 @@ export default function OrderDetails() {
             )}
           </div>
 
-          {/* Product */}
+          {/* Product & Pricing */}
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-card-foreground">
-              <Package className="h-5 w-5 text-primary" /> Product
+              <Package className="h-5 w-5 text-primary" /> Product & Pricing
             </h2>
-            <div className="flex items-center justify-between rounded-lg bg-muted p-4">
-              <div>
-                <p className="font-semibold">{order.product_name}</p>
-                {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
+            {editing ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground mb-1.5">Product</p>
+                  <Select value={selectedProductId || ''} onValueChange={handleProductChange}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.filter(p => p.is_active).map(p => (
+                        <SelectItem key={p.id} value={p.id}>
+                          <span className="flex items-center gap-2">
+                            {p.name} ({p.sku || 'No SKU'})
+                            <span className={cn('text-xs', p.stock_quantity < (p.low_stock_threshold || 5) ? 'text-destructive' : 'text-muted-foreground')}>
+                              — Stock: {p.stock_quantity}
+                            </span>
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedProduct && (
+                    <p className="mt-1 text-xs text-muted-foreground">Available stock: {selectedProduct.stock_quantity}</p>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Quantity</p>
+                    <input
+                      type="number"
+                      min={1}
+                      max={selectedProduct?.stock_quantity || 100000}
+                      value={orderQuantity}
+                      onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                      className={cn(
+                        'h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring',
+                        fieldErrors.quantity && 'border-destructive'
+                      )}
+                    />
+                    {fieldErrors.quantity && <p className="mt-1 text-xs text-destructive">{fieldErrors.quantity}</p>}
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Unit Price</p>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={orderPrice}
+                      onChange={(e) => setOrderPrice(parseFloat(e.target.value) || 0)}
+                      className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Total</p>
+                    <p className="h-9 flex items-center text-lg font-bold text-primary">{totalAmount.toFixed(2)}</p>
+                  </div>
+                </div>
               </div>
-              <span className="text-lg font-bold text-primary">{Number(order.price).toFixed(2)}</span>
-            </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between rounded-lg bg-muted p-4">
+                  <div>
+                    <p className="font-semibold">{order.product_name}</p>
+                    {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 px-1">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Quantity</p>
+                    <p className="font-semibold">{order.quantity || 1}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Unit Price</p>
+                    <p className="font-semibold">{Number(order.price).toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                    <p className="text-lg font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Notes */}
@@ -413,7 +528,7 @@ export default function OrderDetails() {
         open={showCallPopup}
         onClose={() => {
           setShowCallPopup(false);
-          loadOrder(); // Refresh to see any status changes
+          loadOrder();
         }}
         contextType="order"
         contextId={order.id}

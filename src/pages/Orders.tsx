@@ -26,6 +26,7 @@ interface ApiOrder {
   display_id: string;
   product_name: string;
   price: number;
+  quantity: number;
   status: OrderStatus;
   customer_name: string;
   customer_phone: string;
@@ -369,7 +370,9 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Order ID</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Qty</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
@@ -383,7 +386,9 @@ export default function Orders() {
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
                   <td className="px-4 py-3">{order.product_name}</td>
+                  <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
                   <td className="px-4 py-3 font-semibold">{Number(order.price).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     {order.assigned_agent_name ? (
                       <span className="inline-flex items-center gap-1.5">

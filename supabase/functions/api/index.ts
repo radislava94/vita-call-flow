@@ -24,6 +24,7 @@ const createOrderSchema = z.object({
   postal_code: z.string().max(20).optional().default(""),
   birthday: z.string().nullable().optional().default(null),
   price: z.number().min(0).max(10000000).optional().default(0),
+  quantity: z.number().int().min(1).max(100000).optional().default(1),
 });
 
 const updateCustomerSchema = z.object({
@@ -33,6 +34,10 @@ const updateCustomerSchema = z.object({
   customer_address: z.string().max(500).optional(),
   postal_code: z.string().max(20).optional(),
   birthday: z.string().nullable().optional(),
+  price: z.number().min(0).max(10000000).optional(),
+  quantity: z.number().int().min(1).max(100000).optional(),
+  product_id: z.string().uuid().nullable().optional(),
+  product_name: z.string().max(200).optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -43,6 +48,7 @@ const createProductSchema = z.object({
   name: z.string().trim().min(1, "Product name is required").max(200),
   description: z.string().max(2000).optional().default(""),
   price: z.number().min(0).max(10000000).optional().default(0),
+  cost_price: z.number().min(0).max(10000000).optional().default(0),
   sku: z.string().max(50).nullable().optional().default(null),
   stock_quantity: z.number().int().min(0).max(1000000).optional().default(0),
   low_stock_threshold: z.number().int().min(0).max(100000).optional().default(5),
@@ -475,6 +481,7 @@ serve(async (req) => {
           postal_code: body.postal_code,
           birthday: body.birthday,
           price: body.price,
+          quantity: body.quantity,
           status: "pending",
         })
         .select()
@@ -672,6 +679,10 @@ serve(async (req) => {
       if (body.customer_address !== undefined) updates.customer_address = body.customer_address;
       if (body.postal_code !== undefined) updates.postal_code = body.postal_code;
       if (body.birthday !== undefined) updates.birthday = body.birthday;
+      if (body.price !== undefined) updates.price = body.price;
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.product_id !== undefined) updates.product_id = body.product_id;
+      if (body.product_name !== undefined) updates.product_name = body.product_name;
 
       const { data, error } = await supabase
         .from("orders")
@@ -719,21 +730,22 @@ serve(async (req) => {
       }
 
       // Stock check on confirm
+      const orderQty = order.quantity || 1;
       if (newStatus === "confirmed" && order.status !== "confirmed" && order.product_id) {
         const { data: product } = await adminClient
           .from("products")
           .select("stock_quantity, name")
           .eq("id", order.product_id)
           .single();
-        if (product && product.stock_quantity <= 0) {
-          return json({ error: `Out of Stock: ${product.name} has no available inventory` }, 400);
+        if (product && product.stock_quantity < orderQty) {
+          return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
         }
-        if (product && product.stock_quantity > 0) {
-          const newQty = product.stock_quantity - 1;
+        if (product && product.stock_quantity >= orderQty) {
+          const newQty = product.stock_quantity - orderQty;
           await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", order.product_id);
           await adminClient.from("inventory_logs").insert({
             product_id: order.product_id,
-            change_amount: -1,
+            change_amount: -orderQty,
             previous_stock: product.stock_quantity,
             new_stock: newQty,
             reason: "order",
@@ -1025,6 +1037,7 @@ serve(async (req) => {
           name: body.name,
           description: body.description,
           price: body.price,
+          cost_price: body.cost_price,
           sku: body.sku,
           stock_quantity: body.stock_quantity,
           low_stock_threshold: body.low_stock_threshold,
@@ -1253,6 +1266,8 @@ serve(async (req) => {
       if (body.city !== undefined) updates.city = body.city;
       if (body.telephone !== undefined) updates.telephone = body.telephone;
       if (body.product !== undefined) updates.product = body.product;
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.price !== undefined) updates.price = body.price;
 
       const { data, error } = await supabase
         .from("prediction_leads")
@@ -1286,7 +1301,8 @@ serve(async (req) => {
               customer_phone: lead.telephone || "",
               customer_city: lead.city || "",
               customer_address: lead.address || "",
-              price: 0,
+              price: lead.price || 0,
+              quantity: lead.quantity || 1,
               status: body.status === "confirmed" ? "confirmed" : "call_again",
               source_type: "prediction_lead",
               source_lead_id: leadId,
