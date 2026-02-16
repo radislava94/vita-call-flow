@@ -558,6 +558,39 @@ serve(async (req) => {
       return json(orders || []);
     }
 
+    // GET /api/orders/assigned (admin only - all assigned orders for assigner)
+    if (req.method === "GET" && path === "orders/assigned") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const { data: orders, error } = await adminClient
+        .from("orders")
+        .select("*")
+        .not("assigned_agent_id", "is", null)
+        .order("assigned_at", { ascending: false });
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(orders || []);
+    }
+
+    // POST /api/orders/bulk-unassign (admin only)
+    if (req.method === "POST" && path === "orders/bulk-unassign") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { order_ids } = body;
+      if (!order_ids?.length) return json({ error: "order_ids required" }, 400);
+
+      const { error: updateErr } = await adminClient
+        .from("orders")
+        .update({
+          assigned_agent_id: null,
+          assigned_agent_name: null,
+          assigned_at: null,
+          assigned_by: null,
+        })
+        .in("id", order_ids);
+      if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+
+      return json({ success: true, unassigned: order_ids.length });
+    }
+
     // POST /api/orders/bulk-assign (admin only)
     if (req.method === "POST" && path === "orders/bulk-assign") {
       if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
