@@ -24,7 +24,9 @@ import {
   apiDeleteSupplier,
   apiRestock,
   apiGetStockMovements,
+  apiUpdateWarehouseOrder,
 } from '@/lib/api';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Package,
   Loader2,
@@ -46,6 +48,7 @@ import { cn } from '@/lib/utils';
 // ─── Incoming Orders Tab ───────────────────────────────────────
 function IncomingOrdersTab() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [agentFilter, setAgentFilter] = useState('');
@@ -55,6 +58,12 @@ function IncomingOrdersTab() {
   const [statusFilter, setStatusFilter] = useState('');
   const [agents, setAgents] = useState<any[]>([]);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [products, setProducts] = useState<any[]>([]);
+
+  // Edit dialog state
+  const [editOrder, setEditOrder] = useState<any>(null);
+  const [editForm, setEditForm] = useState<any>({});
+  const [saving, setSaving] = useState(false);
 
   const fetchOrders = () => {
     setLoading(true);
@@ -72,6 +81,7 @@ function IncomingOrdersTab() {
 
   useEffect(() => {
     apiGetAgents().then(setAgents).catch(() => {});
+    apiGetProducts().then(setProducts).catch(() => {});
   }, []);
 
   useEffect(() => { fetchOrders(); }, [agentFilter, dateFrom, dateTo, sourceFilter, statusFilter]);
@@ -109,13 +119,77 @@ function IncomingOrdersTab() {
     }
     setUpdatingId(orderId);
     try {
-      await apiUpdateOrderStatus(orderId, newStatus);
+      await apiUpdateWarehouseOrder(orderId, { status: newStatus, _source: source });
       toast({ title: `Status updated to ${newStatus}` });
       fetchOrders();
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  const openEditDialog = (order: any) => {
+    setEditOrder(order);
+    setEditForm({
+      customer_name: order.customer_name || '',
+      customer_phone: order.customer_phone || '',
+      customer_address: order.customer_address || '',
+      customer_city: order.customer_city || '',
+      postal_code: order.postal_code || '',
+      birthday: order.birthday || '',
+      product_name: order.product_name || '',
+      product_id: order.product_id || '',
+      quantity: order.quantity || 1,
+      price: order.price || 0,
+      notes: order.notes || '',
+      status: order.status || 'confirmed',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editOrder) return;
+    setSaving(true);
+    try {
+      const payload: any = {
+        _source: editOrder.source,
+        customer_name: editForm.customer_name,
+        customer_phone: editForm.customer_phone,
+        customer_address: editForm.customer_address,
+        customer_city: editForm.customer_city,
+        postal_code: editForm.postal_code,
+        birthday: editForm.birthday || null,
+        product_name: editForm.product_name,
+        quantity: parseInt(editForm.quantity) || 1,
+        price: parseFloat(editForm.price) || 0,
+        notes: editForm.notes,
+      };
+      if (editForm.product_id && editOrder.source === 'order') {
+        payload.product_id = editForm.product_id;
+      }
+      if (editForm.status !== editOrder.status) {
+        payload.status = editForm.status;
+      }
+      await apiUpdateWarehouseOrder(editOrder.id, payload);
+      toast({ title: 'Order updated successfully' });
+      setEditOrder(null);
+      fetchOrders();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleProductSelect = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (product) {
+      setEditForm((prev: any) => ({
+        ...prev,
+        product_id: product.id,
+        product_name: product.name,
+        price: product.price,
+      }));
     }
   };
 
@@ -137,11 +211,22 @@ function IncomingOrdersTab() {
     URL.revokeObjectURL(url);
   };
 
+  const allStatuses = [
+    { value: 'pending', label: 'Pending', color: 'bg-muted' },
+    { value: 'take', label: 'Take', color: 'bg-blue-500' },
+    { value: 'call_again', label: 'Call Again', color: 'bg-orange-500' },
+    { value: 'confirmed', label: 'Confirmed', color: 'bg-yellow-500' },
+    { value: 'shipped', label: 'Shipped', color: 'bg-green-500' },
+    { value: 'delivered', label: 'Delivered', color: 'bg-sky-500' },
+    { value: 'paid', label: 'Paid', color: 'bg-purple-500' },
+    { value: 'returned', label: 'Returned', color: 'bg-red-500' },
+    { value: 'trashed', label: 'Trashed', color: 'bg-muted' },
+    { value: 'cancelled', label: 'Cancelled', color: 'bg-muted' },
+  ];
+
   const statusBadge = (status: string) => {
-    if (status === 'shipped') return <Badge className="bg-green-500/15 text-green-700 border-green-500/30">Shipped</Badge>;
-    if (status === 'delivered') return <Badge className="bg-sky-500/15 text-sky-700 border-sky-500/30">Delivered</Badge>;
-    if (status === 'paid') return <Badge className="bg-purple-500/15 text-purple-700 border-purple-500/30">Paid</Badge>;
-    return <Badge className="bg-yellow-500/15 text-yellow-700 border-yellow-500/30">Confirmed</Badge>;
+    const s = allStatuses.find(st => st.value === status);
+    return <Badge className={cn("text-white", s?.color || 'bg-muted')}>{s?.label || status}</Badge>;
   };
 
   return (
@@ -214,37 +299,47 @@ function IncomingOrdersTab() {
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Source</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Status</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Time</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {dayOrders.map((o: any) => {
-                          const canChangeStatus = o.source === 'order' || o.source === 'prediction_lead';
                           const isFromLead = o.source_type === 'prediction_lead' || o.source === 'prediction_lead';
                           return (
                             <tr key={o.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isFromLead && "bg-accent/30")}>
                               <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
                               <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
-                              <td className="px-4 py-2.5 text-xs">{o.product_name}</td>
+                              <td className="px-4 py-2.5 text-xs">
+                                {o.product_name}
+                                {o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}
+                              </td>
                               <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? Number(o.price).toFixed(2) : '—'}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
                               <td className="px-4 py-2.5 text-xs">
                                 <Badge variant={isFromLead ? 'secondary' : 'default'} className="text-[10px]">{isFromLead ? 'Lead' : 'Order'}</Badge>
                               </td>
                               <td className="px-4 py-2.5">
-                                {canChangeStatus ? (
-                                  <Select value={o.status} onValueChange={(val) => handleStatusChange(o.id, o.source, val)} disabled={updatingId === o.id}>
-                                    <SelectTrigger className="h-7 w-[110px] text-xs"><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="confirmed"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-yellow-500" /> Confirmed</span></SelectItem>
-                                      <SelectItem value="shipped"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-green-500" /> Shipped</span></SelectItem>
-                                      <SelectItem value="delivered"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-sky-500" /> Delivered</span></SelectItem>
-                                      <SelectItem value="paid"><span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-purple-500" /> Paid</span></SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                ) : statusBadge(o.status)}
+                                <Select value={o.status} onValueChange={(val) => handleStatusChange(o.id, o.source, val)} disabled={updatingId === o.id}>
+                                  <SelectTrigger className="h-7 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+                                  <SelectContent>
+                                    {allStatuses.map(s => (
+                                      <SelectItem key={s.value} value={s.value}>
+                                        <span className="flex items-center gap-1.5">
+                                          <span className={cn("h-2 w-2 rounded-full", s.color)} />
+                                          {s.label}
+                                        </span>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
                               </td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{format(new Date(o.created_at), 'HH:mm')}</td>
+                              <td className="px-4 py-2.5">
+                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openEditDialog(o)}>
+                                  <Edit className="h-3 w-3 mr-1" /> Edit
+                                </Button>
+                              </td>
                             </tr>
                           );
                         })}
@@ -257,6 +352,101 @@ function IncomingOrdersTab() {
           })}
         </div>
       )}
+
+      {/* Edit Order Dialog */}
+      <Dialog open={!!editOrder} onOpenChange={(open) => !open && setEditOrder(null)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit — {editOrder?.display_id}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Name</label>
+                <Input value={editForm.customer_name} onChange={e => setEditForm((p: any) => ({ ...p, customer_name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Phone</label>
+                <Input value={editForm.customer_phone} onChange={e => setEditForm((p: any) => ({ ...p, customer_phone: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Address</label>
+              <Input value={editForm.customer_address} onChange={e => setEditForm((p: any) => ({ ...p, customer_address: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">City</label>
+                <Input value={editForm.customer_city} onChange={e => setEditForm((p: any) => ({ ...p, customer_city: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Postal Code</label>
+                <Input value={editForm.postal_code} onChange={e => setEditForm((p: any) => ({ ...p, postal_code: e.target.value }))} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Birthday</label>
+              <Input type="date" value={editForm.birthday || ''} onChange={e => setEditForm((p: any) => ({ ...p, birthday: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Product</label>
+              <Select value={editForm.product_id || '__custom'} onValueChange={(val) => {
+                if (val === '__custom') return;
+                handleProductSelect(val);
+              }}>
+                <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__custom">Custom</SelectItem>
+                  {products.map((p: any) => (
+                    <SelectItem key={p.id} value={p.id}>{p.name} — {Number(p.price).toFixed(2)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input className="mt-1" placeholder="Or type product name" value={editForm.product_name} onChange={e => setEditForm((p: any) => ({ ...p, product_name: e.target.value, product_id: '' }))} />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Quantity</label>
+                <Input type="number" min={1} value={editForm.quantity} onChange={e => setEditForm((p: any) => ({ ...p, quantity: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Unit Price</label>
+                <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm((p: any) => ({ ...p, price: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Total</label>
+                <div className="h-9 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-semibold text-primary">
+                  {(parseFloat(editForm.price || 0) * parseInt(editForm.quantity || 1)).toFixed(2)}
+                </div>
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Status</label>
+              <Select value={editForm.status} onValueChange={(val) => setEditForm((p: any) => ({ ...p, status: val }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {allStatuses.map(s => (
+                    <SelectItem key={s.value} value={s.value}>
+                      <span className="flex items-center gap-1.5">
+                        <span className={cn("h-2 w-2 rounded-full", s.color)} />
+                        {s.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Notes</label>
+              <Textarea value={editForm.notes} onChange={e => setEditForm((p: any) => ({ ...p, notes: e.target.value }))} rows={3} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOrder(null)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

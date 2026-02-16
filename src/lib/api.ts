@@ -163,6 +163,8 @@ export const apiUpdateWarehouseItem = (id: string, body: any) =>
   apiFetch(`warehouse/user-items/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteWarehouseItem = (id: string) =>
   apiFetch(`warehouse/user-items/${id}`, { method: 'DELETE' });
+export const apiUpdateWarehouseOrder = (id: string, body: any) =>
+  apiFetch(`warehouse/incoming-orders/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 
 // Shifts
 export const apiGetShifts = (params?: { agent_id?: string; from?: string; to?: string }) => {
