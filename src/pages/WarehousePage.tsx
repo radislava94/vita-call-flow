@@ -236,7 +236,7 @@ function IncomingOrdersTab() {
                             <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
                             <td className="px-4 py-2.5 text-xs">{o.product_name}</td>
                             <td className="px-4 py-2.5 font-semibold text-primary text-xs">
-                              {o.price ? `$${Number(o.price).toFixed(2)}` : '—'}
+                              {o.price ? Number(o.price).toFixed(2) : '—'}
                             </td>
                             <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
                             <td className="px-4 py-2.5 text-xs">
@@ -330,7 +330,7 @@ function InventoryTab() {
                 </div>
               </td>
               <td className="px-4 py-3 text-muted-foreground">{p.sku || '—'}</td>
-              <td className="px-4 py-3 font-semibold text-primary">${Number(p.price).toFixed(2)}</td>
+              <td className="px-4 py-3 font-semibold text-primary">{Number(p.price).toFixed(2)}</td>
               <td className="px-4 py-3">
                 {p.stock_quantity <= 0 ? (
                   <Badge variant="destructive">Out of Stock</Badge>

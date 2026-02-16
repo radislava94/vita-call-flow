@@ -383,7 +383,7 @@ export default function Orders() {
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
                   <td className="px-4 py-3">{order.product_name}</td>
-                  <td className="px-4 py-3 font-semibold">${Number(order.price).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold">{Number(order.price).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     {order.assigned_agent_name ? (
                       <span className="inline-flex items-center gap-1.5">

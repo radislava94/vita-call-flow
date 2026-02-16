@@ -135,7 +135,7 @@ export default function AdsPanelPage() {
     { label: 'Total Campaigns', value: totalCampaigns, icon: Megaphone, color: 'text-primary' },
     { label: 'Active', value: activeCampaigns, icon: Play, color: 'text-emerald-500' },
     { label: 'Paused', value: pausedCampaigns, icon: Pause, color: 'text-amber-500' },
-    { label: 'Total Spend', value: `$${totalSpend.toLocaleString()}`, icon: DollarSign, color: 'text-blue-500' },
+    { label: 'Total Spend', value: totalSpend.toLocaleString(), icon: DollarSign, color: 'text-blue-500' },
     { label: 'Total Clicks', value: totalClicks.toLocaleString(), icon: MousePointerClick, color: 'text-violet-500' },
     { label: 'Conversions', value: totalConversions.toLocaleString(), icon: Target, color: 'text-rose-500' },
   ];
@@ -289,8 +289,8 @@ export default function AdsPanelPage() {
                           <td className="p-3">
                             <Badge variant="outline" className={`capitalize text-[11px] ${statusColors[c.status] || ''}`}>{c.status}</Badge>
                           </td>
-                          <td className="p-3 text-right font-mono">${Number(c.budget).toLocaleString()}</td>
-                          <td className="p-3 text-right font-mono">${Number(c.spent).toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono">{Number(c.budget).toLocaleString()}</td>
+                          <td className="p-3 text-right font-mono">{Number(c.spent).toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{c.clicks.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{c.conversions.toLocaleString()}</td>
                           <td className="p-3 text-right font-mono">{ctr}%</td>
@@ -327,15 +327,15 @@ export default function AdsPanelPage() {
                                     <div className="flex justify-between"><span className="text-muted-foreground">Clicks</span><span className="font-mono">{c.clicks.toLocaleString()}</span></div>
                                     <div className="flex justify-between"><span className="text-muted-foreground">Conversions</span><span className="font-mono">{c.conversions.toLocaleString()}</span></div>
                                     <div className="flex justify-between"><span className="text-muted-foreground">CTR</span><span className="font-mono">{ctr}%</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">CPC</span><span className="font-mono">${c.clicks > 0 ? (Number(c.spent) / c.clicks).toFixed(2) : '0.00'}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">CPC</span><span className="font-mono">{c.clicks > 0 ? (Number(c.spent) / c.clicks).toFixed(2) : '0.00'}</span></div>
                                   </div>
                                 </div>
                                 <div className="space-y-2">
                                   <h4 className="text-xs font-semibold uppercase text-muted-foreground">Budget</h4>
                                   <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Total Budget</span><span className="font-mono">${Number(c.budget).toLocaleString()}</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Spent</span><span className="font-mono">${Number(c.spent).toLocaleString()}</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">Remaining</span><span className="font-mono">${(Number(c.budget) - Number(c.spent)).toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Total Budget</span><span className="font-mono">{Number(c.budget).toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Spent</span><span className="font-mono">{Number(c.spent).toLocaleString()}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">Remaining</span><span className="font-mono">{(Number(c.budget) - Number(c.spent)).toLocaleString()}</span></div>
                                   </div>
                                   <div className="mt-2">
                                     <div className="h-2 rounded-full bg-muted overflow-hidden">

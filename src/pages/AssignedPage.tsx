@@ -53,7 +53,7 @@ export default function AssignedPage() {
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                 <td className="px-4 py-3">{order.customer_name}</td>
                 <td className="px-4 py-3">{order.product_name}</td>
-                <td className="px-4 py-3 font-semibold">${Number(order.price).toFixed(2)}</td>
+                <td className="px-4 py-3 font-semibold">{Number(order.price).toFixed(2)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
                   <Link to={`/orders/${order.id}`} className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors">

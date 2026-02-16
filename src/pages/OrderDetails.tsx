@@ -289,7 +289,7 @@ export default function OrderDetails() {
                 <p className="font-semibold">{order.product_name}</p>
                 {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
               </div>
-              <span className="text-lg font-bold text-primary">${Number(order.price).toFixed(2)}</span>
+              <span className="text-lg font-bold text-primary">{Number(order.price).toFixed(2)}</span>
             </div>
           </div>
 

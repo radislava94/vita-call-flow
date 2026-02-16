@@ -175,7 +175,7 @@ export default function ProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{product.sku || '—'}</td>
-                  <td className="px-4 py-3 font-semibold text-primary">${Number(product.price).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-primary">{Number(product.price).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <StockBadge qty={product.stock_quantity} threshold={product.low_stock_threshold} />
                   </td>
