@@ -147,13 +147,28 @@ serve(async (req) => {
     if (req.method === "POST" && path === "webhook/leads") {
       let body;
       try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
-      const { data, error } = await adminClient
+      const { data: lead, error } = await adminClient
         .from("inbound_leads")
-        .insert({ name: body.name, phone: body.phone, status: body.status, source: body.source })
+        .insert({ name: body.name, phone: body.phone, status: "pending", source: body.source })
         .select()
         .single();
       if (error) return json({ error: sanitizeDbError(error) }, 400);
-      return json({ success: true, id: data.id });
+
+      // Auto-create order for this lead
+      const { data: order } = await adminClient
+        .from("orders")
+        .insert({
+          product_name: "From Landing Page",
+          customer_name: body.name,
+          customer_phone: body.phone,
+          status: "pending",
+          source_type: "inbound_lead",
+          source_lead_id: lead.id,
+        })
+        .select("id, display_id")
+        .single();
+
+      return json({ success: true, id: lead.id, order_id: order?.id });
     }
 
     // Dynamic webhook by slug: POST /api/webhook/:slug
@@ -187,50 +202,21 @@ serve(async (req) => {
       // Increment total_leads
       await adminClient.from("webhooks").update({ total_leads: (webhook.total_leads || 0) + 1 }).eq("id", webhook.id);
 
-      return json({ success: true, id: lead.id, product: webhook.product_name });
-    }
-
-    // Dynamic webhook by slug: POST /api/webhook/:slug
-    if (req.method === "POST" && segments[0] === "webhook" && segments.length === 2 && segments[1] !== "leads") {
-      const slug = segments[1];
-      // Look up webhook
-      const { data: webhook } = await adminClient
-        .from("webhooks")
-        .select("id, product_name, status")
-        .eq("slug", slug)
-        .single();
-      if (!webhook) return json({ error: "Webhook not found" }, 404);
-      if (webhook.status !== "active") return json({ error: "Webhook is disabled" }, 403);
-
-      let body;
-      try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
-
-      const { data, error } = await adminClient
-        .from("inbound_leads")
+      // Auto-create order for this lead
+      const { data: order } = await adminClient
+        .from("orders")
         .insert({
-          name: body.name,
-          phone: body.phone,
-          status: "pending",
-          source: body.source || "webhook",
-          webhook_id: webhook.id,
           product_name: webhook.product_name,
+          customer_name: body.name,
+          customer_phone: body.phone,
+          status: "pending",
+          source_type: "inbound_lead",
+          source_lead_id: lead.id,
         })
-        .select()
+        .select("id, display_id")
         .single();
-      if (error) return json({ error: sanitizeDbError(error) }, 400);
 
-      // Increment total_leads counter
-      await adminClient.rpc("increment_webhook_leads_count", { _webhook_id: webhook.id }).catch(() => {
-        // fallback: manual increment
-        adminClient.from("webhooks").update({ total_leads: webhook.status === "active" ? 1 : 0 }).eq("id", webhook.id);
-      });
-      // Simple increment via raw update
-      const { data: wh } = await adminClient.from("webhooks").select("total_leads").eq("id", webhook.id).single();
-      if (wh) {
-        await adminClient.from("webhooks").update({ total_leads: (wh.total_leads || 0) + 1 }).eq("id", webhook.id);
-      }
-
-      return json({ success: true, id: data.id, product: webhook.product_name });
+      return json({ success: true, id: lead.id, order_id: order?.id, product: webhook.product_name });
     }
 
     // Verify auth
@@ -650,6 +636,17 @@ serve(async (req) => {
         changed_by: user.id,
         changed_by_name: profile?.full_name || user.email,
       });
+
+      // Sync status to linked inbound lead
+      if (order.source_lead_id) {
+        const inboundStatusMap: Record<string, string> = {
+          pending: "pending", take: "contacted", call_again: "contacted",
+          confirmed: "converted", shipped: "converted", delivered: "converted",
+          paid: "converted", returned: "rejected", trashed: "rejected", cancelled: "rejected",
+        };
+        const inboundStatus = inboundStatusMap[newStatus] || "contacted";
+        await adminClient.from("inbound_leads").update({ status: inboundStatus }).eq("id", order.source_lead_id);
+      }
 
       return json({ success: true });
     }
@@ -2053,6 +2050,18 @@ serve(async (req) => {
       if (Object.keys(updates).length === 0) return json({ error: "No valid fields" }, 400);
       const { error } = await adminClient.from("inbound_leads").update(updates).eq("id", leadId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Sync status to linked order
+      if (updates.status) {
+        const validOrderStatuses = ["pending", "take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid", "trashed", "cancelled"];
+        if (validOrderStatuses.includes(updates.status)) {
+          await adminClient
+            .from("orders")
+            .update({ status: updates.status })
+            .eq("source_lead_id", leadId);
+        }
+      }
+
       return json({ success: true });
     }
 
