@@ -264,7 +264,7 @@ function IncomingOrdersTab() {
 // ─── Inventory Tab (Enhanced) ──────────────────────────────────
 function InventoryTab() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRestock, setShowRestock] = useState(false);
@@ -552,7 +552,7 @@ function StockMovementsTab() {
 // ─── Suppliers Tab ─────────────────────────────────────────────
 function SuppliersTab() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
   const { toast } = useToast();
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -718,7 +718,7 @@ function SuppliersTab() {
 // ─── User Warehouse Tab ────────────────────────────────────────
 function UserWarehouseTab() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
   const isWarehouse = user?.isWarehouse;
   const canManage = isAdmin || isWarehouse;
   const { toast } = useToast();
@@ -901,7 +901,7 @@ function UserWarehouseTab() {
 // ─── Main Warehouse Page ───────────────────────────────────────
 export default function WarehousePage() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
   const isWarehouse = user?.isWarehouse;
   const canManage = isAdmin || isWarehouse;
 
