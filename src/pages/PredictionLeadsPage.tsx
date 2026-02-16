@@ -16,8 +16,9 @@ import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
 import { MessageSquare, Loader2, Pencil, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag } from 'lucide-react';
 import { format } from 'date-fns';
-import { apiGetMyLeads, apiUpdateLead } from '@/lib/api';
+import { apiGetMyLeads, apiUpdateLead, apiGetProducts } from '@/lib/api';
 import { CallPopup, CallOutcome } from '@/components/CallPopup';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface LeadRow {
   id: string;
@@ -28,6 +29,8 @@ interface LeadRow {
   product: string | null;
   status: PredictionLeadStatus;
   notes: string | null;
+  quantity?: number;
+  price?: number;
   created_at?: string;
   updated_at?: string;
   prediction_lists?: { name: string } | null;
@@ -51,6 +54,7 @@ export default function PredictionLeadsPage() {
   const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [callPopupLead, setCallPopupLead] = useState<LeadRow | null>(null);
+  const [productsList, setProductsList] = useState<any[]>([]);
 
   // ── Filter state ──
   const [search, setSearch] = useState('');
@@ -72,6 +76,7 @@ export default function PredictionLeadsPage() {
   };
 
   useEffect(() => { fetchLeads(); }, []);
+  useEffect(() => { apiGetProducts().then(setProductsList).catch(() => {}); }, []);
 
   // ── Derived data ──
   const uniqueProducts = useMemo(() => {
@@ -181,6 +186,28 @@ export default function PredictionLeadsPage() {
 
   const isEditing = (id: string, field: string) =>
     editingField?.id === id && editingField?.field === field;
+
+  const handleProductSelect = async (leadId: string, productId: string) => {
+    const product = productsList.find(p => p.id === productId);
+    if (!product) return;
+    try {
+      await apiUpdateLead(leadId, { product: product.name, price: Number(product.price) });
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, product: product.name, price: Number(product.price) } : l));
+      toast({ title: 'Product updated' });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const handleLeadFieldSave = async (leadId: string, field: string, value: number) => {
+    try {
+      await apiUpdateLead(leadId, { [field]: value });
+      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l));
+      toast({ title: `${field.charAt(0).toUpperCase() + field.slice(1)} updated` });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    }
+  };
 
   const renderEditableField = (lead: LeadRow, field: 'address' | 'city' | 'telephone' | 'product', label: string) => {
     const value = lead[field];
@@ -451,7 +478,8 @@ export default function PredictionLeadsPage() {
                 <span className="font-medium">{lead.name}</span>
                 <span className="font-mono text-xs text-muted-foreground">{lead.telephone}</span>
                 <span className="text-sm text-muted-foreground">{lead.city}</span>
-                <span className="ml-auto text-sm text-muted-foreground">{lead.product}</span>
+                <span className="text-sm text-muted-foreground">{lead.product}</span>
+                <span className="text-sm font-semibold ml-auto">{((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}</span>
               </div>
 
               {isExpanded && (
@@ -467,8 +495,66 @@ export default function PredictionLeadsPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     {renderEditableField(lead, 'address', 'Address')}
                     {renderEditableField(lead, 'city', 'City')}
-                    {renderEditableField(lead, 'product', 'Product')}
                     {renderEditableField(lead, 'telephone', 'Telephone')}
+                    
+                    {/* Product dropdown */}
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-1">Product</p>
+                      <Select
+                        value={productsList.find(p => p.name === lead.product)?.id || ''}
+                        onValueChange={(val) => handleProductSelect(lead.id, val)}
+                      >
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue placeholder={lead.product || 'Select product'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productsList.filter(p => p.is_active).map(p => (
+                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Quantity */}
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-1">Quantity</p>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={lead.quantity || 1}
+                        onChange={(e) => {
+                          const val = Math.max(1, parseInt(e.target.value) || 1);
+                          setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, quantity: val } : l));
+                        }}
+                        onBlur={(e) => handleLeadFieldSave(lead.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Price */}
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-1">Price</p>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={lead.price || 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) || 0;
+                          setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, price: val } : l));
+                        }}
+                        onBlur={(e) => handleLeadFieldSave(lead.id, 'price', parseFloat(e.target.value) || 0)}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Total */}
+                    <div>
+                      <p className="text-muted-foreground text-xs mb-1">Total</p>
+                      <p className="h-8 flex items-center font-bold text-primary">
+                        {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
+                      </p>
+                    </div>
                   </div>
 
                   <div>
