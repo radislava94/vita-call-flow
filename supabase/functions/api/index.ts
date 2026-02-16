@@ -1870,13 +1870,20 @@ serve(async (req) => {
             display_id: o.display_id,
             customer_name: o.customer_name,
             customer_phone: o.customer_phone,
+            customer_address: o.customer_address,
+            customer_city: o.customer_city,
+            postal_code: o.postal_code,
+            birthday: o.birthday,
             product_name: o.product_name,
+            product_id: o.product_id,
             price: o.price,
+            quantity: o.quantity,
             assigned_agent_name: o.assigned_agent_name,
             assigned_agent_id: o.assigned_agent_id,
             created_at: o.created_at,
             status: o.status,
             source: "order",
+            source_lead_id: o.source_lead_id,
           });
         }
       }
@@ -1895,14 +1902,21 @@ serve(async (req) => {
             display_id: `LEAD-${l.name?.substring(0, 8) || l.id.substring(0, 8)}`,
             customer_name: l.name,
             customer_phone: l.telephone,
+            customer_address: l.address || "",
+            customer_city: l.city || "",
+            postal_code: "",
+            birthday: null,
             product_name: l.product || "—",
-            price: 0,
+            product_id: null,
+            price: l.price || 0,
+            quantity: l.quantity || 1,
             assigned_agent_name: l.assigned_agent_name,
             assigned_agent_id: l.assigned_agent_id,
             created_at: l.created_at,
             status: "confirmed",
             source: "prediction_lead",
             list_name: l.prediction_lists?.name || "",
+            notes: l.notes || "",
           });
         }
       }
@@ -1910,6 +1924,185 @@ serve(async (req) => {
       // Sort combined by date desc
       results.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return json(results);
+    }
+
+    // PATCH /api/warehouse/incoming-orders/:id (admin/manager/warehouse can edit order or lead)
+    if (req.method === "PATCH" && segments[0] === "warehouse" && segments[1] === "incoming-orders" && segments.length === 3) {
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      const itemId = segments[2];
+      const body = await req.json();
+      const source = body._source; // "order" or "prediction_lead"
+
+      if (source === "prediction_lead") {
+        // Update prediction lead fields
+        const leadUpdates: Record<string, any> = {};
+        if (body.customer_name !== undefined) leadUpdates.name = body.customer_name;
+        if (body.customer_phone !== undefined) leadUpdates.telephone = body.customer_phone;
+        if (body.customer_address !== undefined) leadUpdates.address = body.customer_address;
+        if (body.customer_city !== undefined) leadUpdates.city = body.customer_city;
+        if (body.product_name !== undefined) leadUpdates.product = body.product_name;
+        if (body.quantity !== undefined) leadUpdates.quantity = body.quantity;
+        if (body.price !== undefined) leadUpdates.price = body.price;
+        if (body.notes !== undefined) leadUpdates.notes = body.notes;
+        if (body.status !== undefined) leadUpdates.status = body.status;
+
+        const { data: updatedLead, error } = await adminClient
+          .from("prediction_leads")
+          .update(leadUpdates)
+          .eq("id", itemId)
+          .select()
+          .single();
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+        // If status changed, sync with linked order
+        if (body.status) {
+          const { data: existingOrder } = await adminClient
+            .from("orders")
+            .select("id, status")
+            .eq("source_lead_id", itemId)
+            .maybeSingle();
+
+          if (existingOrder) {
+            // Map lead status to order status
+            const statusMap: Record<string, string> = {
+              not_contacted: "pending",
+              no_answer: "call_again",
+              interested: "take",
+              not_interested: "cancelled",
+              confirmed: "confirmed",
+            };
+            const orderStatus = statusMap[body.status] || body.status;
+            // Also sync fields
+            const orderSync: Record<string, any> = { status: orderStatus };
+            if (body.customer_name !== undefined) orderSync.customer_name = body.customer_name;
+            if (body.customer_phone !== undefined) orderSync.customer_phone = body.customer_phone;
+            if (body.customer_address !== undefined) orderSync.customer_address = body.customer_address;
+            if (body.customer_city !== undefined) orderSync.customer_city = body.customer_city;
+            if (body.product_name !== undefined) orderSync.product_name = body.product_name;
+            if (body.quantity !== undefined) orderSync.quantity = body.quantity;
+            if (body.price !== undefined) orderSync.price = body.price;
+
+            await adminClient.from("orders").update(orderSync).eq("id", existingOrder.id);
+
+            if (existingOrder.status !== orderStatus) {
+              const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+              await adminClient.from("order_history").insert({
+                order_id: existingOrder.id,
+                from_status: existingOrder.status,
+                to_status: orderStatus,
+                changed_by: user.id,
+                changed_by_name: profile?.full_name || "Warehouse",
+              });
+            }
+          } else if (["call_again", "confirmed"].includes(body.status)) {
+            // Create order if none exists
+            const lead = updatedLead;
+            const { data: agentProfile } = lead.assigned_agent_id
+              ? await adminClient.from("profiles").select("full_name").eq("user_id", lead.assigned_agent_id).single()
+              : { data: null };
+            const { data: newOrder } = await adminClient
+              .from("orders")
+              .insert({
+                product_name: lead.product || "From Prediction Lead",
+                customer_name: lead.name || "",
+                customer_phone: lead.telephone || "",
+                customer_city: lead.city || "",
+                customer_address: lead.address || "",
+                price: lead.price || 0,
+                quantity: lead.quantity || 1,
+                status: body.status === "confirmed" ? "confirmed" : "call_again",
+                source_type: "prediction_lead",
+                source_lead_id: itemId,
+                assigned_agent_id: lead.assigned_agent_id,
+                assigned_agent_name: agentProfile?.full_name || lead.assigned_agent_name || null,
+                assigned_at: lead.assigned_agent_id ? new Date().toISOString() : null,
+              })
+              .select()
+              .single();
+            if (newOrder) {
+              await adminClient.from("order_history").insert({
+                order_id: newOrder.id,
+                to_status: newOrder.status,
+                changed_by: user.id,
+                changed_by_name: "Warehouse",
+              });
+            }
+          }
+        }
+
+        return json(updatedLead);
+      } else {
+        // Update order fields directly using adminClient
+        const orderUpdates: Record<string, any> = {};
+        if (body.customer_name !== undefined) orderUpdates.customer_name = body.customer_name;
+        if (body.customer_phone !== undefined) orderUpdates.customer_phone = body.customer_phone;
+        if (body.customer_address !== undefined) orderUpdates.customer_address = body.customer_address;
+        if (body.customer_city !== undefined) orderUpdates.customer_city = body.customer_city;
+        if (body.postal_code !== undefined) orderUpdates.postal_code = body.postal_code;
+        if (body.birthday !== undefined) orderUpdates.birthday = body.birthday;
+        if (body.product_name !== undefined) orderUpdates.product_name = body.product_name;
+        if (body.product_id !== undefined) orderUpdates.product_id = body.product_id;
+        if (body.quantity !== undefined) orderUpdates.quantity = body.quantity;
+        if (body.price !== undefined) orderUpdates.price = body.price;
+
+        // Handle status change
+        if (body.status !== undefined) {
+          const { data: currentOrder } = await adminClient.from("orders").select("*").eq("id", itemId).single();
+          if (!currentOrder) return json({ error: "Order not found" }, 404);
+
+          // Stock deduction on shipped
+          const orderQty = body.quantity ?? currentOrder.quantity ?? 1;
+          const productId = body.product_id ?? currentOrder.product_id;
+          if (body.status === "shipped" && currentOrder.status !== "shipped" && productId) {
+            const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", productId).single();
+            if (product && product.stock_quantity < orderQty) {
+              return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
+            }
+            if (product) {
+              const newQty = product.stock_quantity - orderQty;
+              await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", productId);
+              await adminClient.from("inventory_logs").insert({
+                product_id: productId,
+                change_amount: -orderQty,
+                previous_stock: product.stock_quantity,
+                new_stock: newQty,
+                reason: "order_deduction",
+                movement_type: "order_deduction",
+                user_id: user.id,
+                notes: `Order ${currentOrder.display_id} shipped (warehouse)`,
+              });
+            }
+          }
+
+          orderUpdates.status = body.status;
+          const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+          await adminClient.from("order_history").insert({
+            order_id: itemId,
+            from_status: currentOrder.status,
+            to_status: body.status,
+            changed_by: user.id,
+            changed_by_name: profile?.full_name || "Warehouse",
+          });
+
+          // Sync back to prediction lead if linked
+          if (currentOrder.source_lead_id) {
+            const leadStatusMap: Record<string, string> = {
+              pending: "not_contacted",
+              take: "interested",
+              call_again: "no_answer",
+              confirmed: "confirmed",
+            };
+            const leadStatus = leadStatusMap[body.status];
+            if (leadStatus) {
+              await adminClient.from("prediction_leads").update({ status: leadStatus }).eq("id", currentOrder.source_lead_id);
+            }
+          }
+        }
+
+        const { data, error } = await adminClient.from("orders").update(orderUpdates).eq("id", itemId).select().single();
+        if (error) return json({ error: sanitizeDbError(error) }, 400);
+        return json(data);
+      }
     }
 
     // GET /api/warehouse/user-items (admin: all, agent: own)
