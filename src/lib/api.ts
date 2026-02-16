@@ -193,6 +193,12 @@ export const apiUpdateInboundLead = (id: string, body: any) =>
 export const apiDeleteInboundLead = (id: string) =>
   apiFetch(`inbound-leads/${id}`, { method: 'DELETE' });
 
+// Assigner
+export const apiGetUnassignedPending = () => apiFetch('orders/unassigned-pending');
+export const apiBulkAssignOrders = (orderIds: string[], agentId: string) =>
+  apiFetch('orders/bulk-assign', { method: 'POST', body: JSON.stringify({ order_ids: orderIds, agent_id: agentId }) });
+export const apiGetOnlineAgents = () => apiFetch('agents/online');
+
 // Webhooks
 export const apiGetWebhooks = () => apiFetch('webhooks');
 export const apiCreateWebhook = (body: { product_name: string; description?: string }) =>

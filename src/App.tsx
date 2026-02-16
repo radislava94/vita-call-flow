@@ -11,6 +11,7 @@ import OrderDetails from "./pages/OrderDetails";
 import UsersPage from "./pages/UsersPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssignedPage from "./pages/AssignedPage";
+import AssignerPage from "./pages/AssignerPage";
 import PredictionListsPage from "./pages/PredictionListsPage";
 import PredictionListDetail from "./pages/PredictionListDetail";
 import PredictionLeadsPage from "./pages/PredictionLeadsPage";
@@ -44,6 +45,7 @@ const App = () => (
             <Route path="/users" element={<ProtectedRoute><UsersPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute><ProductsPage /></ProtectedRoute>} />
             <Route path="/assigned" element={<ProtectedRoute><AssignedPage /></ProtectedRoute>} />
+            <Route path="/assigner" element={<ProtectedRoute><AssignerPage /></ProtectedRoute>} />
             <Route path="/predictions" element={<ProtectedRoute><PredictionListsPage /></ProtectedRoute>} />
             <Route path="/predictions/:id" element={<ProtectedRoute><PredictionListDetail /></ProtectedRoute>} />
             <Route path="/prediction-leads" element={<ProtectedRoute><PredictionLeadsPage /></ProtectedRoute>} />

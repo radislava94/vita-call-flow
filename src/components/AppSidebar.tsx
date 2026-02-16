@@ -8,8 +8,6 @@ import {
   ClipboardList,
   FileSpreadsheet,
   Package,
-  Boxes,
-  TruckIcon,
   BarChart3,
   Users,
   CalendarDays,
@@ -20,10 +18,10 @@ import {
   ChevronDown,
   Phone,
   Warehouse,
-  PackageSearch,
   Settings,
   Inbox,
   Webhook,
+  UserPlus,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -57,6 +55,7 @@ const sections: NavSection[] = [
     items: [
       { title: 'Orders', path: '/orders', icon: ShoppingCart },
       { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox },
+      { title: 'Assigner', path: '/assigner', icon: UserPlus },
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList },
       { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet },
       { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet },
@@ -131,7 +130,7 @@ function getVisibleSections(
       // "Users" & "Performance" only for admin
       if (!isAdmin) {
         items = items.filter(
-          (i) => i.path !== '/users' && i.path !== '/performance' && i.path !== '/shifts' && i.path !== '/inbound-leads',
+          (i) => i.path !== '/users' && i.path !== '/performance' && i.path !== '/shifts' && i.path !== '/inbound-leads' && i.path !== '/assigner',
         );
       }
 
