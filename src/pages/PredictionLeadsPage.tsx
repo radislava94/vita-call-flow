@@ -531,26 +531,9 @@ export default function PredictionLeadsPage() {
                       />
                     </div>
 
-                    {/* Price */}
+                    {/* Total Price */}
                     <div>
-                      <p className="text-muted-foreground text-xs mb-1">Price</p>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={lead.price || 0}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, price: val } : l));
-                        }}
-                        onBlur={(e) => handleLeadFieldSave(lead.id, 'price', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-
-                    {/* Total */}
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Total</p>
+                      <p className="text-muted-foreground text-xs mb-1">Total Price</p>
                       <p className="h-8 flex items-center font-bold text-primary">
                         {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
                       </p>

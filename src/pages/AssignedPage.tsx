@@ -42,8 +42,7 @@ export default function AssignedPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Qty</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total Price</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
             </tr>
@@ -56,7 +55,6 @@ export default function AssignedPage() {
                 <td className="px-4 py-3">{order.customer_name}</td>
                 <td className="px-4 py-3">{order.product_name}</td>
                 <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
-                <td className="px-4 py-3 font-semibold">{Number(order.price).toFixed(2)}</td>
                 <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">

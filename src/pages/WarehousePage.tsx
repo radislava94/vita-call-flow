@@ -197,10 +197,10 @@ function IncomingOrdersTab() {
 
   const exportCSV = () => {
     if (orders.length === 0) return;
-    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Price', 'Agent', 'Source', 'Status', 'Date'];
+    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Quantity', 'Total Price', 'Agent', 'Source', 'Status', 'Date'];
     const rows = orders.map((o: any) => [
       o.display_id, `"${(o.customer_name || '').replace(/"/g, '""')}"`, o.customer_phone || '',
-      `"${(o.product_name || '').replace(/"/g, '""')}"`, o.price, o.assigned_agent_name || '',
+      `"${(o.product_name || '').replace(/"/g, '""')}"`, o.quantity || 1, ((o.quantity || 1) * Number(o.price || 0)).toFixed(2), o.assigned_agent_name || '',
       o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order', o.status, format(new Date(o.created_at), 'yyyy-MM-dd'),
     ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -296,7 +296,7 @@ function IncomingOrdersTab() {
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Customer</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Phone</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Product</th>
-                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Price</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Total Price</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Agent</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Source</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Status</th>
@@ -316,7 +316,7 @@ function IncomingOrdersTab() {
                                 {o.product_name}
                                 {o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}
                               </td>
-                              <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? Number(o.price).toFixed(2) : '—'}</td>
+                              <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? ((o.quantity || 1) * Number(o.price)).toFixed(2) : '—'}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
                               <td className="px-4 py-2.5 text-xs">
                                 <Badge variant={isFromLead ? 'secondary' : 'default'} className="text-[10px]">{isFromLead ? 'Lead' : 'Order'}</Badge>
@@ -419,17 +419,13 @@ function IncomingOrdersTab() {
               </Select>
               <Input className="mt-1" placeholder="Or type product name" value={editForm.product_name} onChange={e => setEditForm((p: any) => ({ ...p, product_name: e.target.value, product_id: '' }))} />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs text-muted-foreground">Quantity</label>
                 <Input type="number" min={1} value={editForm.quantity} onChange={e => setEditForm((p: any) => ({ ...p, quantity: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs text-muted-foreground">Unit Price</label>
-                <Input type="number" min={0} step="0.01" value={editForm.price} onChange={e => setEditForm((p: any) => ({ ...p, price: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Total</label>
+                <label className="text-xs text-muted-foreground">Total Price</label>
                 <div className="h-9 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-semibold text-primary">
                   {(parseFloat(editForm.price || 0) * parseInt(editForm.quantity || 1)).toFixed(2)}
                 </div>

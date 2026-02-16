@@ -31,6 +31,7 @@ interface ApiOrder {
   customer_name: string;
   customer_phone: string;
   customer_city: string;
+  customer_address: string;
   assigned_agent_name: string | null;
   assigned_agent_id: string | null;
   created_at: string;
@@ -152,9 +153,9 @@ export default function Orders() {
   }, [orders]);
 
   const exportCSV = () => {
-    const header = 'Order ID,Product,Price,Status,Customer,Assignee,Source,Date\n';
+    const header = 'Order ID,Customer,Phone,City,Address,Product,Quantity,Total Price,Status,Date\n';
     const rows = filteredOrders.map(o =>
-      `${o.display_id},${o.product_name},${o.price},${o.status},${o.customer_name},${o.assigned_agent_name || 'Unassigned'},${o.source_type === 'prediction_lead' ? 'Prediction Lead' : 'Manual'},${new Date(o.created_at).toLocaleDateString()}`
+      `${o.display_id},"${(o.customer_name || '').replace(/"/g, '""')}",${o.customer_phone || ''},"${(o.customer_city || '').replace(/"/g, '""')}","${(o.customer_address || '').replace(/"/g, '""')}","${(o.product_name || '').replace(/"/g, '""')}",${o.quantity || 1},${((o.quantity || 1) * Number(o.price)).toFixed(2)},${o.status},${new Date(o.created_at).toLocaleDateString()}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -371,8 +372,7 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Customer</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Product</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Qty</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total Price</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
@@ -387,7 +387,6 @@ export default function Orders() {
                   <td className="px-4 py-3">{order.customer_name}</td>
                   <td className="px-4 py-3">{order.product_name}</td>
                   <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
-                  <td className="px-4 py-3 font-semibold">{Number(order.price).toFixed(2)}</td>
                   <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     {order.assigned_agent_name ? (
