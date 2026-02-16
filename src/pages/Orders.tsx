@@ -397,8 +397,8 @@ export default function Orders() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={order.source_type === 'prediction_lead' ? 'secondary' : 'outline'} className="text-[10px]">
-                      {order.source_type === 'prediction_lead' ? 'Lead' : 'Manual'}
+                    <Badge variant={order.source_type === 'prediction_lead' ? 'secondary' : order.source_type === 'inbound_lead' ? 'secondary' : 'outline'} className="text-[10px]">
+                      {order.source_type === 'prediction_lead' ? 'Lead' : order.source_type === 'inbound_lead' ? 'Webhook' : 'Manual'}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
