@@ -691,7 +691,8 @@ serve(async (req) => {
     }
 
     // GET /api/orders/:id
-    if (req.method === "GET" && segments[0] === "orders" && segments.length === 2 && segments[1] !== "stats") {
+    const reservedOrderPaths = ["stats", "assigned", "unassigned-pending", "bulk-assign", "bulk-unassign"];
+    if (req.method === "GET" && segments[0] === "orders" && segments.length === 2 && !reservedOrderPaths.includes(segments[1])) {
       const orderId = segments[1];
       const { data: order, error } = await supabase
         .from("orders")
