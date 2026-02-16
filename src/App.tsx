@@ -23,6 +23,7 @@ import WarehousePage from "./pages/WarehousePage";
 import SettingsPage from "./pages/SettingsPage";
 import AdsPanelPage from "./pages/AdsPanelPage";
 import InboundLeadsPage from "./pages/InboundLeadsPage";
+import WebhookManagementPage from "./pages/WebhookManagementPage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -55,6 +56,7 @@ const App = () => (
             <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
             <Route path="/ads" element={<ProtectedRoute><AdsPanelPage /></ProtectedRoute>} />
             <Route path="/inbound-leads" element={<ProtectedRoute><InboundLeadsPage /></ProtectedRoute>} />
+            <Route path="/webhooks" element={<ProtectedRoute><WebhookManagementPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>

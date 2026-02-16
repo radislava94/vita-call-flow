@@ -192,3 +192,12 @@ export const apiUpdateInboundLead = (id: string, body: any) =>
   apiFetch(`inbound-leads/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteInboundLead = (id: string) =>
   apiFetch(`inbound-leads/${id}`, { method: 'DELETE' });
+
+// Webhooks
+export const apiGetWebhooks = () => apiFetch('webhooks');
+export const apiCreateWebhook = (body: { product_name: string; description?: string }) =>
+  apiFetch('webhooks', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateWebhook = (id: string, body: any) =>
+  apiFetch(`webhooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteWebhook = (id: string) =>
+  apiFetch(`webhooks/${id}`, { method: 'DELETE' });

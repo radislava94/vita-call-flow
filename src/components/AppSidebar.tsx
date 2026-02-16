@@ -23,6 +23,7 @@ import {
   PackageSearch,
   Settings,
   Inbox,
+  Webhook,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -85,6 +86,7 @@ const sections: NavSection[] = [
     roles: ['admin'],
     items: [
       { title: 'Products', path: '/products', icon: Package },
+      { title: 'Webhooks', path: '/webhooks', icon: Webhook },
     ],
   },
   {
