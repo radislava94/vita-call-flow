@@ -225,11 +225,16 @@ serve(async (req) => {
       return json({ success: true, id: lead.id, order_id: order?.id, product: webhook.product_name });
     }
 
-    // Verify auth
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Verify auth using getClaims for signing-keys compatibility
+    const token = (authHeader || "").replace("Bearer ", "");
+    if (!token) {
       return json({ error: "Unauthorized" }, 401);
     }
+    const { data: claimsData, error: authError } = await supabase.auth.getClaims(token);
+    if (authError || !claimsData?.claims) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+    const user = { id: claimsData.claims.sub as string, email: (claimsData.claims.email as string) || "" };
 
     // Get user roles (support multiple roles)
     const { data: roleRows } = await adminClient
