@@ -326,6 +326,7 @@ export type Database = {
           customer_phone: string
           display_id: string
           id: string
+          inbound_lead_id: string | null
           postal_code: string | null
           price: number
           product_id: string | null
@@ -348,6 +349,7 @@ export type Database = {
           customer_phone?: string
           display_id: string
           id?: string
+          inbound_lead_id?: string | null
           postal_code?: string | null
           price?: number
           product_id?: string | null
@@ -370,6 +372,7 @@ export type Database = {
           customer_phone?: string
           display_id?: string
           id?: string
+          inbound_lead_id?: string | null
           postal_code?: string | null
           price?: number
           product_id?: string | null
@@ -380,6 +383,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "orders_inbound_lead_id_fkey"
+            columns: ["inbound_lead_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_leads"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "orders_product_id_fkey"
             columns: ["product_id"]

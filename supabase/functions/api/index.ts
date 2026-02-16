@@ -163,7 +163,7 @@ serve(async (req) => {
           customer_phone: body.phone,
           status: "pending",
           source_type: "inbound_lead",
-          source_lead_id: lead.id,
+          inbound_lead_id: lead.id,
         })
         .select("id, display_id")
         .single();
@@ -211,7 +211,7 @@ serve(async (req) => {
           customer_phone: body.phone,
           status: "pending",
           source_type: "inbound_lead",
-          source_lead_id: lead.id,
+          inbound_lead_id: lead.id,
         })
         .select("id, display_id")
         .single();
@@ -638,14 +638,14 @@ serve(async (req) => {
       });
 
       // Sync status to linked inbound lead
-      if (order.source_lead_id) {
+      if (order.inbound_lead_id) {
         const inboundStatusMap: Record<string, string> = {
           pending: "pending", take: "contacted", call_again: "contacted",
           confirmed: "converted", shipped: "converted", delivered: "converted",
           paid: "converted", returned: "rejected", trashed: "rejected", cancelled: "rejected",
         };
         const inboundStatus = inboundStatusMap[newStatus] || "contacted";
-        await adminClient.from("inbound_leads").update({ status: inboundStatus }).eq("id", order.source_lead_id);
+        await adminClient.from("inbound_leads").update({ status: inboundStatus }).eq("id", order.inbound_lead_id);
       }
 
       return json({ success: true });
@@ -2058,7 +2058,7 @@ serve(async (req) => {
           await adminClient
             .from("orders")
             .update({ status: updates.status })
-            .eq("source_lead_id", leadId);
+            .eq("inbound_lead_id", leadId);
         }
       }
 
