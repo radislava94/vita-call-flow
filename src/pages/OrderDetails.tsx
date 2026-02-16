@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { format, parse } from 'date-fns';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
+import { ALL_STATUSES, STATUS_LABELS, OrderStatus, canEditOrder } from '@/types';
 import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2, Phone } from 'lucide-react';
 import { isValidPhone } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
@@ -72,6 +72,7 @@ export default function OrderDetails() {
 
   const selectedProduct = products.find(p => p.id === selectedProductId);
   const totalAmount = orderQuantity * orderPrice;
+  const isEditable = order ? canEditOrder(order.status) : true;
 
   const phoneDuplicates = order?.phone_duplicates || [];
 
@@ -250,10 +251,13 @@ export default function OrderDetails() {
               <h2 className="flex items-center gap-2 text-lg font-semibold text-card-foreground">
                 <User className="h-5 w-5 text-primary" /> Customer Information
               </h2>
-              {!editing && (
+              {!editing && isEditable && (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
+              )}
+              {!editing && !isEditable && (
+                <p className="text-xs text-muted-foreground italic">Product and price locked because order is already shipped.</p>
               )}
             </div>
 
