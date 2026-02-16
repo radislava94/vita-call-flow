@@ -160,29 +160,43 @@ export type Database = {
           id: string
           name: string
           phone: string
+          product_name: string | null
           source: string | null
           status: string
           updated_at: string
+          webhook_id: string | null
         }
         Insert: {
           created_at?: string
           id?: string
           name?: string
           phone?: string
+          product_name?: string | null
           source?: string | null
           status?: string
           updated_at?: string
+          webhook_id?: string | null
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
           phone?: string
+          product_name?: string | null
           source?: string | null
           status?: string
           updated_at?: string
+          webhook_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "inbound_leads_webhook_id_fkey"
+            columns: ["webhook_id"]
+            isOneToOne: false
+            referencedRelation: "webhooks"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       inventory_logs: {
         Row: {
@@ -660,6 +674,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      webhooks: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          product_name: string
+          slug: string
+          status: string
+          total_leads: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          product_name: string
+          slug: string
+          status?: string
+          total_leads?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          product_name?: string
+          slug?: string
+          status?: string
+          total_leads?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
     }
     Views: {

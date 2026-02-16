@@ -182,6 +182,7 @@ export default function InboundLeadsPage() {
               <tr className="border-b bg-muted/30">
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Phone</th>
+                <th className="text-left px-4 py-3 font-medium text-muted-foreground">Product</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>
                 <th className="text-left px-4 py-3 font-medium text-muted-foreground">Received</th>
@@ -193,6 +194,13 @@ export default function InboundLeadsPage() {
                 <tr key={lead.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                   <td className="px-4 py-3 font-medium">{lead.name}</td>
                   <td className="px-4 py-3 font-mono text-xs">{lead.phone}</td>
+                  <td className="px-4 py-3 text-xs">
+                    {(lead as any).product_name ? (
+                      <Badge variant="outline" className="text-xs">{(lead as any).product_name}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <Select
                       value={lead.status}
@@ -235,7 +243,7 @@ export default function InboundLeadsPage() {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
                     No inbound leads yet. Share your webhook URL to start receiving leads.
                   </td>
                 </tr>

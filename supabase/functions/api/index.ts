@@ -143,6 +143,7 @@ serve(async (req) => {
     const segments = path.split("/");
 
     // ── PUBLIC WEBHOOK (no auth required) ──
+    // Legacy generic webhook
     if (req.method === "POST" && path === "webhook/leads") {
       let body;
       try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
@@ -153,6 +154,83 @@ serve(async (req) => {
         .single();
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true, id: data.id });
+    }
+
+    // Dynamic webhook by slug: POST /api/webhook/:slug
+    if (req.method === "POST" && segments[0] === "webhook" && segments.length === 2 && segments[1] !== "leads") {
+      const slug = segments[1];
+      const { data: webhook } = await adminClient
+        .from("webhooks")
+        .select("id, product_name, status, total_leads")
+        .eq("slug", slug)
+        .single();
+      if (!webhook) return json({ error: "Webhook not found" }, 404);
+      if (webhook.status !== "active") return json({ error: "Webhook is disabled" }, 403);
+
+      let body;
+      try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+
+      const { data: lead, error } = await adminClient
+        .from("inbound_leads")
+        .insert({
+          name: body.name,
+          phone: body.phone,
+          status: "pending",
+          source: body.source || "webhook",
+          webhook_id: webhook.id,
+          product_name: webhook.product_name,
+        })
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Increment total_leads
+      await adminClient.from("webhooks").update({ total_leads: (webhook.total_leads || 0) + 1 }).eq("id", webhook.id);
+
+      return json({ success: true, id: lead.id, product: webhook.product_name });
+    }
+
+    // Dynamic webhook by slug: POST /api/webhook/:slug
+    if (req.method === "POST" && segments[0] === "webhook" && segments.length === 2 && segments[1] !== "leads") {
+      const slug = segments[1];
+      // Look up webhook
+      const { data: webhook } = await adminClient
+        .from("webhooks")
+        .select("id, product_name, status")
+        .eq("slug", slug)
+        .single();
+      if (!webhook) return json({ error: "Webhook not found" }, 404);
+      if (webhook.status !== "active") return json({ error: "Webhook is disabled" }, 403);
+
+      let body;
+      try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+
+      const { data, error } = await adminClient
+        .from("inbound_leads")
+        .insert({
+          name: body.name,
+          phone: body.phone,
+          status: "pending",
+          source: body.source || "webhook",
+          webhook_id: webhook.id,
+          product_name: webhook.product_name,
+        })
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Increment total_leads counter
+      await adminClient.rpc("increment_webhook_leads_count", { _webhook_id: webhook.id }).catch(() => {
+        // fallback: manual increment
+        adminClient.from("webhooks").update({ total_leads: webhook.status === "active" ? 1 : 0 }).eq("id", webhook.id);
+      });
+      // Simple increment via raw update
+      const { data: wh } = await adminClient.from("webhooks").select("total_leads").eq("id", webhook.id).single();
+      if (wh) {
+        await adminClient.from("webhooks").update({ total_leads: (wh.total_leads || 0) + 1 }).eq("id", webhook.id);
+      }
+
+      return json({ success: true, id: data.id, product: webhook.product_name });
     }
 
     // Verify auth
@@ -1983,6 +2061,72 @@ serve(async (req) => {
       if (!isAdmin) return json({ error: "Forbidden" }, 403);
       const leadId = segments[1];
       const { error } = await adminClient.from("inbound_leads").delete().eq("id", leadId);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // ── WEBHOOKS CRUD (admin only) ──
+
+    // GET /api/webhooks
+    if (req.method === "GET" && path === "webhooks") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const { data, error } = await adminClient
+        .from("webhooks")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // POST /api/webhooks
+    if (req.method === "POST" && path === "webhooks") {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const productName = (body.product_name || "").trim();
+      if (!productName || productName.length > 200) return json({ error: "Product name is required (max 200 chars)" }, 400);
+      const description = (body.description || "").substring(0, 2000);
+
+      const slug = productName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .substring(0, 60) + "-" + crypto.randomUUID().substring(0, 8);
+
+      const { data, error } = await adminClient
+        .from("webhooks")
+        .insert({ product_name: productName, description, slug, created_by: user.id })
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/webhooks/:id
+    if (req.method === "PATCH" && segments[0] === "webhooks" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const webhookId = segments[1];
+      const body = await req.json();
+      const updates: Record<string, any> = {};
+      if (body.product_name !== undefined) updates.product_name = body.product_name.substring(0, 200);
+      if (body.description !== undefined) updates.description = body.description.substring(0, 2000);
+      if (body.status !== undefined && ["active", "disabled"].includes(body.status)) updates.status = body.status;
+      if (Object.keys(updates).length === 0) return json({ error: "No valid fields" }, 400);
+
+      const { data, error } = await adminClient
+        .from("webhooks")
+        .update(updates)
+        .eq("id", webhookId)
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // DELETE /api/webhooks/:id
+    if (req.method === "DELETE" && segments[0] === "webhooks" && segments.length === 2) {
+      if (!isAdmin) return json({ error: "Forbidden" }, 403);
+      const webhookId = segments[1];
+      const { error } = await adminClient.from("webhooks").delete().eq("id", webhookId);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json({ success: true });
     }
