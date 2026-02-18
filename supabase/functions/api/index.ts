@@ -1753,7 +1753,7 @@ serve(async (req) => {
       return json(data);
     }
 
-    // GET /api/agent-performance (admin only) — shipped orders focus
+    // GET /api/agent-performance (admin only) — full business metrics
     if (req.method === "GET" && path === "agent-performance") {
       if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       const from = url.searchParams.get("from");
@@ -1777,13 +1777,37 @@ serve(async (req) => {
         agentProfiles = agentProfiles.filter((a: any) => a.full_name.toLowerCase().includes(search) || a.email.toLowerCase().includes(search));
       }
 
-      // Get shipped orders with price & quantity
-      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, price, quantity, created_at").eq("status", "shipped");
+      // Get ALL orders for these agents in date range (not just shipped)
+      const statusesToFetch = ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid", "cancelled"];
+      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, price, quantity, product_id, created_at").in("status", statusesToFetch);
       if (from) ordersQuery = ordersQuery.gte("created_at", from);
       if (to) ordersQuery = ordersQuery.lte("created_at", to);
-      const { data: shippedOrders } = await ordersQuery;
+      const { data: allOrders } = await ordersQuery;
 
-      // Also get shipped orders for current month (regardless of date filter)
+      // Get order_items for paid orders to calculate real totals
+      const paidOrderIds = (allOrders || []).filter((o: any) => o.status === "paid").map((o: any) => o.id);
+      let orderItemsMap: Record<string, number> = {};
+      let orderCostMap: Record<string, number> = {};
+      if (paidOrderIds.length > 0) {
+        const { data: items } = await adminClient.from("order_items").select("order_id, total_price, product_id").in("order_id", paidOrderIds);
+        for (const item of items || []) {
+          orderItemsMap[item.order_id] = (orderItemsMap[item.order_id] || 0) + Number(item.total_price);
+        }
+        // Try to get cost prices for profit calculation
+        const productIds = [...new Set((items || []).map((i: any) => i.product_id).filter(Boolean))];
+        if (productIds.length > 0) {
+          const { data: products } = await adminClient.from("products").select("id, cost_price").in("id", productIds);
+          const costMap: Record<string, number> = {};
+          for (const p of products || []) costMap[p.id] = Number(p.cost_price) || 0;
+          for (const item of items || []) {
+            if (item.product_id && costMap[item.product_id]) {
+              orderCostMap[item.order_id] = (orderCostMap[item.order_id] || 0) + costMap[item.product_id];
+            }
+          }
+        }
+      }
+
+      // Shipped this month (independent of date filter)
       const nowDate = new Date();
       const monthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).toISOString();
       const monthEnd = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 1).toISOString();
@@ -1794,10 +1818,33 @@ serve(async (req) => {
         .lt("created_at", monthEnd);
 
       const results = agentProfiles.map((agent: any) => {
-        const agentOrders = (shippedOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
-        const totalShipped = agentOrders.length;
-        const totalEarned = agentOrders.reduce((sum: number, o: any) => sum + (Number(o.price) * (Number(o.quantity) || 1)), 0);
-        const avgOrderValue = totalShipped > 0 ? Math.round((totalEarned / totalShipped) * 100) / 100 : 0;
+        const agentOrders = (allOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
+        
+        const paidOrders = agentOrders.filter((o: any) => o.status === "paid");
+        const shippedOrders = agentOrders.filter((o: any) => o.status === "shipped");
+        const confirmedOrders = agentOrders.filter((o: any) => o.status === "confirmed");
+        const returnedOrders = agentOrders.filter((o: any) => o.status === "returned");
+        const cancelledOrders = agentOrders.filter((o: any) => o.status === "cancelled");
+        const takenOrders = agentOrders.length; // all fetched statuses = taken
+
+        // Total Earned = sum of paid order totals (from order_items if available, fallback to price*qty)
+        const totalEarned = paidOrders.reduce((sum: number, o: any) => {
+          return sum + (orderItemsMap[o.id] || (Number(o.price) * (Number(o.quantity) || 1)));
+        }, 0);
+
+        // Profit = earned - cost (only if cost data exists)
+        const totalProfit = paidOrders.reduce((sum: number, o: any) => {
+          const revenue = orderItemsMap[o.id] || (Number(o.price) * (Number(o.quantity) || 1));
+          const cost = orderCostMap[o.id] || 0;
+          return sum + (revenue - cost);
+        }, 0);
+        const hasCostData = paidOrders.some((o: any) => orderCostMap[o.id] > 0);
+
+        const totalPaid = paidOrders.length;
+        const totalShipped = shippedOrders.length;
+        const avgOrderValue = totalPaid > 0 ? Math.round((totalEarned / totalPaid) * 100) / 100 : 0;
+        const conversionRate = takenOrders > 0 ? Math.round((totalPaid / takenOrders) * 10000) / 100 : 0;
+        const returnRate = totalShipped > 0 ? Math.round((returnedOrders.length / totalShipped) * 10000) / 100 : 0;
         const shippedThisMonth = (thisMonthOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id).length;
 
         return {
@@ -1808,6 +1855,14 @@ serve(async (req) => {
           total_earned: totalEarned,
           avg_order_value: avgOrderValue,
           shipped_this_month: shippedThisMonth,
+          total_paid: totalPaid,
+          total_confirmed: confirmedOrders.length,
+          total_returned: returnedOrders.length,
+          total_cancelled: cancelledOrders.length,
+          total_taken: takenOrders,
+          conversion_rate: conversionRate,
+          return_rate: returnRate,
+          total_profit: hasCostData ? totalProfit : null,
         };
       });
 
