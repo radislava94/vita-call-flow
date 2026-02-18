@@ -123,6 +123,8 @@ export const apiUpdateLead = (id: string, body: { status?: string; notes?: strin
   apiFetch(`prediction-leads/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiUnassignLeads = (leadIds: string[]) =>
   apiFetch('prediction-leads/unassign', { method: 'POST', body: JSON.stringify({ lead_ids: leadIds }) });
+export const apiTakeLead = (leadId: string) =>
+  apiFetch(`prediction-leads/${leadId}/take`, { method: 'POST' });
 
 // Prediction Lead Items
 export const apiAddLeadItem = (leadId: string, body: { product_id?: string; product_name: string; quantity: number; price_per_unit: number }) =>
