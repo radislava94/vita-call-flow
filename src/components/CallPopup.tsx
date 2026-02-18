@@ -263,16 +263,18 @@ export function CallPopup({ open, onClose, lead, contextType }: CallPopupProps) 
 
       // 3. Sync products: delete removed, update existing, add new
       for (const item of items) {
-        if (item._deleted && !item._isNew) {
+        const isLegacy = item.id === '__legacy__';
+        const isNew = item._isNew || isLegacy;
+        if (item._deleted && !isNew) {
           await apiDeleteLeadItem(item.id);
-        } else if (item._isNew && !item._deleted) {
+        } else if (isNew && !item._deleted) {
           await apiAddLeadItem(lead.id, {
             product_id: item.product_id || undefined,
             product_name: item.product_name,
             quantity: item.quantity,
             price_per_unit: item.price_per_unit,
           });
-        } else if (!item._isNew && !item._deleted) {
+        } else if (!isNew && !item._deleted) {
           await apiUpdateLeadItem(item.id, {
             product_id: item.product_id,
             product_name: item.product_name,
