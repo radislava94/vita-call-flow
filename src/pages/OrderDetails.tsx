@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { format, parse } from 'date-fns';
 import { AppLayout } from '@/layouts/AppLayout';
@@ -30,7 +30,7 @@ interface OrderItem {
 
 interface LocalItem {
   tempId: string;
-  id?: string; // existing DB id
+  id?: string;
   product_id: string | null;
   product_name: string;
   quantity: number;
@@ -38,6 +38,48 @@ interface LocalItem {
   isNew?: boolean;
   isDirty?: boolean;
   isDeleted?: boolean;
+}
+
+// Helpers
+function calcRowTotal(item: LocalItem): number {
+  const q = Math.max(1, Math.floor(item.quantity) || 1);
+  const p = Math.max(0, Number(item.price_per_unit) || 0);
+  return Math.round(q * p * 100) / 100;
+}
+
+function calcOrderTotal(items: LocalItem[]): number {
+  return items
+    .filter(i => !i.isDeleted)
+    .reduce((sum, item) => sum + calcRowTotal(item), 0);
+}
+
+let tempIdCounter = 0;
+function genTempId(): string {
+  return `tmp-${Date.now()}-${++tempIdCounter}`;
+}
+
+function buildItemsFromOrder(data: any): LocalItem[] {
+  const orderItems: OrderItem[] = data.order_items || [];
+  if (orderItems.length > 0) {
+    return orderItems.map((item) => ({
+      tempId: item.id,
+      id: item.id,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      quantity: Number(item.quantity) || 1,
+      price_per_unit: Number(item.price_per_unit) || 0,
+    }));
+  }
+  if (data.product_name) {
+    return [{
+      tempId: 'legacy-' + data.id,
+      product_id: data.product_id || null,
+      product_name: data.product_name,
+      quantity: Number(data.quantity) || 1,
+      price_per_unit: Number(data.price) || 0,
+    }];
+  }
+  return [];
 }
 
 export default function OrderDetails() {
@@ -60,12 +102,14 @@ export default function OrderDetails() {
   const [saving, setSaving] = useState(false);
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
 
   // Multi-product state
   const [items, setItems] = useState<LocalItem[]>([]);
   const [editingProducts, setEditingProducts] = useState(false);
+  const [itemErrors, setItemErrors] = useState<Record<string, string>>({});
 
-  const loadOrder = () => {
+  const loadOrder = useCallback(() => {
     if (!id) return;
     setLoading(true);
     apiGetOrder(id)
@@ -78,47 +122,24 @@ export default function OrderDetails() {
         setPostalCode(data.postal_code || '');
         setBirthday(data.birthday ? parse(data.birthday, 'yyyy-MM-dd', new Date()) : undefined);
         setSelectedStatus(data.status);
-
-        // Load order items
-        const orderItems: OrderItem[] = data.order_items || [];
-        if (orderItems.length > 0) {
-          setItems(orderItems.map((item) => ({
-            tempId: item.id,
-            id: item.id,
-            product_id: item.product_id,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            price_per_unit: Number(item.price_per_unit),
-          })));
-        } else if (data.product_name) {
-          // Legacy: single product fallback
-          setItems([{
-            tempId: 'legacy-' + data.id,
-            product_id: data.product_id || null,
-            product_name: data.product_name,
-            quantity: data.quantity || 1,
-            price_per_unit: Number(data.price) || 0,
-          }]);
-        } else {
-          setItems([]);
-        }
+        setItems(buildItemsFromOrder(data));
       })
       .catch(() => setOrder(null))
       .finally(() => setLoading(false));
-  };
+  }, [id]);
 
-  useEffect(() => { loadOrder(); }, [id]);
+  useEffect(() => { loadOrder(); }, [loadOrder]);
   useEffect(() => {
-    apiGetProducts().then(setProducts).catch(() => {});
+    apiGetProducts()
+      .then((data) => { setProducts(data); setProductsLoaded(true); })
+      .catch(() => setProductsLoaded(true));
   }, []);
 
   const isEditable = order ? canEditOrder(order.status) : true;
   const phoneDuplicates = order?.phone_duplicates || [];
 
-  // Calculate order total from items
-  const orderTotal = items
-    .filter(i => !i.isDeleted)
-    .reduce((sum, item) => sum + item.quantity * item.price_per_unit, 0);
+  const activeItems = useMemo(() => items.filter(i => !i.isDeleted), [items]);
+  const orderTotal = useMemo(() => calcOrderTotal(items), [items]);
 
   const fieldErrors = useMemo(() => {
     if (!editing) return {};
@@ -154,65 +175,116 @@ export default function OrderDetails() {
     );
   }
 
+  // ── Product handlers ──────────────────────────────────────────
+
   const handleProductChangeForItem = (tempId: string, productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     setItems(prev => prev.map(item =>
       item.tempId === tempId
-        ? { ...item, product_id: product.id, product_name: product.name, price_per_unit: Number(product.price) || 0, isDirty: true }
+        ? {
+            ...item,
+            product_id: product.id,
+            product_name: product.name,
+            price_per_unit: Number(product.price) || 0,
+            isDirty: true,
+          }
         : item
     ));
+    // Clear error for this item
+    setItemErrors(prev => {
+      const next = { ...prev };
+      delete next[tempId];
+      return next;
+    });
   };
 
-  const handleItemFieldChange = (tempId: string, field: 'quantity' | 'price_per_unit', value: number) => {
-    setItems(prev => prev.map(item =>
-      item.tempId === tempId ? { ...item, [field]: value, isDirty: true } : item
-    ));
+  const handleItemFieldChange = (tempId: string, field: 'quantity' | 'price_per_unit', rawValue: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.tempId !== tempId) return item;
+      if (field === 'quantity') {
+        const parsed = parseInt(rawValue, 10);
+        const val = isNaN(parsed) ? 1 : Math.max(1, Math.floor(parsed));
+        return { ...item, quantity: val, isDirty: true };
+      }
+      // price_per_unit
+      const parsed = parseFloat(rawValue);
+      const val = isNaN(parsed) ? 0 : Math.max(0, parsed);
+      return { ...item, price_per_unit: val, isDirty: true };
+    }));
   };
 
   const handleAddItem = () => {
-    const newItem: LocalItem = {
-      tempId: 'new-' + Date.now(),
+    setItems(prev => [...prev, {
+      tempId: genTempId(),
       product_id: null,
       product_name: '',
       quantity: 1,
       price_per_unit: 0,
       isNew: true,
       isDirty: true,
-    };
-    setItems(prev => [...prev, newItem]);
+    }]);
   };
 
   const handleRemoveItem = (tempId: string) => {
-    setItems(prev => prev.map(item =>
-      item.tempId === tempId
-        ? (item.id ? { ...item, isDeleted: true } : item) // mark existing for deletion, or just filter
-        : item
-    ).filter(item => !(item.tempId === tempId && !item.id)));
+    setItems(prev => {
+      const target = prev.find(i => i.tempId === tempId);
+      if (!target) return prev;
+      // If it's a new unsaved item, just remove it from array
+      if (!target.id) return prev.filter(i => i.tempId !== tempId);
+      // Existing DB item: mark as deleted
+      return prev.map(i => i.tempId === tempId ? { ...i, isDeleted: true } : i);
+    });
+    setItemErrors(prev => {
+      const next = { ...prev };
+      delete next[tempId];
+      return next;
+    });
+  };
+
+  const validateItems = (): boolean => {
+    const errors: Record<string, string> = {};
+    const active = items.filter(i => !i.isDeleted);
+
+    if (active.length === 0) {
+      toast({ title: 'Error', description: 'At least one product is required.', variant: 'destructive' });
+      return false;
+    }
+
+    for (const item of active) {
+      if (!item.product_id && !item.product_name.trim()) {
+        errors[item.tempId] = 'Select a product';
+      } else if (item.quantity < 1 || !Number.isInteger(item.quantity)) {
+        errors[item.tempId] = 'Quantity must be a positive integer';
+      } else if (isNaN(item.price_per_unit) || item.price_per_unit < 0) {
+        errors[item.tempId] = 'Invalid price';
+      } else if (isNaN(calcRowTotal(item)) || calcRowTotal(item) <= 0) {
+        errors[item.tempId] = 'Row total must be greater than 0';
+      }
+    }
+
+    setItemErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast({ title: 'Validation error', description: 'Fix highlighted product rows.', variant: 'destructive' });
+      return false;
+    }
+    return true;
   };
 
   const handleSaveProducts = async () => {
-    const activeItems = items.filter(i => !i.isDeleted);
-    if (activeItems.length === 0) {
-      toast({ title: 'Error', description: 'At least one product is required.', variant: 'destructive' });
-      return;
-    }
-    for (const item of activeItems) {
-      if (!item.product_name.trim()) {
-        toast({ title: 'Error', description: 'All products must have a name.', variant: 'destructive' });
-        return;
-      }
-    }
+    if (!validateItems()) return;
 
     setSaving(true);
     try {
       // 1. Delete removed items
-      for (const item of items.filter(i => i.isDeleted && i.id)) {
+      const deletedItems = items.filter(i => i.isDeleted && i.id);
+      for (const item of deletedItems) {
         await apiDeleteOrderItem(item.id!);
       }
 
       // 2. Add new items
-      for (const item of activeItems.filter(i => i.isNew)) {
+      const newItems = items.filter(i => !i.isDeleted && i.isNew);
+      for (const item of newItems) {
         await apiAddOrderItem(order.id, {
           product_id: item.product_id || undefined,
           product_name: item.product_name,
@@ -222,7 +294,8 @@ export default function OrderDetails() {
       }
 
       // 3. Update dirty existing items
-      for (const item of activeItems.filter(i => i.isDirty && !i.isNew && i.id)) {
+      const dirtyItems = items.filter(i => !i.isDeleted && i.isDirty && !i.isNew && i.id);
+      for (const item of dirtyItems) {
         await apiUpdateOrderItem(item.id!, {
           product_id: item.product_id,
           product_name: item.product_name,
@@ -232,6 +305,7 @@ export default function OrderDetails() {
       }
 
       setEditingProducts(false);
+      setItemErrors({});
       toast({ title: 'Products saved' });
       loadOrder();
     } catch (err: any) {
@@ -242,28 +316,12 @@ export default function OrderDetails() {
   };
 
   const handleCancelProductsEdit = () => {
-    // Reset items from order data
-    const orderItems: OrderItem[] = order.order_items || [];
-    if (orderItems.length > 0) {
-      setItems(orderItems.map((item) => ({
-        tempId: item.id,
-        id: item.id,
-        product_id: item.product_id,
-        product_name: item.product_name,
-        quantity: item.quantity,
-        price_per_unit: Number(item.price_per_unit),
-      })));
-    } else if (order.product_name) {
-      setItems([{
-        tempId: 'legacy-' + order.id,
-        product_id: order.product_id || null,
-        product_name: order.product_name,
-        quantity: order.quantity || 1,
-        price_per_unit: Number(order.price) || 0,
-      }]);
-    }
+    setItems(buildItemsFromOrder(order));
     setEditingProducts(false);
+    setItemErrors({});
   };
+
+  // ── Customer handlers ─────────────────────────────────────────
 
   const handleSaveCustomer = async () => {
     if (Object.keys(fieldErrors).length > 0) {
@@ -358,7 +416,11 @@ export default function OrderDetails() {
 
   const history = order.history || [];
   const notes = order.notes || [];
-  const activeItems = items.filter(i => !i.isDeleted);
+
+  const formatCurrency = (val: number) => {
+    const safe = isNaN(val) ? 0 : val;
+    return safe.toFixed(2);
+  };
 
   return (
     <AppLayout title={`Order ${order.display_id}`}>
@@ -474,49 +536,78 @@ export default function OrderDetails() {
 
             {editingProducts ? (
               <div className="space-y-3">
+                {activeItems.length === 0 && (
+                  <p className="text-sm text-muted-foreground py-4 text-center">No products. Click "Add Product to Order" below.</p>
+                )}
+
                 {activeItems.map((item, idx) => {
                   const selectedProduct = products.find(p => p.id === item.product_id);
+                  const rowTotal = calcRowTotal(item);
+                  const error = itemErrors[item.tempId];
+                  const activeProducts = products.filter(p => p.is_active);
+
                   return (
-                    <div key={item.tempId} className="rounded-lg border bg-muted/50 p-4 space-y-3">
+                    <div key={item.tempId} className={cn("rounded-lg border p-4 space-y-3", error ? 'border-destructive bg-destructive/5' : 'bg-muted/50')}>
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-semibold text-muted-foreground">Product {idx + 1}</span>
-                        {activeItems.length > 1 && (
-                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveItem(item.tempId)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveItem(item.tempId)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
+
                       <div>
                         <p className="text-xs font-medium text-muted-foreground mb-1.5">Product</p>
-                        <Select value={item.product_id || ''} onValueChange={(val) => handleProductChangeForItem(item.tempId, val)}>
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Select a product" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.filter(p => p.is_active).map(p => (
-                              <SelectItem key={p.id} value={p.id}>
-                                <span className="flex items-center gap-2">
-                                  {p.name} ({p.sku || 'No SKU'})
-                                  <span className={cn('text-xs', p.stock_quantity < (p.low_stock_threshold || 5) ? 'text-destructive' : 'text-muted-foreground')}>
-                                    — Stock: {p.stock_quantity}
-                                  </span>
-                                </span>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        {productsLoaded ? (
+                          <Select
+                            value={item.product_id || ''}
+                            onValueChange={(val) => handleProductChangeForItem(item.tempId, val)}
+                          >
+                            <SelectTrigger className={cn("w-full", !item.product_id && 'text-muted-foreground')}>
+                              <SelectValue placeholder="Select a product" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activeProducts.length === 0 ? (
+                                <SelectItem value="__none" disabled>No active products</SelectItem>
+                              ) : (
+                                activeProducts.map(p => (
+                                  <SelectItem key={p.id} value={p.id}>
+                                    <span className="flex items-center gap-2">
+                                      {p.name} ({p.sku || 'No SKU'})
+                                      <span className={cn('text-xs', p.stock_quantity < (p.low_stock_threshold || 5) ? 'text-destructive' : 'text-muted-foreground')}>
+                                        — Stock: {p.stock_quantity}
+                                      </span>
+                                    </span>
+                                  </SelectItem>
+                                ))
+                              )}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <div className="h-10 flex items-center text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin mr-2" /> Loading products...
+                          </div>
+                        )}
                         {selectedProduct && (
                           <p className="mt-1 text-xs text-muted-foreground">Available stock: {selectedProduct.stock_quantity}</p>
                         )}
                       </div>
+
                       <div className="grid grid-cols-3 gap-3">
                         <div>
                           <p className="text-xs font-medium text-muted-foreground mb-1.5">Quantity</p>
                           <input
                             type="number"
                             min={1}
+                            step={1}
                             value={item.quantity}
-                            onChange={(e) => handleItemFieldChange(item.tempId, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                            onChange={(e) => handleItemFieldChange(item.tempId, 'quantity', e.target.value)}
+                            onBlur={(e) => {
+                              // Ensure valid integer on blur
+                              const parsed = parseInt(e.target.value, 10);
+                              if (isNaN(parsed) || parsed < 1) {
+                                handleItemFieldChange(item.tempId, 'quantity', '1');
+                              }
+                            }}
                             className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
@@ -527,17 +618,29 @@ export default function OrderDetails() {
                             min={0}
                             step="0.01"
                             value={item.price_per_unit}
-                            onChange={(e) => handleItemFieldChange(item.tempId, 'price_per_unit', Math.max(0, parseFloat(e.target.value) || 0))}
+                            onChange={(e) => handleItemFieldChange(item.tempId, 'price_per_unit', e.target.value)}
+                            onBlur={(e) => {
+                              const parsed = parseFloat(e.target.value);
+                              if (isNaN(parsed) || parsed < 0) {
+                                handleItemFieldChange(item.tempId, 'price_per_unit', '0');
+                              }
+                            }}
                             className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                           />
                         </div>
                         <div>
                           <p className="text-xs font-medium text-muted-foreground mb-1.5">Total</p>
                           <p className="h-9 flex items-center text-sm font-bold text-primary">
-                            {(item.quantity * item.price_per_unit).toFixed(2)}
+                            {formatCurrency(rowTotal)}
                           </p>
                         </div>
                       </div>
+
+                      {error && (
+                        <p className="text-xs text-destructive flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3" /> {error}
+                        </p>
+                      )}
                     </div>
                   );
                 })}
@@ -549,47 +652,52 @@ export default function OrderDetails() {
                 <div className="flex items-center justify-between border-t pt-4 mt-2">
                   <div>
                     <p className="text-sm text-muted-foreground">Order Total</p>
-                    <p className="text-xl font-bold text-primary">{orderTotal.toFixed(2)}</p>
+                    <p className="text-xl font-bold text-primary">{formatCurrency(orderTotal)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button onClick={handleSaveProducts} disabled={saving} className="gap-1.5">
-                      <Save className="h-4 w-4" /> Save Changes
+                      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                      Save Changes
                     </Button>
-                    <Button variant="outline" onClick={handleCancelProductsEdit}>Cancel</Button>
+                    <Button variant="outline" onClick={handleCancelProductsEdit} disabled={saving}>Cancel</Button>
                   </div>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                {activeItems.map((item, idx) => (
-                  <div key={item.tempId} className="rounded-lg bg-muted p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="font-semibold">{item.product_name || 'Unnamed product'}</p>
-                      {item.product_id && (
-                        <span className="text-xs text-muted-foreground">
-                          Stock: {products.find(p => p.id === item.product_id)?.stock_quantity ?? '—'}
-                        </span>
-                      )}
+                {activeItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-4 text-center">No products in this order.</p>
+                ) : (
+                  activeItems.map((item) => (
+                    <div key={item.tempId} className="rounded-lg bg-muted p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="font-semibold">{item.product_name || 'Unnamed product'}</p>
+                        {item.product_id && (
+                          <span className="text-xs text-muted-foreground">
+                            Stock: {products.find(p => p.id === item.product_id)?.stock_quantity ?? '—'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-xs text-muted-foreground">Quantity</p>
+                          <p className="font-semibold">{item.quantity}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Price per Unit</p>
+                          <p className="font-semibold">{formatCurrency(item.price_per_unit)}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Total</p>
+                          <p className="font-bold text-primary">{formatCurrency(calcRowTotal(item))}</p>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Quantity</p>
-                        <p className="font-semibold">{item.quantity}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Price per Unit</p>
-                        <p className="font-semibold">{item.price_per_unit.toFixed(2)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Total</p>
-                        <p className="font-bold text-primary">{(item.quantity * item.price_per_unit).toFixed(2)}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
                 <div className="flex items-center justify-between px-1 pt-2 border-t">
                   <p className="text-sm text-muted-foreground">Order Total</p>
-                  <p className="text-xl font-bold text-primary">{orderTotal.toFixed(2)}</p>
+                  <p className="text-xl font-bold text-primary">{formatCurrency(orderTotal)}</p>
                 </div>
               </div>
             )}
@@ -680,7 +788,6 @@ export default function OrderDetails() {
             <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">Timeline</h2>
             <div className="space-y-3">
               {history.map((change: any, i: number) => {
-                // Check if this is a product change (same from/to status, name contains product info)
                 const isProductChange = change.from_status === change.to_status &&
                   change.changed_by_name && (change.changed_by_name.includes('Product added') || change.changed_by_name.includes('Product updated') || change.changed_by_name.includes('Product removed'));
 
