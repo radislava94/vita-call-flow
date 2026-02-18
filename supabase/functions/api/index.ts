@@ -2226,7 +2226,7 @@ serve(async (req) => {
 
       // 1. Orders (source = "order")
       if (!sourceFilter || sourceFilter === "order") {
-        let oQuery = adminClient.from("orders").select("*").order("created_at", { ascending: false });
+        let oQuery = adminClient.from("orders").select("*, order_items(id, product_id, product_name, quantity, price_per_unit, total_price)").order("created_at", { ascending: false });
         if (statusFilter) {
           oQuery = oQuery.eq("status", statusFilter);
         } else {
@@ -2257,6 +2257,7 @@ serve(async (req) => {
             status: o.status,
             source: "order",
             source_lead_id: o.source_lead_id,
+            order_items: o.order_items || [],
           });
         }
       }
