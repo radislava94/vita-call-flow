@@ -145,35 +145,53 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
     setShowScript(false);
     setEditingScript(false);
     setAmountPaid(0);
-
-    // Clone items
-    const existingItems = data.items || [];
-    if (existingItems.length > 0) {
-      setItems(existingItems.map(i => ({ ...i })));
-    } else if (data.product) {
-      setItems([{
-        id: '__legacy__',
-        product_id: null,
-        product_name: data.product || '',
-        quantity: data.quantity || 1,
-        price_per_unit: data.price || 0,
-        total_price: calcRowTotal(data.quantity || 1, data.price || 0),
-      }]);
-    } else {
-      setItems([]);
-    }
+    setItems([]);
 
     setLoadingScript(true);
+    setLoadingProducts(true);
+
+    // For orders, always fetch full order with items from backend to avoid stale/missing items
+    const fetchOrderData = !isLead
+      ? apiGetOrder(data.id).catch(() => null)
+      : Promise.resolve(null);
+
     Promise.all([
       apiGetCallScript(contextType).catch(() => null),
       apiGetCallLogs(contextType, data.id).catch(() => []),
       apiGetProducts().catch(() => []),
+      fetchOrderData,
     ])
-      .then(([scriptData, logs, products]) => {
+      .then(([scriptData, logs, products, fullOrder]) => {
         setScript(scriptData?.script_text || '');
         setCallLogs(logs || []);
         setProductsList(products || []);
         setLoadingProducts(false);
+
+        // Determine items: for orders use fetched order_items, for leads use passed data
+        let resolvedItems: ItemLocal[] = [];
+        if (!isLead && fullOrder?.order_items?.length > 0) {
+          resolvedItems = fullOrder.order_items.map((i: any) => ({
+            id: i.id,
+            product_id: i.product_id,
+            product_name: i.product_name,
+            quantity: i.quantity,
+            price_per_unit: Number(i.price_per_unit),
+            total_price: Number(i.total_price),
+          }));
+        } else if (data.items && data.items.length > 0) {
+          resolvedItems = data.items.map(i => ({ ...i }));
+        } else if (data.product) {
+          // Legacy fallback: only use if no items exist at all
+          resolvedItems = [{
+            id: '__legacy__',
+            product_id: null,
+            product_name: data.product || '',
+            quantity: data.quantity || 1,
+            price_per_unit: data.price || 0,
+            total_price: calcRowTotal(data.quantity || 1, data.price || 0),
+          }];
+        }
+        setItems(resolvedItems);
       })
       .catch(() => { setLoadingProducts(false); })
       .finally(() => setLoadingScript(false));
