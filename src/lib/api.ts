@@ -124,6 +124,14 @@ export const apiUpdateLead = (id: string, body: { status?: string; notes?: strin
 export const apiUnassignLeads = (leadIds: string[]) =>
   apiFetch('prediction-leads/unassign', { method: 'POST', body: JSON.stringify({ lead_ids: leadIds }) });
 
+// Prediction Lead Items
+export const apiAddLeadItem = (leadId: string, body: { product_id?: string; product_name: string; quantity: number; price_per_unit: number }) =>
+  apiFetch(`prediction-leads/${leadId}/items`, { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateLeadItem = (itemId: string, body: any) =>
+  apiFetch(`prediction-lead-items/${itemId}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteLeadItem = (itemId: string) =>
+  apiFetch(`prediction-lead-items/${itemId}`, { method: 'DELETE' });
+
 // Phone duplicate check
 export const apiCheckPhoneDuplicates = (phone: string, excludeOrderId?: string) =>
   apiFetch('check-phone-duplicates', { method: 'POST', body: JSON.stringify({ phone, exclude_order_id: excludeOrderId }) });

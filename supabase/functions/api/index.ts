@@ -1461,11 +1461,11 @@ serve(async (req) => {
       let query = isAdminOrManager
         ? adminClient
             .from("prediction_leads")
-            .select("*, prediction_lists(name)")
+            .select("*, prediction_lists(name), prediction_lead_items(*)")
             .not("assigned_agent_id", "is", null)
         : supabase
             .from("prediction_leads")
-            .select("*, prediction_lists(name)")
+            .select("*, prediction_lists(name), prediction_lead_items(*)")
             .eq("assigned_agent_id", user.id);
 
       const { data, error } = await query
@@ -1473,6 +1473,90 @@ serve(async (req) => {
         .limit(3000);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
       return json(data || []);
+    }
+
+    // ============================================================
+    // PREDICTION LEAD ITEMS CRUD
+    // ============================================================
+
+    // POST /api/prediction-leads/:id/items (add product to lead)
+    if (req.method === "POST" && segments[0] === "prediction-leads" && segments[2] === "items") {
+      const leadId = segments[1];
+      const body = await req.json();
+      const productId = body.product_id || null;
+      const productName = body.product_name || "";
+      const quantity = Math.max(1, parseInt(body.quantity) || 1);
+      const pricePerUnit = Math.max(0, parseFloat(body.price_per_unit) || 0);
+      const totalPrice = Math.round(quantity * pricePerUnit * 100) / 100;
+
+      const { data: item, error: itemErr } = await adminClient
+        .from("prediction_lead_items")
+        .insert({ lead_id: leadId, product_id: productId, product_name: productName, quantity, price_per_unit: pricePerUnit, total_price: totalPrice })
+        .select()
+        .single();
+      if (itemErr) return json({ error: sanitizeDbError(itemErr) }, 400);
+
+      // Recalculate lead total from all items
+      const { data: allItems } = await adminClient.from("prediction_lead_items").select("total_price").eq("lead_id", leadId);
+      const leadTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      const totalQty = (allItems || []).length;
+      await adminClient.from("prediction_leads").update({ price: leadTotal, quantity: totalQty }).eq("id", leadId);
+
+      return json(item);
+    }
+
+    // PATCH /api/prediction-lead-items/:id (update lead item)
+    if (req.method === "PATCH" && segments[0] === "prediction-lead-items" && segments.length === 2) {
+      const itemId = segments[1];
+      const body = await req.json();
+
+      const { data: currentItem } = await adminClient.from("prediction_lead_items").select("*").eq("id", itemId).single();
+      if (!currentItem) return json({ error: "Item not found" }, 404);
+
+      const updates: Record<string, any> = {};
+      if (body.product_id !== undefined) updates.product_id = body.product_id;
+      if (body.product_name !== undefined) updates.product_name = body.product_name;
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.price_per_unit !== undefined) updates.price_per_unit = body.price_per_unit;
+
+      const qty = body.quantity ?? currentItem.quantity;
+      const ppu = body.price_per_unit ?? currentItem.price_per_unit;
+      updates.total_price = Math.round(qty * ppu * 100) / 100;
+
+      const { data: updatedItem, error: updateErr } = await adminClient
+        .from("prediction_lead_items")
+        .update(updates)
+        .eq("id", itemId)
+        .select()
+        .single();
+      if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+
+      // Recalculate lead total
+      const leadId = currentItem.lead_id;
+      const { data: allItems } = await adminClient.from("prediction_lead_items").select("total_price").eq("lead_id", leadId);
+      const leadTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      await adminClient.from("prediction_leads").update({ price: leadTotal }).eq("id", leadId);
+
+      return json(updatedItem);
+    }
+
+    // DELETE /api/prediction-lead-items/:id (remove product from lead)
+    if (req.method === "DELETE" && segments[0] === "prediction-lead-items" && segments.length === 2) {
+      const itemId = segments[1];
+
+      const { data: currentItem } = await adminClient.from("prediction_lead_items").select("*").eq("id", itemId).single();
+      if (!currentItem) return json({ error: "Item not found" }, 404);
+
+      const leadId = currentItem.lead_id;
+      await adminClient.from("prediction_lead_items").delete().eq("id", itemId);
+
+      // Recalculate lead total
+      const { data: allItems } = await adminClient.from("prediction_lead_items").select("total_price").eq("lead_id", leadId);
+      const leadTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      const totalQty = (allItems || []).length;
+      await adminClient.from("prediction_leads").update({ price: leadTotal, quantity: totalQty > 0 ? totalQty : 1 }).eq("id", leadId);
+
+      return json({ success: true });
     }
 
     // POST /api/prediction-leads/unassign (admin: bulk unassign leads)
