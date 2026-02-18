@@ -79,7 +79,7 @@ export default function AssignedPage() {
                 <td className="px-4 py-3">{order.customer_name}</td>
                 <td className="px-4 py-3">{order.product_name}</td>
                 <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
-                <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
+                <td className="px-4 py-3 font-bold text-primary">{Number(order.price).toFixed(2)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
               </tr>
             ))}

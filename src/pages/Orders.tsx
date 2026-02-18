@@ -159,7 +159,7 @@ export default function Orders() {
   const exportCSV = () => {
     const header = 'Order ID,Customer,Phone,City,Address,Product,Quantity,Total Price,Status,Date\n';
     const rows = filteredOrders.map(o =>
-      `${o.display_id},"${(o.customer_name || '').replace(/"/g, '""')}",${o.customer_phone || ''},"${(o.customer_city || '').replace(/"/g, '""')}","${(o.customer_address || '').replace(/"/g, '""')}","${(o.product_name || '').replace(/"/g, '""')}",${o.quantity || 1},${((o.quantity || 1) * Number(o.price)).toFixed(2)},${o.status},${new Date(o.created_at).toLocaleDateString()}`
+      `${o.display_id},"${(o.customer_name || '').replace(/"/g, '""')}",${o.customer_phone || ''},"${(o.customer_city || '').replace(/"/g, '""')}","${(o.customer_address || '').replace(/"/g, '""')}","${(o.product_name || '').replace(/"/g, '""')}",${o.quantity || 1},${Number(o.price).toFixed(2)},${o.status},${new Date(o.created_at).toLocaleDateString()}`
     ).join('\n');
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -274,7 +274,7 @@ export default function Orders() {
                   <td className="px-4 py-3">{order.customer_name}</td>
                   <td className="px-4 py-3">{order.product_name}</td>
                   <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
-                  <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-bold text-primary">{Number(order.price).toFixed(2)}</td>
                   <td className="px-4 py-3">
                     {order.assigned_agent_name ? (
                       <span className="inline-flex items-center gap-1.5">
