@@ -832,15 +832,23 @@ export default function OrderDetails() {
 
       <CallPopup
         open={showCallPopup}
-        onClose={() => {
+        onClose={(saved) => {
           setShowCallPopup(false);
-          loadOrder();
+          if (saved) loadOrder();
         }}
         contextType="order"
-        contextId={order.id}
-        customerName={order.customer_name}
-        phoneNumber={order.customer_phone}
-        productName={activeItems.map(i => i.product_name).filter(Boolean).join(', ') || order.product_name}
+        lead={order ? {
+          id: order.id,
+          name: order.customer_name,
+          telephone: order.customer_phone,
+          address: order.customer_address,
+          city: order.customer_city,
+          product: activeItems.map(i => i.product_name).filter(Boolean).join(', ') || order.product_name,
+          status: order.status,
+          notes: null,
+          quantity: order.quantity,
+          price: order.price,
+        } : null}
       />
     </AppLayout>
   );

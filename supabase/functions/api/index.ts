@@ -1597,6 +1597,45 @@ serve(async (req) => {
       return json({ success: true, unassigned: lead_ids.length });
     }
 
+    // POST /api/prediction-leads/:id/take (agent takes ownership)
+    if (req.method === "POST" && segments[0] === "prediction-leads" && segments[2] === "take" && segments.length === 3) {
+      const leadId = segments[1];
+
+      // Get agent profile
+      const { data: agentProfile } = await adminClient
+        .from("profiles")
+        .select("full_name")
+        .eq("user_id", user.id)
+        .single();
+
+      // Verify lead exists and can be taken
+      const { data: lead } = await adminClient
+        .from("prediction_leads")
+        .select("id, assigned_agent_id, status")
+        .eq("id", leadId)
+        .single();
+      if (!lead) return json({ error: "Lead not found" }, 404);
+
+      // If already assigned to someone else and not admin, block
+      if (lead.assigned_agent_id && lead.assigned_agent_id !== user.id && !isAdminOrManager) {
+        return json({ error: "Lead is already assigned to another agent" }, 403);
+      }
+
+      const { data, error } = await adminClient
+        .from("prediction_leads")
+        .update({
+          assigned_agent_id: user.id,
+          assigned_agent_name: agentProfile?.full_name || user.email,
+          status: "interested", // Mark as taken/interested
+        })
+        .eq("id", leadId)
+        .select()
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      return json(data);
+    }
+
     // PATCH /api/prediction-leads/:id (update status/notes/details)
     if (req.method === "PATCH" && segments[0] === "prediction-leads" && segments.length === 2) {
       const leadId = segments[1];
@@ -1611,6 +1650,15 @@ serve(async (req) => {
       if (body.product !== undefined) updates.product = body.product;
       if (body.quantity !== undefined) updates.quantity = body.quantity;
       if (body.price !== undefined) updates.price = body.price;
+      if (body.name !== undefined) updates.name = body.name;
+
+      // Ownership: lock lead to current agent on ownership-claiming statuses
+      const ownershipStatuses = ["interested", "confirmed", "no_answer"];
+      if (body.status && ownershipStatuses.includes(body.status) && !isAdminOrManager) {
+        const { data: agentProfile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+        updates.assigned_agent_id = user.id;
+        updates.assigned_agent_name = agentProfile?.full_name || user.email;
+      }
 
       const { data, error } = await supabase
         .from("prediction_leads")
