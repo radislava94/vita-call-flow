@@ -701,6 +701,13 @@ serve(async (req) => {
         .single();
       if (error || !order) return json({ error: "Order not found" }, 404);
 
+      // Get order items
+      const { data: orderItems } = await adminClient
+        .from("order_items")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: true });
+
       // Get history and notes
       const { data: history } = await supabase
         .from("order_history")
@@ -720,7 +727,7 @@ serve(async (req) => {
         _exclude_order_id: order.id,
       });
 
-      return json({ ...order, history, notes, phone_duplicates: dupes });
+      return json({ ...order, order_items: orderItems || [], history, notes, phone_duplicates: dupes });
     }
 
     // PATCH /api/orders/:id/customer (update editable fields)
@@ -798,30 +805,64 @@ serve(async (req) => {
         }
       }
 
-      // Stock deduction on SHIPPED (not confirmed)
-      const orderQty = order.quantity || 1;
-      if (newStatus === "shipped" && order.status !== "shipped" && order.product_id) {
-        const { data: product } = await adminClient
-          .from("products")
-          .select("stock_quantity, name")
-          .eq("id", order.product_id)
-          .single();
-        if (product && product.stock_quantity < orderQty) {
-          return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
-        }
-        if (product && product.stock_quantity >= orderQty) {
-          const newQty = product.stock_quantity - orderQty;
-          await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", order.product_id);
-          await adminClient.from("inventory_logs").insert({
-            product_id: order.product_id,
-            change_amount: -orderQty,
-            previous_stock: product.stock_quantity,
-            new_stock: newQty,
-            reason: "order_deduction",
-            movement_type: "order_deduction",
-            user_id: user.id,
-            notes: `Order ${order.display_id} shipped`,
-          });
+      // Stock deduction on SHIPPED (not confirmed) — supports multi-product orders
+      if (newStatus === "shipped" && order.status !== "shipped") {
+        // Check for order_items first (multi-product)
+        const { data: orderItems } = await adminClient.from("order_items").select("*").eq("order_id", orderId);
+
+        if (orderItems && orderItems.length > 0) {
+          // Multi-product: deduct stock for each item
+          for (const item of orderItems) {
+            if (!item.product_id) continue;
+            const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+            if (product && product.stock_quantity < item.quantity) {
+              return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${item.quantity}` }, 400);
+            }
+          }
+          // All stock checks passed, now deduct
+          for (const item of orderItems) {
+            if (!item.product_id) continue;
+            const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+            if (product) {
+              const newQty = product.stock_quantity - item.quantity;
+              await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id);
+              await adminClient.from("inventory_logs").insert({
+                product_id: item.product_id,
+                change_amount: -item.quantity,
+                previous_stock: product.stock_quantity,
+                new_stock: newQty,
+                reason: "order_deduction",
+                movement_type: "order_deduction",
+                user_id: user.id,
+                notes: `Order ${order.display_id} shipped — ${item.product_name}`,
+              });
+            }
+          }
+        } else if (order.product_id) {
+          // Legacy single-product fallback
+          const orderQty = order.quantity || 1;
+          const { data: product } = await adminClient
+            .from("products")
+            .select("stock_quantity, name")
+            .eq("id", order.product_id)
+            .single();
+          if (product && product.stock_quantity < orderQty) {
+            return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
+          }
+          if (product && product.stock_quantity >= orderQty) {
+            const newQty = product.stock_quantity - orderQty;
+            await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", order.product_id);
+            await adminClient.from("inventory_logs").insert({
+              product_id: order.product_id,
+              change_amount: -orderQty,
+              previous_stock: product.stock_quantity,
+              new_stock: newQty,
+              reason: "order_deduction",
+              movement_type: "order_deduction",
+              user_id: user.id,
+              notes: `Order ${order.display_id} shipped`,
+            });
+          }
         }
       }
 
@@ -891,6 +932,140 @@ serve(async (req) => {
           assigned_by: adminProfile?.full_name || "Admin",
         })
         .eq("id", orderId);
+
+      return json({ success: true });
+    }
+
+    // ============================================================
+    // ORDER ITEMS CRUD
+    // ============================================================
+
+    // POST /api/orders/:id/items (add product to order)
+    if (req.method === "POST" && segments[0] === "orders" && segments[2] === "items") {
+      const orderId = segments[1];
+      const body = await req.json();
+      const productId = body.product_id || null;
+      const productName = body.product_name || "";
+      const quantity = body.quantity || 1;
+      const pricePerUnit = body.price_per_unit || 0;
+      const totalPrice = quantity * pricePerUnit;
+
+      // Check order is editable
+      const { data: currentOrder } = await supabase.from("orders").select("status, display_id").eq("id", orderId).single();
+      if (!currentOrder) return json({ error: "Order not found" }, 404);
+      const lockedStatuses = ["shipped", "delivered", "paid"];
+      if (lockedStatuses.includes(currentOrder.status)) {
+        return json({ error: "Cannot modify products — order is locked." }, 400);
+      }
+
+      const { data: item, error: itemErr } = await adminClient
+        .from("order_items")
+        .insert({ order_id: orderId, product_id: productId, product_name: productName, quantity, price_per_unit: pricePerUnit, total_price: totalPrice })
+        .select()
+        .single();
+      if (itemErr) return json({ error: sanitizeDbError(itemErr) }, 400);
+
+      // Recalculate order total from all items
+      const { data: allItems } = await adminClient.from("order_items").select("total_price").eq("order_id", orderId);
+      const orderTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      await adminClient.from("orders").update({ price: orderTotal }).eq("id", orderId);
+
+      // Log timeline
+      const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      await adminClient.from("order_history").insert({
+        order_id: orderId,
+        from_status: currentOrder.status,
+        to_status: currentOrder.status,
+        changed_by: user.id,
+        changed_by_name: `${profile?.full_name || user.email} — Product added: ${productName} (Qty ${quantity})`,
+      });
+
+      return json(item);
+    }
+
+    // PATCH /api/order-items/:id (update order item)
+    if (req.method === "PATCH" && segments[0] === "order-items" && segments.length === 2) {
+      const itemId = segments[1];
+      const body = await req.json();
+
+      // Get current item to find its order
+      const { data: currentItem } = await adminClient.from("order_items").select("*, orders(status, id, display_id)").eq("id", itemId).single();
+      if (!currentItem) return json({ error: "Item not found" }, 404);
+
+      const lockedStatuses = ["shipped", "delivered", "paid"];
+      if (lockedStatuses.includes(currentItem.orders?.status)) {
+        return json({ error: "Cannot modify products — order is locked." }, 400);
+      }
+
+      const updates: Record<string, any> = {};
+      if (body.product_id !== undefined) updates.product_id = body.product_id;
+      if (body.product_name !== undefined) updates.product_name = body.product_name;
+      if (body.quantity !== undefined) updates.quantity = body.quantity;
+      if (body.price_per_unit !== undefined) updates.price_per_unit = body.price_per_unit;
+
+      // Recalculate total_price for this item
+      const qty = body.quantity ?? currentItem.quantity;
+      const ppu = body.price_per_unit ?? currentItem.price_per_unit;
+      updates.total_price = qty * ppu;
+
+      const { data: updatedItem, error: updateErr } = await adminClient
+        .from("order_items")
+        .update(updates)
+        .eq("id", itemId)
+        .select()
+        .single();
+      if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+
+      // Recalculate order total
+      const orderId = currentItem.order_id;
+      const { data: allItems } = await adminClient.from("order_items").select("total_price").eq("order_id", orderId);
+      const orderTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      await adminClient.from("orders").update({ price: orderTotal }).eq("id", orderId);
+
+      // Log timeline
+      const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      await adminClient.from("order_history").insert({
+        order_id: orderId,
+        from_status: currentItem.orders?.status,
+        to_status: currentItem.orders?.status,
+        changed_by: user.id,
+        changed_by_name: `${profile?.full_name || user.email} — Product updated: ${updates.product_name || currentItem.product_name}`,
+      });
+
+      return json(updatedItem);
+    }
+
+    // DELETE /api/order-items/:id (remove product from order)
+    if (req.method === "DELETE" && segments[0] === "order-items" && segments.length === 2) {
+      const itemId = segments[1];
+
+      const { data: currentItem } = await adminClient.from("order_items").select("*, orders(status, id, display_id)").eq("id", itemId).single();
+      if (!currentItem) return json({ error: "Item not found" }, 404);
+
+      const lockedStatuses = ["shipped", "delivered", "paid"];
+      if (lockedStatuses.includes(currentItem.orders?.status)) {
+        return json({ error: "Cannot modify products — order is locked." }, 400);
+      }
+
+      const orderId = currentItem.order_id;
+      const removedName = currentItem.product_name;
+
+      await adminClient.from("order_items").delete().eq("id", itemId);
+
+      // Recalculate order total
+      const { data: allItems } = await adminClient.from("order_items").select("total_price").eq("order_id", orderId);
+      const orderTotal = (allItems || []).reduce((s: number, i: any) => s + Number(i.total_price), 0);
+      await adminClient.from("orders").update({ price: orderTotal }).eq("id", orderId);
+
+      // Log timeline
+      const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      await adminClient.from("order_history").insert({
+        order_id: orderId,
+        from_status: currentItem.orders?.status,
+        to_status: currentItem.orders?.status,
+        changed_by: user.id,
+        changed_by_name: `${profile?.full_name || user.email} — Product removed: ${removedName}`,
+      });
 
       return json({ success: true });
     }

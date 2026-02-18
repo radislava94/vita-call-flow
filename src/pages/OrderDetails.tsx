@@ -4,7 +4,7 @@ import { format, parse } from 'date-fns';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus, canEditOrder } from '@/types';
-import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2, Phone } from 'lucide-react';
+import { ArrowLeft, User, Package, Clock, MessageSquare, ChevronRight, AlertTriangle, Save, CalendarIcon, Pencil, Loader2, Phone, Plus, Trash2 } from 'lucide-react';
 import { isValidPhone } from '@/lib/validation';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -12,11 +12,33 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
-import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote, apiGetProducts } from '@/lib/api';
+import { apiGetOrder, apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderNote, apiGetProducts, apiAddOrderItem, apiUpdateOrderItem, apiDeleteOrderItem } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { CallPopup } from '@/components/CallPopup';
 
 const STATUSES_REQUIRING_COMPLETE_INFO: OrderStatus[] = ['confirmed', 'shipped', 'delivered', 'returned', 'paid', 'cancelled'];
+
+interface OrderItem {
+  id: string;
+  order_id: string;
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  price_per_unit: number;
+  total_price: number;
+}
+
+interface LocalItem {
+  tempId: string;
+  id?: string; // existing DB id
+  product_id: string | null;
+  product_name: string;
+  quantity: number;
+  price_per_unit: number;
+  isNew?: boolean;
+  isDirty?: boolean;
+  isDeleted?: boolean;
+}
 
 export default function OrderDetails() {
   const { id } = useParams<{ id: string }>();
@@ -26,23 +48,22 @@ export default function OrderDetails() {
   const [order, setOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
-  const [editingProduct, setEditingProduct] = useState(false);
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerCity, setCustomerCity] = useState('');
   const [customerAddress, setCustomerAddress] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [birthday, setBirthday] = useState<Date | undefined>(undefined);
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [selectedProductName, setSelectedProductName] = useState('');
-  const [orderQuantity, setOrderQuantity] = useState(1);
-  const [orderPrice, setOrderPrice] = useState(0);
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus>('pending');
   const [statusError, setStatusError] = useState('');
   const [noteText, setNoteText] = useState('');
   const [saving, setSaving] = useState(false);
   const [showCallPopup, setShowCallPopup] = useState(false);
   const [products, setProducts] = useState<any[]>([]);
+
+  // Multi-product state
+  const [items, setItems] = useState<LocalItem[]>([]);
+  const [editingProducts, setEditingProducts] = useState(false);
 
   const loadOrder = () => {
     if (!id) return;
@@ -56,11 +77,31 @@ export default function OrderDetails() {
         setCustomerAddress(data.customer_address || '');
         setPostalCode(data.postal_code || '');
         setBirthday(data.birthday ? parse(data.birthday, 'yyyy-MM-dd', new Date()) : undefined);
-        setSelectedProductId(data.product_id || null);
-        setSelectedProductName(data.product_name || '');
-        setOrderQuantity(data.quantity || 1);
-        setOrderPrice(Number(data.price) || 0);
         setSelectedStatus(data.status);
+
+        // Load order items
+        const orderItems: OrderItem[] = data.order_items || [];
+        if (orderItems.length > 0) {
+          setItems(orderItems.map((item) => ({
+            tempId: item.id,
+            id: item.id,
+            product_id: item.product_id,
+            product_name: item.product_name,
+            quantity: item.quantity,
+            price_per_unit: Number(item.price_per_unit),
+          })));
+        } else if (data.product_name) {
+          // Legacy: single product fallback
+          setItems([{
+            tempId: 'legacy-' + data.id,
+            product_id: data.product_id || null,
+            product_name: data.product_name,
+            quantity: data.quantity || 1,
+            price_per_unit: Number(data.price) || 0,
+          }]);
+        } else {
+          setItems([]);
+        }
       })
       .catch(() => setOrder(null))
       .finally(() => setLoading(false));
@@ -71,11 +112,13 @@ export default function OrderDetails() {
     apiGetProducts().then(setProducts).catch(() => {});
   }, []);
 
-  const selectedProduct = products.find(p => p.id === selectedProductId);
-  const totalAmount = orderQuantity * orderPrice;
   const isEditable = order ? canEditOrder(order.status) : true;
-
   const phoneDuplicates = order?.phone_duplicates || [];
+
+  // Calculate order total from items
+  const orderTotal = items
+    .filter(i => !i.isDeleted)
+    .reduce((sum, item) => sum + item.quantity * item.price_per_unit, 0);
 
   const fieldErrors = useMemo(() => {
     if (!editing) return {};
@@ -85,11 +128,8 @@ export default function OrderDetails() {
     else if (!isValidPhone(customerPhone)) errors.phone = 'Invalid phone format (8-15 digits)';
     if (!customerCity.trim()) errors.city = 'City is required';
     if (!customerAddress.trim()) errors.address = 'Address is required';
-    if (selectedProductId && selectedProduct && orderQuantity > selectedProduct.stock_quantity) {
-      errors.quantity = `Only ${selectedProduct.stock_quantity} available in stock`;
-    }
     return errors;
-  }, [editing, customerName, customerPhone, customerCity, customerAddress, orderQuantity, selectedProductId, selectedProduct]);
+  }, [editing, customerName, customerPhone, customerCity, customerAddress]);
 
   const hasRequiredFieldsComplete = customerName.trim() && customerPhone.trim() && customerCity.trim() && customerAddress.trim();
 
@@ -114,16 +154,115 @@ export default function OrderDetails() {
     );
   }
 
-  const handleProductChange = (productId: string) => {
+  const handleProductChangeForItem = (tempId: string, productId: string) => {
     const product = products.find(p => p.id === productId);
-    if (product) {
-      setSelectedProductId(product.id);
-      setSelectedProductName(product.name);
-      setOrderPrice(Number(product.price) || 0);
-      if (orderQuantity > product.stock_quantity) {
-        setOrderQuantity(Math.max(1, product.stock_quantity));
+    if (!product) return;
+    setItems(prev => prev.map(item =>
+      item.tempId === tempId
+        ? { ...item, product_id: product.id, product_name: product.name, price_per_unit: Number(product.price) || 0, isDirty: true }
+        : item
+    ));
+  };
+
+  const handleItemFieldChange = (tempId: string, field: 'quantity' | 'price_per_unit', value: number) => {
+    setItems(prev => prev.map(item =>
+      item.tempId === tempId ? { ...item, [field]: value, isDirty: true } : item
+    ));
+  };
+
+  const handleAddItem = () => {
+    const newItem: LocalItem = {
+      tempId: 'new-' + Date.now(),
+      product_id: null,
+      product_name: '',
+      quantity: 1,
+      price_per_unit: 0,
+      isNew: true,
+      isDirty: true,
+    };
+    setItems(prev => [...prev, newItem]);
+  };
+
+  const handleRemoveItem = (tempId: string) => {
+    setItems(prev => prev.map(item =>
+      item.tempId === tempId
+        ? (item.id ? { ...item, isDeleted: true } : item) // mark existing for deletion, or just filter
+        : item
+    ).filter(item => !(item.tempId === tempId && !item.id)));
+  };
+
+  const handleSaveProducts = async () => {
+    const activeItems = items.filter(i => !i.isDeleted);
+    if (activeItems.length === 0) {
+      toast({ title: 'Error', description: 'At least one product is required.', variant: 'destructive' });
+      return;
+    }
+    for (const item of activeItems) {
+      if (!item.product_name.trim()) {
+        toast({ title: 'Error', description: 'All products must have a name.', variant: 'destructive' });
+        return;
       }
     }
+
+    setSaving(true);
+    try {
+      // 1. Delete removed items
+      for (const item of items.filter(i => i.isDeleted && i.id)) {
+        await apiDeleteOrderItem(item.id!);
+      }
+
+      // 2. Add new items
+      for (const item of activeItems.filter(i => i.isNew)) {
+        await apiAddOrderItem(order.id, {
+          product_id: item.product_id || undefined,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          price_per_unit: item.price_per_unit,
+        });
+      }
+
+      // 3. Update dirty existing items
+      for (const item of activeItems.filter(i => i.isDirty && !i.isNew && i.id)) {
+        await apiUpdateOrderItem(item.id!, {
+          product_id: item.product_id,
+          product_name: item.product_name,
+          quantity: item.quantity,
+          price_per_unit: item.price_per_unit,
+        });
+      }
+
+      setEditingProducts(false);
+      toast({ title: 'Products saved' });
+      loadOrder();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelProductsEdit = () => {
+    // Reset items from order data
+    const orderItems: OrderItem[] = order.order_items || [];
+    if (orderItems.length > 0) {
+      setItems(orderItems.map((item) => ({
+        tempId: item.id,
+        id: item.id,
+        product_id: item.product_id,
+        product_name: item.product_name,
+        quantity: item.quantity,
+        price_per_unit: Number(item.price_per_unit),
+      })));
+    } else if (order.product_name) {
+      setItems([{
+        tempId: 'legacy-' + order.id,
+        product_id: order.product_id || null,
+        product_name: order.product_name,
+        quantity: order.quantity || 1,
+        price_per_unit: Number(order.price) || 0,
+      }]);
+    }
+    setEditingProducts(false);
   };
 
   const handleSaveCustomer = async () => {
@@ -159,45 +298,6 @@ export default function OrderDetails() {
     setPostalCode(order.postal_code || '');
     setBirthday(order.birthday ? parse(order.birthday, 'yyyy-MM-dd', new Date()) : undefined);
     setEditing(false);
-  };
-
-  const handleSaveProduct = async () => {
-    if (!selectedProductName.trim()) {
-      toast({ title: 'Validation error', description: 'Product is required.', variant: 'destructive' });
-      return;
-    }
-    if (orderQuantity < 1) {
-      toast({ title: 'Validation error', description: 'Quantity must be at least 1.', variant: 'destructive' });
-      return;
-    }
-    if (orderPrice < 0) {
-      toast({ title: 'Validation error', description: 'Price must be 0 or more.', variant: 'destructive' });
-      return;
-    }
-    setSaving(true);
-    try {
-      await apiUpdateCustomer(order.id, {
-        product_id: selectedProductId,
-        product_name: selectedProductName.trim(),
-        quantity: orderQuantity,
-        price: orderPrice,
-      });
-      setEditingProduct(false);
-      toast({ title: 'Product & pricing saved' });
-      loadOrder();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCancelProductEdit = () => {
-    setSelectedProductId(order.product_id || null);
-    setSelectedProductName(order.product_name || '');
-    setOrderQuantity(order.quantity || 1);
-    setOrderPrice(Number(order.price) || 0);
-    setEditingProduct(false);
   };
 
   const handleStatusUpdate = async () => {
@@ -258,6 +358,7 @@ export default function OrderDetails() {
 
   const history = order.history || [];
   const notes = order.notes || [];
+  const activeItems = items.filter(i => !i.isDeleted);
 
   return (
     <AppLayout title={`Order ${order.display_id}`}>
@@ -289,7 +390,7 @@ export default function OrderDetails() {
                 </Button>
               )}
               {!editing && !isEditable && (
-                <p className="text-xs text-muted-foreground italic">Product and price locked because order is Shipped, Delivered, or Paid.</p>
+                <p className="text-xs text-muted-foreground italic">Locked — order is Shipped, Delivered, or Paid.</p>
               )}
             </div>
 
@@ -355,106 +456,140 @@ export default function OrderDetails() {
             )}
           </div>
 
-          {/* Product & Pricing */}
+          {/* Products in this Order */}
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-lg font-semibold text-card-foreground">
-                <Package className="h-5 w-5 text-primary" /> Product & Pricing
+                <Package className="h-5 w-5 text-primary" /> Products in this Order
               </h2>
-              {!editingProduct && isEditable && (
-                <Button variant="outline" size="sm" onClick={() => setEditingProduct(true)} className="gap-1.5">
+              {!editingProducts && isEditable && (
+                <Button variant="outline" size="sm" onClick={() => setEditingProducts(true)} className="gap-1.5">
                   <Pencil className="h-3.5 w-3.5" /> Edit
                 </Button>
               )}
-              {!editingProduct && !isEditable && (
+              {!editingProducts && !isEditable && (
                 <p className="text-xs text-muted-foreground italic">Locked — order is Shipped, Delivered, or Paid.</p>
               )}
             </div>
-            {editingProduct ? (
-              <div className="space-y-4">
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-1.5">Product</p>
-                  <Select value={selectedProductId || ''} onValueChange={handleProductChange}>
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a product" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {products.filter(p => p.is_active).map(p => (
-                        <SelectItem key={p.id} value={p.id}>
-                          <span className="flex items-center gap-2">
-                            {p.name} ({p.sku || 'No SKU'})
-                            <span className={cn('text-xs', p.stock_quantity < (p.low_stock_threshold || 5) ? 'text-destructive' : 'text-muted-foreground')}>
-                              — Stock: {p.stock_quantity}
-                            </span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {selectedProduct && (
-                    <p className="mt-1 text-xs text-muted-foreground">Available stock: {selectedProduct.stock_quantity}</p>
-                  )}
-                </div>
-                <div className="grid grid-cols-3 gap-4">
+
+            {editingProducts ? (
+              <div className="space-y-3">
+                {activeItems.map((item, idx) => {
+                  const selectedProduct = products.find(p => p.id === item.product_id);
+                  return (
+                    <div key={item.tempId} className="rounded-lg border bg-muted/50 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-muted-foreground">Product {idx + 1}</span>
+                        {activeItems.length > 1 && (
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => handleRemoveItem(item.tempId)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-muted-foreground mb-1.5">Product</p>
+                        <Select value={item.product_id || ''} onValueChange={(val) => handleProductChangeForItem(item.tempId, val)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select a product" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {products.filter(p => p.is_active).map(p => (
+                              <SelectItem key={p.id} value={p.id}>
+                                <span className="flex items-center gap-2">
+                                  {p.name} ({p.sku || 'No SKU'})
+                                  <span className={cn('text-xs', p.stock_quantity < (p.low_stock_threshold || 5) ? 'text-destructive' : 'text-muted-foreground')}>
+                                    — Stock: {p.stock_quantity}
+                                  </span>
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {selectedProduct && (
+                          <p className="mt-1 text-xs text-muted-foreground">Available stock: {selectedProduct.stock_quantity}</p>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1.5">Quantity</p>
+                          <input
+                            type="number"
+                            min={1}
+                            value={item.quantity}
+                            onChange={(e) => handleItemFieldChange(item.tempId, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                            className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1.5">Price per Unit</p>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={item.price_per_unit}
+                            onChange={(e) => handleItemFieldChange(item.tempId, 'price_per_unit', Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1.5">Total</p>
+                          <p className="h-9 flex items-center text-sm font-bold text-primary">
+                            {(item.quantity * item.price_per_unit).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <Button variant="outline" onClick={handleAddItem} className="w-full gap-1.5 border-dashed">
+                  <Plus className="h-4 w-4" /> Add Product to Order
+                </Button>
+
+                <div className="flex items-center justify-between border-t pt-4 mt-2">
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Quantity</p>
-                    <input
-                      type="number"
-                      min={1}
-                      max={selectedProduct?.stock_quantity || 100000}
-                      value={orderQuantity}
-                      onChange={(e) => setOrderQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                      className={cn(
-                        'h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring',
-                        fieldErrors.quantity && 'border-destructive'
-                      )}
-                    />
-                    {fieldErrors.quantity && <p className="mt-1 text-xs text-destructive">{fieldErrors.quantity}</p>}
+                    <p className="text-sm text-muted-foreground">Order Total</p>
+                    <p className="text-xl font-bold text-primary">{orderTotal.toFixed(2)}</p>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Price per Unit</p>
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={orderPrice}
-                      onChange={(e) => setOrderPrice(Math.max(0, parseFloat(e.target.value) || 0))}
-                      className="h-9 w-full rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                    />
+                  <div className="flex items-center gap-2">
+                    <Button onClick={handleSaveProducts} disabled={saving} className="gap-1.5">
+                      <Save className="h-4 w-4" /> Save Changes
+                    </Button>
+                    <Button variant="outline" onClick={handleCancelProductsEdit}>Cancel</Button>
                   </div>
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1.5">Total Price</p>
-                    <p className="h-9 flex items-center text-lg font-bold text-primary">{totalAmount.toFixed(2)}</p>
-                  </div>
-                </div>
-                <div className="mt-4 flex items-center gap-2 border-t pt-4">
-                  <Button onClick={handleSaveProduct} disabled={saving} className="gap-1.5">
-                    <Save className="h-4 w-4" /> Save Changes
-                  </Button>
-                  <Button variant="outline" onClick={handleCancelProductEdit}>Cancel</Button>
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
-                <div className="flex items-center justify-between rounded-lg bg-muted p-4">
-                  <div>
-                    <p className="font-semibold">{order.product_name}</p>
-                    {order.product_id && <p className="text-sm text-muted-foreground">ID: {order.product_id}</p>}
+                {activeItems.map((item, idx) => (
+                  <div key={item.tempId} className="rounded-lg bg-muted p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="font-semibold">{item.product_name || 'Unnamed product'}</p>
+                      {item.product_id && (
+                        <span className="text-xs text-muted-foreground">
+                          Stock: {products.find(p => p.id === item.product_id)?.stock_quantity ?? '—'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Quantity</p>
+                        <p className="font-semibold">{item.quantity}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Price per Unit</p>
+                        <p className="font-semibold">{item.price_per_unit.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Total</p>
+                        <p className="font-bold text-primary">{(item.quantity * item.price_per_unit).toFixed(2)}</p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4 px-1">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Quantity</p>
-                    <p className="font-semibold">{order.quantity || 1}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Price per Unit</p>
-                    <p className="font-semibold">{Number(order.price).toFixed(2)}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Total Price</p>
-                    <p className="text-lg font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</p>
-                  </div>
+                ))}
+                <div className="flex items-center justify-between px-1 pt-2 border-t">
+                  <p className="text-sm text-muted-foreground">Order Total</p>
+                  <p className="text-xl font-bold text-primary">{orderTotal.toFixed(2)}</p>
                 </div>
               </div>
             )}
@@ -544,24 +679,36 @@ export default function OrderDetails() {
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <h2 className="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wider">Timeline</h2>
             <div className="space-y-3">
-              {history.map((change: any, i: number) => (
-                <div key={i} className="flex items-start gap-3">
-                  <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
-                    <Clock className="h-3 w-3 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm">
-                      <span className="font-medium">{change.changed_by_name}</span> changed status
-                    </p>
-                    <div className="mt-0.5 flex items-center gap-1 text-xs">
-                      {change.from_status && <StatusBadge status={change.from_status} />}
-                      <ChevronRight className="h-3 w-3 text-muted-foreground" />
-                      <StatusBadge status={change.to_status} />
+              {history.map((change: any, i: number) => {
+                // Check if this is a product change (same from/to status, name contains product info)
+                const isProductChange = change.from_status === change.to_status &&
+                  change.changed_by_name && (change.changed_by_name.includes('Product added') || change.changed_by_name.includes('Product updated') || change.changed_by_name.includes('Product removed'));
+
+                return (
+                  <div key={i} className="flex items-start gap-3">
+                    <div className={cn("mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full", isProductChange ? 'bg-accent' : 'bg-primary/10')}>
+                      {isProductChange ? <Package className="h-3 w-3 text-accent-foreground" /> : <Clock className="h-3 w-3 text-primary" />}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{new Date(change.changed_at).toLocaleString()}</p>
+                    <div>
+                      {isProductChange ? (
+                        <p className="text-sm">{change.changed_by_name}</p>
+                      ) : (
+                        <>
+                          <p className="text-sm">
+                            <span className="font-medium">{change.changed_by_name}</span> changed status
+                          </p>
+                          <div className="mt-0.5 flex items-center gap-1 text-xs">
+                            {change.from_status && <StatusBadge status={change.from_status} />}
+                            <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                            <StatusBadge status={change.to_status} />
+                          </div>
+                        </>
+                      )}
+                      <p className="mt-0.5 text-xs text-muted-foreground">{new Date(change.changed_at).toLocaleString()}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               <div className="flex items-start gap-3">
                 <div className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted">
                   <Clock className="h-3 w-3 text-muted-foreground" />
@@ -586,7 +733,7 @@ export default function OrderDetails() {
         contextId={order.id}
         customerName={order.customer_name}
         phoneNumber={order.customer_phone}
-        productName={order.product_name}
+        productName={activeItems.map(i => i.product_name).filter(Boolean).join(', ') || order.product_name}
       />
     </AppLayout>
   );

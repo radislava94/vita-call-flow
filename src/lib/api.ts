@@ -59,6 +59,14 @@ export const apiAssignOrder = (orderId: string, agentId: string) =>
   apiFetch(`orders/${orderId}/assign`, { method: 'POST', body: JSON.stringify({ agent_id: agentId }) });
 export const apiAddOrderNote = (orderId: string, text: string) =>
   apiFetch(`orders/${orderId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
+
+// Order Items
+export const apiAddOrderItem = (orderId: string, body: { product_id?: string; product_name: string; quantity: number; price_per_unit: number }) =>
+  apiFetch(`orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateOrderItem = (itemId: string, body: any) =>
+  apiFetch(`order-items/${itemId}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteOrderItem = (itemId: string) =>
+  apiFetch(`order-items/${itemId}`, { method: 'DELETE' });
 export const apiGetOrderStats = (from?: string, to?: string) => {
   const sp = new URLSearchParams();
   if (from) sp.set('from', from);
