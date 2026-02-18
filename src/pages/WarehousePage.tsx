@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -62,10 +63,8 @@ function IncomingOrdersTab() {
   const [products, setProducts] = useState<any[]>([]);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  // Edit dialog state
-  const [editOrder, setEditOrder] = useState<any>(null);
-  const [editForm, setEditForm] = useState<any>({});
-  const [saving, setSaving] = useState(false);
+  // Edit via OrderModal
+  const [modalOrder, setModalOrder] = useState<any>(null);
 
   const fetchOrders = () => {
     setLoading(true);
@@ -131,76 +130,34 @@ function IncomingOrdersTab() {
     }
   };
 
-  const openEditDialog = (order: any) => {
-    setEditOrder(order);
-    setEditForm({
-      customer_name: order.customer_name || '',
-      customer_phone: order.customer_phone || '',
-      customer_address: order.customer_address || '',
-      customer_city: order.customer_city || '',
-      postal_code: order.postal_code || '',
-      birthday: order.birthday || '',
-      product_name: order.product_name || '',
-      product_id: order.product_id || '',
-      quantity: order.quantity || 1,
-      price: order.price || 0,
-      notes: order.notes || '',
-      status: order.status || 'confirmed',
-    });
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editOrder) return;
-    setSaving(true);
-    try {
-      const payload: any = {
-        _source: editOrder.source,
-        customer_name: editForm.customer_name,
-        customer_phone: editForm.customer_phone,
-        customer_address: editForm.customer_address,
-        customer_city: editForm.customer_city,
-        postal_code: editForm.postal_code,
-        birthday: editForm.birthday || null,
-        product_name: editForm.product_name,
-        quantity: parseInt(editForm.quantity) || 1,
-        price: parseFloat(editForm.price) || 0,
-        notes: editForm.notes,
-      };
-      if (editForm.product_id && editOrder.source === 'order') {
-        payload.product_id = editForm.product_id;
-      }
-      if (editForm.status !== editOrder.status) {
-        payload.status = editForm.status;
-      }
-      await apiUpdateWarehouseOrder(editOrder.id, payload);
-      toast({ title: 'Order updated successfully' });
-      setEditOrder(null);
-      fetchOrders();
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleProductSelect = (productId: string) => {
-    const product = products.find(p => p.id === productId);
-    if (product) {
-      setEditForm((prev: any) => ({
-        ...prev,
-        product_id: product.id,
-        product_name: product.name,
-        price: product.price,
-      }));
-    }
-  };
+  function orderToModalData(order: any): OrderModalData {
+    return {
+      id: order.id,
+      displayId: order.display_id,
+      name: order.customer_name,
+      telephone: order.customer_phone,
+      address: order.customer_address,
+      city: order.customer_city,
+      postalCode: order.postal_code || '',
+      product: order.product_name,
+      status: order.status,
+      notes: null,
+      quantity: order.quantity,
+      price: order.price,
+      assigned_agent_id: order.assigned_agent_id,
+      items: (order.order_items || []).map((i: any) => ({
+        id: i.id, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, price_per_unit: i.price_per_unit, total_price: i.total_price,
+      })),
+    };
+  }
 
   const exportCSV = () => {
     if (orders.length === 0) return;
     const headers = ['ID', 'Customer', 'Phone', 'Product', 'Quantity', 'Total Price', 'Agent', 'Source', 'Status', 'Date'];
     const rows = orders.map((o: any) => [
       o.display_id, `"${(o.customer_name || '').replace(/"/g, '""')}"`, o.customer_phone || '',
-      `"${(o.product_name || '').replace(/"/g, '""')}"`, o.quantity || 1, ((o.quantity || 1) * Number(o.price || 0)).toFixed(2), o.assigned_agent_name || '',
+      `"${(o.product_name || '').replace(/"/g, '""')}"`, o.quantity || 1, Number(o.price || 0).toFixed(2), o.assigned_agent_name || '',
       o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order', o.status, format(new Date(o.created_at), 'yyyy-MM-dd'),
     ]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
@@ -316,7 +273,7 @@ function IncomingOrdersTab() {
                                 {o.product_name}
                                 {o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}
                               </td>
-                              <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? ((o.quantity || 1) * Number(o.price)).toFixed(2) : '—'}</td>
+                              <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? Number(o.price).toFixed(2) : '—'}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
                               <td className="px-4 py-2.5 text-xs">
                                 <Badge variant={isFromLead ? 'secondary' : 'default'} className="text-[10px]">{isFromLead ? 'Lead' : 'Order'}</Badge>
@@ -338,7 +295,7 @@ function IncomingOrdersTab() {
                               </td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{format(new Date(o.created_at), 'HH:mm')}</td>
                               <td className="px-4 py-2.5 flex items-center gap-1">
-                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openEditDialog(o)}>
+                                <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setModalOrder(o)}>
                                   <Edit className="h-3 w-3 mr-1" /> Edit
                                 </Button>
                                 <Button variant="destructive" size="sm" className="h-7 text-xs" disabled={deletingId === o.id} onClick={async () => {
@@ -368,96 +325,15 @@ function IncomingOrdersTab() {
         </div>
       )}
 
-      {/* Edit Order Dialog */}
-      <Dialog open={!!editOrder} onOpenChange={(open) => !open && setEditOrder(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit — {editOrder?.display_id}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground">Name</label>
-                <Input value={editForm.customer_name} onChange={e => setEditForm((p: any) => ({ ...p, customer_name: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Phone</label>
-                <Input value={editForm.customer_phone} onChange={e => setEditForm((p: any) => ({ ...p, customer_phone: e.target.value }))} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Address</label>
-              <Input value={editForm.customer_address} onChange={e => setEditForm((p: any) => ({ ...p, customer_address: e.target.value }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground">City</label>
-                <Input value={editForm.customer_city} onChange={e => setEditForm((p: any) => ({ ...p, customer_city: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Postal Code</label>
-                <Input value={editForm.postal_code} onChange={e => setEditForm((p: any) => ({ ...p, postal_code: e.target.value }))} />
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Birthday</label>
-              <Input type="date" value={editForm.birthday || ''} onChange={e => setEditForm((p: any) => ({ ...p, birthday: e.target.value }))} />
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Product</label>
-              <Select value={editForm.product_id || '__custom'} onValueChange={(val) => {
-                if (val === '__custom') return;
-                handleProductSelect(val);
-              }}>
-                <SelectTrigger><SelectValue placeholder="Select product" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__custom">Custom</SelectItem>
-                  {products.map((p: any) => (
-                    <SelectItem key={p.id} value={p.id}>{p.name} — {Number(p.price).toFixed(2)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Input className="mt-1" placeholder="Or type product name" value={editForm.product_name} onChange={e => setEditForm((p: any) => ({ ...p, product_name: e.target.value, product_id: '' }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-muted-foreground">Quantity</label>
-                <Input type="number" min={1} value={editForm.quantity} onChange={e => setEditForm((p: any) => ({ ...p, quantity: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs text-muted-foreground">Total Price</label>
-                <div className="h-9 flex items-center px-3 rounded-md border bg-muted/50 text-sm font-semibold text-primary">
-                  {(parseFloat(editForm.price || 0) * parseInt(editForm.quantity || 1)).toFixed(2)}
-                </div>
-              </div>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Status</label>
-              <Select value={editForm.status} onValueChange={(val) => setEditForm((p: any) => ({ ...p, status: val }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {allStatuses.map(s => (
-                    <SelectItem key={s.value} value={s.value}>
-                      <span className="flex items-center gap-1.5">
-                        <span className={cn("h-2 w-2 rounded-full", s.color)} />
-                        {s.label}
-                      </span>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="text-xs text-muted-foreground">Notes</label>
-              <Textarea value={editForm.notes} onChange={e => setEditForm((p: any) => ({ ...p, notes: e.target.value }))} rows={3} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOrder(null)}>Cancel</Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>{saving ? 'Saving...' : 'Save Changes'}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <OrderModal
+        open={!!modalOrder}
+        onClose={(saved) => {
+          setModalOrder(null);
+          if (saved) fetchOrders();
+        }}
+        data={modalOrder ? orderToModalData(modalOrder) : null}
+        contextType="order"
+      />
     </div>
   );
 }
