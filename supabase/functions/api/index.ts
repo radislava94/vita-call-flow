@@ -689,9 +689,77 @@ serve(async (req) => {
 
       return json(result);
     }
+    // POST /api/orders/bulk-status-update (admin/manager/warehouse)
+    if (req.method === "POST" && path === "orders/bulk-status-update") {
+      if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { order_ids, new_status } = body;
+      if (!order_ids?.length || !new_status) return json({ error: "order_ids and new_status required" }, 400);
+
+      const validStatuses = ["shipped", "paid", "cancelled", "returned"];
+      if (!validStatuses.includes(new_status)) return json({ error: `Status must be one of: ${validStatuses.join(", ")}` }, 400);
+
+      // Fetch current orders to apply safety rules
+      const { data: currentOrders, error: fetchErr } = await adminClient
+        .from("orders")
+        .select("id, status, display_id")
+        .in("id", order_ids);
+      if (fetchErr) return json({ error: sanitizeDbError(fetchErr) }, 400);
+
+      const skipped: string[] = [];
+      const toUpdate: string[] = [];
+
+      for (const order of currentOrders || []) {
+        // Safety: don't update cancelled orders to paid
+        if (order.status === "cancelled" && new_status === "paid") {
+          skipped.push(order.display_id);
+          continue;
+        }
+        // Paid only allowed from shipped or confirmed
+        if (new_status === "paid" && !["shipped", "confirmed"].includes(order.status)) {
+          skipped.push(order.display_id);
+          continue;
+        }
+        // Don't update already-same-status
+        if (order.status === new_status) {
+          skipped.push(order.display_id);
+          continue;
+        }
+        toUpdate.push(order.id);
+      }
+
+      if (toUpdate.length > 0) {
+        const { error: updateErr } = await adminClient
+          .from("orders")
+          .update({ status: new_status, updated_at: new Date().toISOString() })
+          .in("id", toUpdate);
+        if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+
+        // Log in order_history
+        const { data: adminProfile } = await adminClient
+          .from("profiles")
+          .select("full_name")
+          .eq("user_id", user.id)
+          .single();
+
+        const historyRows = toUpdate.map(oid => {
+          const prev = (currentOrders || []).find((o: any) => o.id === oid);
+          return {
+            order_id: oid,
+            from_status: prev?.status || null,
+            to_status: new_status,
+            changed_by: user.id,
+            changed_by_name: adminProfile?.full_name || "System",
+          };
+        });
+        await adminClient.from("order_history").insert(historyRows);
+      }
+
+      return json({ success: true, updated: toUpdate.length, skipped: skipped.length, skipped_ids: skipped });
+    }
 
     // GET /api/orders/:id
-    const reservedOrderPaths = ["stats", "assigned", "unassigned-pending", "bulk-assign", "bulk-unassign"];
+    const reservedOrderPaths = ["stats", "assigned", "unassigned-pending", "bulk-assign", "bulk-unassign", "bulk-status-update"];
     if (req.method === "GET" && segments[0] === "orders" && segments.length === 2 && !reservedOrderPaths.includes(segments[1])) {
       const orderId = segments[1];
       const { data: order, error } = await supabase

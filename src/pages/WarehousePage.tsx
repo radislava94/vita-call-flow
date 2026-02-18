@@ -27,7 +27,9 @@ import {
   apiGetStockMovements,
   apiUpdateWarehouseOrder,
   apiDeleteWarehouseOrder,
+  apiBulkStatusUpdate,
 } from '@/lib/api';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Package,
@@ -65,6 +67,13 @@ function IncomingOrdersTab() {
 
   // Edit via OrderModal
   const [modalOrder, setModalOrder] = useState<any>(null);
+
+  // Bulk selection
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkModalDate, setBulkModalDate] = useState('');
+  const [bulkStatus, setBulkStatus] = useState('shipped');
+  const [bulkUpdating, setBulkUpdating] = useState(false);
 
   const fetchOrders = () => {
     setLoading(true);
@@ -127,6 +136,54 @@ function IncomingOrdersTab() {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
       setUpdatingId(null);
+    }
+  };
+
+  // Bulk selection helpers
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleDateGroup = (dayOrders: any[]) => {
+    const ids = dayOrders.map((o: any) => o.id);
+    const allSelected = ids.every(id => selectedIds.has(id));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (allSelected) ids.forEach(id => next.delete(id));
+      else ids.forEach(id => next.add(id));
+      return next;
+    });
+  };
+
+  const openBulkModal = (dateKey: string) => {
+    setBulkModalDate(dateKey);
+    setBulkStatus('shipped');
+    setBulkModalOpen(true);
+  };
+
+  const handleBulkUpdate = async () => {
+    const dateOrders = orders.filter(o => format(new Date(o.created_at), 'yyyy-MM-dd') === bulkModalDate);
+    // If checkboxes selected within that date, use those; otherwise all in date
+    const idsInDate = dateOrders.map(o => o.id);
+    const selectedInDate = idsInDate.filter(id => selectedIds.has(id));
+    const targetIds = selectedInDate.length > 0 ? selectedInDate : idsInDate;
+
+    if (targetIds.length === 0) return;
+    setBulkUpdating(true);
+    try {
+      const result = await apiBulkStatusUpdate(targetIds, bulkStatus);
+      toast({ title: `${result.updated} orders updated to ${bulkStatus}${result.skipped > 0 ? ` (${result.skipped} skipped)` : ''}` });
+      setBulkModalOpen(false);
+      setSelectedIds(new Set());
+      fetchOrders();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setBulkUpdating(false);
     }
   };
 
@@ -263,19 +320,30 @@ function IncomingOrdersTab() {
             const isTodayDate = isToday(dateObj);
             return (
               <div key={dateKey} className="rounded-xl border bg-card shadow-sm overflow-hidden">
-                <button onClick={() => toggleDate(dateKey)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
-                  <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform duration-200', isOpen && 'rotate-90')} />
-                  <span className="font-semibold text-card-foreground">
-                    {format(dateObj, 'EEEE, MMM d, yyyy')}
-                    {isTodayDate && <Badge className="ml-2 bg-primary/15 text-primary border-primary/30 text-[10px]">Today</Badge>}
-                  </span>
-                  <Badge variant="secondary" className="ml-auto">{dayOrders.length}</Badge>
-                </button>
+                <div className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors">
+                  <button onClick={() => toggleDate(dateKey)} className="flex items-center gap-3 flex-1 min-w-0">
+                    <ChevronRight className={cn('h-4 w-4 text-muted-foreground transition-transform duration-200', isOpen && 'rotate-90')} />
+                    <span className="font-semibold text-card-foreground">
+                      {format(dateObj, 'EEEE, MMM d, yyyy')}
+                      {isTodayDate && <Badge className="ml-2 bg-primary/15 text-primary border-primary/30 text-[10px]">Today</Badge>}
+                    </span>
+                    <Badge variant="secondary">{dayOrders.length}</Badge>
+                  </button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={(e) => { e.stopPropagation(); openBulkModal(dateKey); }}>
+                    <Truck className="h-3 w-3 mr-1" /> Bulk Update Status
+                  </Button>
+                </div>
                 <div className={cn('overflow-hidden transition-all duration-300', isOpen ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0')}>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-t border-b bg-muted/50">
+                          <th className="px-2 py-2.5 text-center">
+                            <Checkbox
+                              checked={dayOrders.length > 0 && dayOrders.every((o: any) => selectedIds.has(o.id))}
+                              onCheckedChange={() => toggleDateGroup(dayOrders)}
+                            />
+                          </th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">ID</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Customer</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Phone</th>
@@ -292,7 +360,10 @@ function IncomingOrdersTab() {
                         {dayOrders.map((o: any) => {
                           const isFromLead = o.source_type === 'prediction_lead' || o.source === 'prediction_lead';
                           return (
-                            <tr key={o.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isFromLead && "bg-accent/30")}>
+                            <tr key={o.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isFromLead && "bg-accent/30", selectedIds.has(o.id) && "bg-primary/5")}>
+                              <td className="px-2 py-2.5 text-center">
+                                <Checkbox checked={selectedIds.has(o.id)} onCheckedChange={() => toggleSelect(o.id)} />
+                              </td>
                               <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
                               <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
@@ -351,6 +422,67 @@ function IncomingOrdersTab() {
           })}
         </div>
       )}
+      {/* Selected count action bar */}
+      {selectedIds.size > 0 && (
+        <div className="sticky bottom-4 flex items-center justify-between bg-card border rounded-lg px-4 py-3 shadow-lg">
+          <span className="text-sm font-medium">{selectedIds.size} order(s) selected</span>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setSelectedIds(new Set())}>Clear Selection</Button>
+            <Select value={bulkStatus} onValueChange={setBulkStatus}>
+              <SelectTrigger className="h-8 w-36 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="shipped">Shipped</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="returned">Returned</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button size="sm" disabled={bulkUpdating} onClick={async () => {
+              const ids = Array.from(selectedIds);
+              setBulkUpdating(true);
+              try {
+                const result = await apiBulkStatusUpdate(ids, bulkStatus);
+                toast({ title: `${result.updated} orders updated to ${bulkStatus}${result.skipped > 0 ? ` (${result.skipped} skipped)` : ''}` });
+                setSelectedIds(new Set());
+                fetchOrders();
+              } catch (err: any) {
+                toast({ title: 'Error', description: err.message, variant: 'destructive' });
+              } finally { setBulkUpdating(false); }
+            }}>
+              {bulkUpdating && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+              Apply to Selected
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk update by date modal */}
+      <Dialog open={bulkModalOpen} onOpenChange={setBulkModalOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Update All Orders – {bulkModalDate ? format(parseISO(bulkModalDate), 'MMM d, yyyy') : ''}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">Set status for all orders on this date (respecting current filters).</p>
+            <Select value={bulkStatus} onValueChange={setBulkStatus}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="shipped">Shipped</SelectItem>
+                <SelectItem value="paid">Paid</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="returned">Returned</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkModalOpen(false)}>Cancel</Button>
+            <Button disabled={bulkUpdating} onClick={handleBulkUpdate}>
+              {bulkUpdating && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <OrderModal
         open={!!modalOrder}

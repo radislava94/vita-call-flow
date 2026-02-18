@@ -249,6 +249,8 @@ export const apiBulkAssignOrders = (orderIds: string[], agentId: string) =>
   apiFetch('orders/bulk-assign', { method: 'POST', body: JSON.stringify({ order_ids: orderIds, agent_id: agentId }) });
 export const apiBulkUnassignOrders = (orderIds: string[]) =>
   apiFetch('orders/bulk-unassign', { method: 'POST', body: JSON.stringify({ order_ids: orderIds }) });
+export const apiBulkStatusUpdate = (orderIds: string[], newStatus: string) =>
+  apiFetch('orders/bulk-status-update', { method: 'POST', body: JSON.stringify({ order_ids: orderIds, new_status: newStatus }) });
 export const apiGetOnlineAgents = () => apiFetch('agents/online');
 
 // Webhooks
