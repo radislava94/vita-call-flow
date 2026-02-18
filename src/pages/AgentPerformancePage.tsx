@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, Download, Search, TrendingUp, Package, DollarSign } from 'lucide-react';
+import { Loader2, Download, Search, TrendingUp, Package, DollarSign, CheckCircle, Undo2, XCircle, Percent, Truck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
@@ -34,6 +34,14 @@ interface AgentPerf {
   total_earned: number;
   avg_order_value: number;
   shipped_this_month: number;
+  total_paid: number;
+  total_confirmed: number;
+  total_returned: number;
+  total_cancelled: number;
+  total_taken: number;
+  conversion_rate: number;
+  return_rate: number;
+  total_profit: number | null;
 }
 
 type FilterPreset = 'today' | 'week' | 'month' | 'custom';
@@ -48,8 +56,10 @@ function getDateRange(preset: FilterPreset): { from: string; to: string } | null
 }
 
 function exportCSV(data: AgentPerf[]) {
-  const header = 'Agent Name,Email,Total Shipped,Total Earned,Avg Order Value,Shipped This Month';
-  const rows = data.map(a => `"${a.full_name}","${a.email}",${a.total_shipped},${a.total_earned.toFixed(2)},${a.avg_order_value.toFixed(2)},${a.shipped_this_month}`);
+  const header = 'Agent Name,Email,Paid Orders,Shipped,Confirmed,Returned,Cancelled,Total Earned,Avg Order Value,Conversion Rate %,Return Rate %,Profit';
+  const rows = data.map(a =>
+    `"${a.full_name}","${a.email}",${a.total_paid},${a.total_shipped},${a.total_confirmed},${a.total_returned},${a.total_cancelled},${a.total_earned.toFixed(2)},${a.avg_order_value.toFixed(2)},${a.conversion_rate},${a.return_rate},${a.total_profit !== null ? a.total_profit.toFixed(2) : 'N/A'}`
+  );
   const csv = [header, ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -88,18 +98,41 @@ export default function AgentPerformancePage() {
 
   const handleSearch = () => loadData(filter, customFrom, customTo);
 
-  const totals = useMemo(() => ({
-    shipped: data.reduce((s, a) => s + a.total_shipped, 0),
-    earned: data.reduce((s, a) => s + a.total_earned, 0),
-  }), [data]);
+  const totals = useMemo(() => {
+    const shipped = data.reduce((s, a) => s + a.total_shipped, 0);
+    const earned = data.reduce((s, a) => s + a.total_earned, 0);
+    const paid = data.reduce((s, a) => s + a.total_paid, 0);
+    const confirmed = data.reduce((s, a) => s + a.total_confirmed, 0);
+    const returned = data.reduce((s, a) => s + a.total_returned, 0);
+    const cancelled = data.reduce((s, a) => s + a.total_cancelled, 0);
+    const taken = data.reduce((s, a) => s + a.total_taken, 0);
+    const conversionRate = taken > 0 ? Math.round((paid / taken) * 10000) / 100 : 0;
+    const returnRate = shipped > 0 ? Math.round((returned / shipped) * 10000) / 100 : 0;
+    const hasProfit = data.some(a => a.total_profit !== null);
+    const profit = hasProfit ? data.reduce((s, a) => s + (a.total_profit || 0), 0) : null;
+    return { shipped, earned, paid, confirmed, returned, cancelled, taken, conversionRate, returnRate, profit, hasProfit };
+  }, [data]);
 
   return (
     <AppLayout title="Performance">
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <SummaryCard icon={<Package className="h-5 w-5" />} label="Total Shipped" value={String(totals.shipped)} />
-        <SummaryCard icon={<DollarSign className="h-5 w-5" />} label="Total Earned" value={totals.earned.toFixed(2)} />
+      {/* KPI Cards Row 1 - Financial */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+        <SummaryCard icon={<DollarSign className="h-5 w-5" />} label="Total Earned" value={totals.earned.toFixed(2)} accent />
+        <SummaryCard icon={<CheckCircle className="h-5 w-5" />} label="Total Paid" value={String(totals.paid)} />
+        <SummaryCard icon={<Truck className="h-5 w-5" />} label="Total Shipped" value={String(totals.shipped)} />
+        <SummaryCard icon={<Package className="h-5 w-5" />} label="Total Confirmed" value={String(totals.confirmed)} />
+        <SummaryCard icon={<Undo2 className="h-5 w-5" />} label="Total Returned" value={String(totals.returned)} negative />
+        <SummaryCard icon={<XCircle className="h-5 w-5" />} label="Total Cancelled" value={String(totals.cancelled)} negative />
+      </div>
+
+      {/* KPI Cards Row 2 - Rates */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+        <SummaryCard icon={<Percent className="h-5 w-5" />} label="Conversion Rate" value={`${totals.conversionRate}%`} />
+        <SummaryCard icon={<Percent className="h-5 w-5" />} label="Return Rate" value={`${totals.returnRate}%`} negative={totals.returnRate > 10} />
         <SummaryCard icon={<TrendingUp className="h-5 w-5" />} label="Agents" value={String(data.length)} />
+        {totals.hasProfit && (
+          <SummaryCard icon={<DollarSign className="h-5 w-5" />} label="Total Profit" value={(totals.profit ?? 0).toFixed(2)} accent />
+        )}
       </div>
 
       {/* Filters */}
@@ -148,33 +181,59 @@ export default function AgentPerformancePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">#</th>
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground">Agent</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total Shipped</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Total Earned</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Avg Order Value</th>
-                  <th className="text-right px-4 py-3 font-medium text-muted-foreground">Shipped This Month</th>
+                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
+                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Shipped</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Confirmed</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Returned</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Cancelled</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Revenue (Paid)</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Avg Order</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv. %</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret. %</th>
+                  {totals.hasProfit && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>}
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">This Month</th>
                 </tr>
               </thead>
               <tbody>
                 {data.map((agent, i) => (
                   <tr key={agent.user_id} className="border-b last:border-0 hover:bg-muted/10 transition-colors">
-                    <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-muted-foreground">{i + 1}</td>
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary shrink-0">
                           {agent.full_name.charAt(0)}
                         </div>
-                        <div>
-                          <p className="font-medium text-card-foreground">{agent.full_name}</p>
-                          <p className="text-xs text-muted-foreground">{agent.email}</p>
+                        <div className="min-w-0">
+                          <p className="font-medium text-card-foreground truncate">{agent.full_name}</p>
+                          <p className="text-xs text-muted-foreground truncate">{agent.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-semibold">{agent.total_shipped}</td>
-                    <td className="px-4 py-3 text-right font-semibold text-primary">{agent.total_earned.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">{agent.avg_order_value.toFixed(2)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right font-semibold">{agent.total_paid}</td>
+                    <td className="px-3 py-3 text-right">{agent.total_shipped}</td>
+                    <td className="px-3 py-3 text-right">{agent.total_confirmed}</td>
+                    <td className="px-3 py-3 text-right text-destructive">{agent.total_returned}</td>
+                    <td className="px-3 py-3 text-right text-muted-foreground">{agent.total_cancelled}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-primary">{agent.total_earned.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">{agent.avg_order_value.toFixed(2)}</td>
+                    <td className="px-3 py-3 text-right">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${agent.conversion_rate >= 50 ? 'bg-green-500/10 text-green-600' : agent.conversion_rate >= 25 ? 'bg-yellow-500/10 text-yellow-600' : 'bg-destructive/10 text-destructive'}`}>
+                        {agent.conversion_rate}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${agent.return_rate <= 5 ? 'bg-green-500/10 text-green-600' : agent.return_rate <= 15 ? 'bg-yellow-500/10 text-yellow-600' : 'bg-destructive/10 text-destructive'}`}>
+                        {agent.return_rate}%
+                      </span>
+                    </td>
+                    {totals.hasProfit && (
+                      <td className="px-3 py-3 text-right font-semibold">
+                        {agent.total_profit !== null ? agent.total_profit.toFixed(2) : '—'}
+                      </td>
+                    )}
+                    <td className="px-3 py-3 text-right">
                       <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
                         {agent.shipped_this_month}
                       </span>
@@ -190,13 +249,15 @@ export default function AgentPerformancePage() {
   );
 }
 
-function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function SummaryCard({ icon, label, value, accent, negative }: { icon: React.ReactNode; label: string; value: string; accent?: boolean; negative?: boolean }) {
   return (
-    <div className="rounded-xl border bg-card p-4 flex items-center gap-3 shadow-sm">
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">{icon}</div>
-      <div>
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-lg font-bold text-card-foreground">{value}</p>
+    <div className={`rounded-xl border bg-card p-4 flex items-center gap-3 shadow-sm ${accent ? 'ring-1 ring-primary/20' : ''}`}>
+      <div className={`flex h-10 w-10 items-center justify-center rounded-lg shrink-0 ${negative ? 'bg-destructive/10 text-destructive' : 'bg-primary/10 text-primary'}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground truncate">{label}</p>
+        <p className={`text-lg font-bold truncate ${accent ? 'text-primary' : negative ? 'text-destructive' : 'text-card-foreground'}`}>{value}</p>
       </div>
     </div>
   );
