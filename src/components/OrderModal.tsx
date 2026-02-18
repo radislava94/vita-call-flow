@@ -124,9 +124,7 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
   const [productsList, setProductsList] = useState<any[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
-  // Discount
-  const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
-  const [discountValue, setDiscountValue] = useState(0);
+  // Payment
   const [amountPaid, setAmountPaid] = useState(0);
 
   // Saving
@@ -146,8 +144,6 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
     setFollowUpDate(undefined);
     setShowScript(false);
     setEditingScript(false);
-    setDiscountType('fixed');
-    setDiscountValue(0);
     setAmountPaid(0);
 
     // Clone items
@@ -186,10 +182,7 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
   // Computed totals
   const activeItems = items.filter(i => !i._deleted);
   const subtotal = activeItems.reduce((sum, i) => sum + calcRowTotal(i.quantity, i.price_per_unit), 0);
-  const discount = discountType === 'percent'
-    ? Math.round(subtotal * (Math.min(100, discountValue) / 100) * 100) / 100
-    : Math.min(subtotal, discountValue);
-  const finalTotal = Math.max(0, Math.round((subtotal - discount) * 100) / 100);
+  const finalTotal = Math.round(subtotal * 100) / 100;
   const remainingBalance = Math.max(0, Math.round((finalTotal - amountPaid) * 100) / 100);
 
   // Product helpers
@@ -559,28 +552,6 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Subtotal ({activeItems.length} item{activeItems.length !== 1 ? 's' : ''})</span>
                   <span className="font-mono tabular-nums">{subtotal.toFixed(2)}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground shrink-0">Discount</span>
-                  <Select value={discountType} onValueChange={(v) => setDiscountType(v as 'fixed' | 'percent')}>
-                    <SelectTrigger className="h-7 w-20 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="fixed">Fixed</SelectItem>
-                      <SelectItem value="percent">%</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={discountValue}
-                    onChange={e => setDiscountValue(Math.max(0, parseFloat(e.target.value) || 0))}
-                    className="h-7 w-20 text-xs text-right"
-                  />
-                  <span className="ml-auto text-xs font-mono tabular-nums text-muted-foreground">-{discount.toFixed(2)}</span>
                 </div>
 
                 <div className="border-t border-dashed pt-2 flex justify-between text-sm font-bold">
