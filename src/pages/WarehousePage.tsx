@@ -154,18 +154,45 @@ function IncomingOrdersTab() {
 
   const exportCSV = () => {
     if (orders.length === 0) return;
-    const headers = ['ID', 'Customer', 'Phone', 'Product', 'Quantity', 'Total Price', 'Agent', 'Source', 'Status', 'Date'];
-    const rows = orders.map((o: any) => [
-      o.display_id, `"${(o.customer_name || '').replace(/"/g, '""')}"`, o.customer_phone || '',
-      `"${(o.product_name || '').replace(/"/g, '""')}"`, o.quantity || 1, Number(o.price || 0).toFixed(2), o.assigned_agent_name || '',
-      o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order', o.status, format(new Date(o.created_at), 'yyyy-MM-dd'),
-    ]);
-    const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const headers = [
+      'Order_ID', 'Customer_Name', 'Phone', 'Product_List', 'Quantity_Total',
+      'Total_Price', 'Status', 'Agent', 'Source', 'Address', 'City', 'Postal_Code', 'Created_At',
+    ];
+    const esc = (v: string) => `"${(v || '').replace(/"/g, '""')}"`;
+    const rows = orders.map((o: any) => {
+      // Build product list from order_items if available
+      const items = o.order_items && o.order_items.length > 0 ? o.order_items : null;
+      let productList = '';
+      let qtyTotal = 0;
+      if (items) {
+        productList = items.map((i: any) => `${i.product_name} x${i.quantity}`).join(' | ');
+        qtyTotal = items.reduce((s: number, i: any) => s + (i.quantity || 0), 0);
+      } else {
+        productList = o.product_name || '';
+        qtyTotal = o.quantity || 1;
+      }
+      return [
+        o.display_id,
+        esc(o.customer_name),
+        o.customer_phone || '',
+        esc(productList),
+        qtyTotal,
+        Number(o.price || 0).toFixed(2),
+        o.status || '',
+        o.assigned_agent_name || '',
+        o.source === 'prediction_lead' ? 'Prediction Lead' : 'Standard Order',
+        esc(o.customer_address),
+        esc(o.customer_city),
+        o.postal_code || '',
+        format(new Date(o.created_at), 'yyyy-MM-dd HH:mm'),
+      ].join(',');
+    });
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `warehouse-orders-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `warehouse_orders_${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
