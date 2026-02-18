@@ -61,6 +61,8 @@ export const apiAddOrderNote = (orderId: string, text: string) =>
   apiFetch(`orders/${orderId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
 
 // Order Items
+export const apiSyncOrderItems = (orderId: string, items: { product_id?: string | null; product_name: string; quantity: number; price_per_unit: number }[]) =>
+  apiFetch(`orders/${orderId}/items`, { method: 'PUT', body: JSON.stringify({ items }) });
 export const apiAddOrderItem = (orderId: string, body: { product_id?: string; product_name: string; quantity: number; price_per_unit: number }) =>
   apiFetch(`orders/${orderId}/items`, { method: 'POST', body: JSON.stringify(body) });
 export const apiUpdateOrderItem = (itemId: string, body: any) =>

@@ -1138,6 +1138,64 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // PUT /api/orders/:id/items (atomic sync – overwrite all items, recalculate total, return updated order)
+    if (req.method === "PUT" && segments[0] === "orders" && segments[2] === "items") {
+      const orderId = segments[1];
+      const body = await req.json();
+      const newItems: any[] = body.items;
+      if (!Array.isArray(newItems)) return json({ error: "items array is required" }, 400);
+
+      // Check order exists and is editable
+      const { data: currentOrder } = await supabase.from("orders").select("status, display_id").eq("id", orderId).single();
+      if (!currentOrder) return json({ error: "Order not found" }, 404);
+      const lockedStatuses = ["shipped", "delivered", "paid"];
+      if (lockedStatuses.includes(currentOrder.status)) {
+        return json({ error: "Cannot modify products — order is locked." }, 400);
+      }
+
+      // Delete all existing items
+      await adminClient.from("order_items").delete().eq("order_id", orderId);
+
+      // Insert new items
+      let orderTotal = 0;
+      const insertedItems: any[] = [];
+      for (const ni of newItems) {
+        const qty = Math.max(1, ni.quantity || 1);
+        const ppu = Math.max(0, ni.price_per_unit || 0);
+        const tp = Math.round(qty * ppu * 100) / 100;
+        orderTotal += tp;
+        const { data: inserted } = await adminClient.from("order_items")
+          .insert({ order_id: orderId, product_id: ni.product_id || null, product_name: ni.product_name || "", quantity: qty, price_per_unit: ppu, total_price: tp })
+          .select().single();
+        if (inserted) insertedItems.push(inserted);
+      }
+
+      orderTotal = Math.round(orderTotal * 100) / 100;
+
+      // Update order total + product summary fields
+      const summaryName = insertedItems.map(i => i.product_name).filter(Boolean).join(", ");
+      const summaryQty = insertedItems.reduce((s: number, i: any) => s + i.quantity, 0);
+      await adminClient.from("orders").update({
+        price: orderTotal,
+        product_name: summaryName || currentOrder.display_id,
+        quantity: summaryQty || 1,
+      }).eq("id", orderId);
+
+      // Timeline log
+      const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      await adminClient.from("order_history").insert({
+        order_id: orderId,
+        from_status: currentOrder.status,
+        to_status: currentOrder.status,
+        changed_by: user.id,
+        changed_by_name: `${profile?.full_name || user.email} — Products synced (${insertedItems.length} items, total ${orderTotal})`,
+      });
+
+      // Return full updated order
+      const { data: updatedOrder } = await adminClient.from("orders").select("*").eq("id", orderId).single();
+      return json({ ...updatedOrder, order_items: insertedItems });
+    }
+
     // POST /api/orders/:id/notes
     if (req.method === "POST" && segments[0] === "orders" && segments[2] === "notes") {
       const orderId = segments[1];
