@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/layouts/AppLayout';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
 import { useAuth } from '@/contexts/AuthContext';
-import { apiGetDashboardStats, apiGetOrderStats, apiGetAgents, apiGetProducts, apiGetRecentActivity } from '@/lib/api';
+import { apiGetCeoDashboardStats, apiGetDashboardStats, apiGetOrderStats, apiGetAgents, apiGetProducts, apiGetRecentActivity } from '@/lib/api';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -13,10 +13,11 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import {
-  Clock, CheckCircle2, Truck, Package, Users, Loader2, TrendingUp, TrendingDown,
+  Clock, CheckCircle2, Truck, Package, Users, TrendingUp, TrendingDown,
   Target, Download, CalendarDays, ShoppingCart, ArrowUpRight, ArrowDownRight,
   BarChart3, PieChart as PieChartIcon, Activity, Warehouse, UserCheck, Percent,
   CalendarIcon, X, MessageSquare, Phone, ArrowRightLeft, FileText,
+  DollarSign, AlertTriangle, Trophy, Zap, Shield, ChevronRight,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -69,8 +70,8 @@ function exportCSV(data: DashStats, period: string, label?: string) {
 }
 
 // Metric card component
-function MetricCard({ title, value, icon: Icon, trend, trendLabel, color }: {
-  title: string; value: string | number; icon: any; trend?: number; trendLabel?: string; color: string;
+function MetricCard({ title, value, icon: Icon, trend, trendLabel, color, subtitle }: {
+  title: string; value: string | number; icon: any; trend?: number; trendLabel?: string; color: string; subtitle?: string;
 }) {
   const isPositive = trend !== undefined && trend >= 0;
   return (
@@ -86,6 +87,7 @@ function MetricCard({ title, value, icon: Icon, trend, trendLabel, color }: {
                 {Math.abs(trend)}% {trendLabel || 'vs yesterday'}
               </div>
             )}
+            {subtitle && <p className="text-[10px] text-muted-foreground">{subtitle}</p>}
           </div>
           <div className={`flex h-11 w-11 items-center justify-center rounded-xl ${color}`}>
             <Icon className="h-5 w-5 text-primary-foreground" />
@@ -96,7 +98,6 @@ function MetricCard({ title, value, icon: Icon, trend, trendLabel, color }: {
   );
 }
 
-// Time ago helper
 function getTimeAgo(timestamp: string): string {
   const diff = Date.now() - new Date(timestamp).getTime();
   const mins = Math.floor(diff / 60000);
@@ -108,7 +109,6 @@ function getTimeAgo(timestamp: string): string {
   return `${days}d ago`;
 }
 
-// Tooltip for recharts
 const chartTooltipStyle = {
   backgroundColor: 'hsl(var(--card))',
   border: '1px solid hsl(var(--border))',
@@ -117,16 +117,32 @@ const chartTooltipStyle = {
   boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
 };
 
+const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
+const fmtCurrency = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
+
 export default function Dashboard() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin;
   const isDualRole = user?.isAdmin && user?.isAgent;
   const [agentFilter, setAgentFilter] = useState('all');
-  const [chartView, setChartView] = useState<'orders' | 'revenue' | 'leads'>('orders');
+  const [chartView, setChartView] = useState<'revenue' | 'orders' | 'leads'>('revenue');
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
   const effectiveAgent = agentFilter !== 'all' ? agentFilter : undefined;
+
+  // CEO stats
+  const { data: ceoStats } = useQuery<any>({
+    queryKey: ['ceo-dashboard-stats', effectiveAgent, dateFrom?.toISOString(), dateTo?.toISOString()],
+    queryFn: () => apiGetCeoDashboardStats({
+      period: (dateFrom && dateTo) ? 'custom' : 'month',
+      agent_id: effectiveAgent,
+      from: dateFrom ? format(dateFrom, 'yyyy-MM-dd') : undefined,
+      to: dateTo ? format(dateTo, 'yyyy-MM-dd') : undefined,
+    }),
+    refetchInterval: 60000,
+    enabled: !!isAdmin,
+  });
 
   const { data: todayStats } = useQuery<DashStats>({
     queryKey: ['dashboard-stats', 'today', effectiveAgent],
@@ -172,17 +188,9 @@ export default function Dashboard() {
   const agentCounts = orderStats?.agentCounts || {};
   const dailyCounts = orderStats?.dailyCounts || {};
 
-  // Computed metrics
   const totalOrders = todayStats?.total_orders || 0;
   const confirmedLeads = todayStats?.deals_won || 0;
-  const shippedOrders = statusCounts['shipped'] || 0;
-  const pendingOrders = statusCounts['pending'] || 0;
-  const activeAgents = agents.length;
-  const conversionRate = todayStats && todayStats.lead_count > 0
-    ? Math.round((todayStats.deals_won / todayStats.lead_count) * 100)
-    : 0;
 
-  // Trends vs yesterday
   const orderTrend = todayStats && yesterdayStats && yesterdayStats.total_orders > 0
     ? Math.round(((todayStats.total_orders - yesterdayStats.total_orders) / yesterdayStats.total_orders) * 100)
     : undefined;
@@ -190,41 +198,36 @@ export default function Dashboard() {
     ? Math.round(((todayStats.deals_won - yesterdayStats.deals_won) / yesterdayStats.deals_won) * 100)
     : undefined;
 
-  // Stock levels
   const lowStock = products.filter((p: any) => p.stock_quantity <= p.low_stock_threshold).length;
   const medStock = products.filter((p: any) => p.stock_quantity > p.low_stock_threshold && p.stock_quantity <= p.low_stock_threshold * 3).length;
   const highStock = products.filter((p: any) => p.stock_quantity > p.low_stock_threshold * 3).length;
 
-  // Chart data
-  const chartData = Object.entries(dailyCounts)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-14)
-    .map(([date, orders]) => ({
-      name: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      orders: orders as number,
-    }));
+  const personalToday = todayStats?.personalMetrics;
 
-  const agentStats = Object.entries(agentCounts)
-    .map(([name, count]) => ({ name, count: count as number }))
-    .sort((a, b) => b.count - a.count);
-
-  const trendData = monthStats ? Object.entries(monthStats.daily)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, v]) => ({
-      date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      leads: v.leads, won: v.deals_won, lost: v.deals_lost, calls: v.calls, orders: v.orders,
-    })) : [];
+  // Revenue trend chart data from CEO stats
+  const revenueTrendData = useMemo(() => {
+    if (!ceoStats?.dailyRevenue) return [];
+    return Object.entries(ceoStats.dailyRevenue)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, v]: [string, any]) => ({
+        date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        revenue: v.revenue,
+        orders: v.orders,
+        leads: v.leads,
+      }));
+  }, [ceoStats?.dailyRevenue]);
 
   const pieData = monthStats ? Object.entries(monthStats.statusCounts)
     .filter(([, v]) => v > 0)
     .map(([name, value]) => ({ name: STATUS_LABELS[name as OrderStatus] || name, value })) : [];
 
-  const totalPieValue = pieData.reduce((sum, d) => sum + d.value, 0);
-
-  // Personal metrics for dual-role users
-  const personalToday = todayStats?.personalMetrics;
-
   const hasActiveFilters = agentFilter !== 'all' || dateFrom || dateTo;
+
+  const funnel = ceoStats?.funnel;
+  const topAgent = ceoStats?.topAgent;
+  const alerts = ceoStats?.alerts || [];
+  const snap = ceoStats?.todaySnapshot;
+  const agentRankings = ceoStats?.agentRankings || [];
 
   return (
     <AppLayout title="Dashboard">
@@ -283,30 +286,45 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Key Metric Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 mb-6">
-        <MetricCard title="Total Orders" value={totalOrders} icon={ShoppingCart}
-          trend={orderTrend} color="bg-primary" />
-        <MetricCard title="Confirmed Leads" value={confirmedLeads} icon={CheckCircle2}
-          trend={leadTrend} color="bg-[hsl(var(--success))]" />
-        <MetricCard title="Shipped" value={shippedOrders} icon={Truck}
-          color="bg-[hsl(var(--info))]" />
-        <MetricCard title="Pending" value={pendingOrders} icon={Clock}
-          color="bg-[hsl(var(--warning))]" />
-        <MetricCard title="Low Stock" value={lowStock} icon={Warehouse}
-          color={lowStock > 0 ? 'bg-destructive' : 'bg-muted'} />
-        <MetricCard title="Active Agents" value={activeAgents} icon={UserCheck}
-          color="bg-[hsl(262,83%,58%)]" />
-        <MetricCard title="Conversion" value={`${conversionRate}%`} icon={Percent}
-          color="bg-[hsl(180,70%,40%)]" />
-      </div>
+      {/* === 1. TOP FINANCIAL ROW === */}
+      {isAdmin && ceoStats && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-6">
+          <MetricCard title="Revenue (Paid)" value={fmtCurrency(ceoStats.revenue || 0)} icon={DollarSign}
+            color="bg-[hsl(var(--success))]" subtitle="Only PAID orders" />
+          <MetricCard title="Outstanding" value={fmtCurrency(ceoStats.outstanding || 0)} icon={Clock}
+            color="bg-[hsl(var(--warning))]" subtitle="Unpaid balance" />
+          <MetricCard title="Profit" value={fmtCurrency(ceoStats.profit || 0)} icon={TrendingUp}
+            color="bg-primary" subtitle="Revenue - Cost" />
+          <MetricCard title="Total Orders" value={totalOrders} icon={ShoppingCart}
+            trend={orderTrend} color="bg-[hsl(var(--info))]" />
+        </div>
+      )}
+
+      {/* === 6. DAILY SNAPSHOT STRIP === */}
+      {isAdmin && snap && (
+        <Card className="mb-6 border-none shadow-sm bg-gradient-to-r from-primary/5 to-transparent">
+          <CardContent className="flex flex-wrap items-center gap-6 py-3 px-5">
+            <div className="flex items-center gap-2">
+              <Zap className="h-4 w-4 text-primary" />
+              <span className="text-sm font-semibold text-card-foreground">Today's Snapshot</span>
+            </div>
+            <div className="flex flex-wrap gap-5 text-sm">
+              <span><strong className="text-card-foreground">{snap.taken}</strong> <span className="text-muted-foreground">Taken</span></span>
+              <span><strong className="text-[hsl(var(--success))]">{snap.confirmed}</strong> <span className="text-muted-foreground">Confirmed</span></span>
+              <span><strong className="text-primary">{snap.paid}</strong> <span className="text-muted-foreground">Paid</span></span>
+              <span><strong className="text-[hsl(var(--success))]">{fmtCurrency(snap.revenue)}</strong> <span className="text-muted-foreground">Revenue</span></span>
+              <span><strong className="text-destructive">{snap.returns}</strong> <span className="text-muted-foreground">Returns</span></span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Dual role personal stats strip */}
       {isDualRole && agentFilter === 'all' && personalToday && (
-        <Card className="mb-6 border-none shadow-sm bg-gradient-to-r from-primary/5 to-transparent">
+        <Card className="mb-6 border-none shadow-sm bg-gradient-to-r from-[hsl(var(--info))]/5 to-transparent">
           <CardContent className="flex items-center gap-6 py-3 px-5">
             <div className="flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
+              <Activity className="h-4 w-4 text-[hsl(var(--info))]" />
               <span className="text-sm font-semibold text-card-foreground">My Stats Today</span>
             </div>
             <div className="flex gap-6 text-sm">
@@ -319,29 +337,75 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* Sales Over Time + Status Distribution */}
+      {/* === 2. FUNNEL PERFORMANCE === */}
+      {isAdmin && funnel && (
+        <Card className="mb-6 border-none shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+              <Target className="h-4 w-4 text-primary" />
+              Funnel Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-2 overflow-x-auto py-2">
+              {[
+                { label: 'Taken', count: funnel.allTaken, pct: null, color: 'bg-[hsl(var(--info))]' },
+                { label: 'Confirmed', count: funnel.confirmed, pct: funnel.confirmationRate, color: 'bg-[hsl(var(--warning))]' },
+                { label: 'Paid', count: funnel.paid, pct: funnel.conversionRate, color: 'bg-[hsl(var(--success))]' },
+                { label: 'Shipped', count: funnel.shipped, pct: null, color: 'bg-primary' },
+                { label: 'Returned', count: funnel.returned, pct: funnel.returnRate, color: 'bg-destructive' },
+              ].map((stage, idx, arr) => (
+                <div key={stage.label} className="flex items-center gap-2 flex-1 min-w-[100px]">
+                  <div className="flex-1 text-center">
+                    <div className={`mx-auto mb-1 h-12 w-12 rounded-xl flex items-center justify-center text-primary-foreground font-bold text-lg ${stage.color}`}>
+                      {stage.count}
+                    </div>
+                    <p className="text-xs font-semibold text-card-foreground">{stage.label}</p>
+                    {stage.pct !== null && (
+                      <p className="text-[10px] text-muted-foreground">{stage.pct}%</p>
+                    )}
+                  </div>
+                  {idx < arr.length - 1 && <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />}
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-4 mt-3 pt-3 border-t text-xs text-muted-foreground">
+              <span>Conversion: <strong className={`${funnel.conversionRate < 10 ? 'text-destructive' : 'text-[hsl(var(--success))]'}`}>{funnel.conversionRate}%</strong></span>
+              <span>Confirmation: <strong className="text-card-foreground">{funnel.confirmationRate}%</strong></span>
+              <span>Return: <strong className={`${funnel.returnRate > 20 ? 'text-destructive' : 'text-card-foreground'}`}>{funnel.returnRate}%</strong></span>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* === 3. REVENUE TREND + 4. TOP AGENT + 5. RISK ALERTS === */}
       <div className="grid gap-6 lg:grid-cols-3 mb-6">
+        {/* Revenue Trend Chart */}
         <Card className="lg:col-span-2 border-none shadow-sm">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
-              Sales & Orders Over Time
+              Sales & Revenue Over Time
             </CardTitle>
             <Tabs value={chartView} onValueChange={v => setChartView(v as any)}>
               <TabsList className="h-8">
+                <TabsTrigger value="revenue" className="text-xs px-3 h-7">Revenue</TabsTrigger>
                 <TabsTrigger value="orders" className="text-xs px-3 h-7">Orders</TabsTrigger>
                 <TabsTrigger value="leads" className="text-xs px-3 h-7">Leads</TabsTrigger>
-                <TabsTrigger value="revenue" className="text-xs px-3 h-7">Revenue</TabsTrigger>
               </TabsList>
             </Tabs>
           </CardHeader>
           <CardContent className="pt-2">
-            {trendData.length === 0 ? (
+            {revenueTrendData.length === 0 ? (
               <div className="flex items-center justify-center h-[280px] text-sm text-muted-foreground">No data for this period</div>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
-                <AreaChart data={trendData}>
+                <AreaChart data={revenueTrendData}>
                   <defs>
+                    <linearGradient id="gradRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
+                    </linearGradient>
                     <linearGradient id="gradOrders" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="hsl(27, 95%, 48%)" stopOpacity={0.2} />
                       <stop offset="95%" stopColor="hsl(27, 95%, 48%)" stopOpacity={0} />
@@ -350,26 +414,19 @@ export default function Dashboard() {
                       <stop offset="5%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0.2} />
                       <stop offset="95%" stopColor="hsl(217, 91%, 60%)" stopOpacity={0} />
                     </linearGradient>
-                    <linearGradient id="gradWon" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
-                    </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
                   <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={chartTooltipStyle} />
+                  {chartView === 'revenue' && (
+                    <Area type="monotone" dataKey="revenue" stroke="hsl(142, 76%, 36%)" strokeWidth={2} fill="url(#gradRevenue)" name="Revenue (Paid)" />
+                  )}
                   {chartView === 'orders' && (
                     <Area type="monotone" dataKey="orders" stroke="hsl(27, 95%, 48%)" strokeWidth={2} fill="url(#gradOrders)" />
                   )}
                   {chartView === 'leads' && (
-                    <>
-                      <Area type="monotone" dataKey="leads" stroke="hsl(217, 91%, 60%)" strokeWidth={2} fill="url(#gradLeads)" />
-                      <Area type="monotone" dataKey="won" stroke="hsl(142, 76%, 36%)" strokeWidth={2} fill="url(#gradWon)" />
-                    </>
-                  )}
-                  {chartView === 'revenue' && (
-                    <Area type="monotone" dataKey="calls" stroke="hsl(262, 83%, 58%)" strokeWidth={2} fill="none" />
+                    <Area type="monotone" dataKey="leads" stroke="hsl(217, 91%, 60%)" strokeWidth={2} fill="url(#gradLeads)" />
                   )}
                 </AreaChart>
               </ResponsiveContainer>
@@ -377,7 +434,135 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Donut chart - Status Distribution */}
+        {/* Right column: Top Agent + Alerts */}
+        <div className="space-y-6">
+          {/* Top Agent Widget */}
+          {isAdmin && topAgent && (
+            <Card className="border-none shadow-sm bg-gradient-to-br from-primary/5 to-transparent">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-[hsl(var(--warning))]" />
+                  Top Agent This Period
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary text-primary-foreground font-bold text-lg">
+                    {topAgent.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-card-foreground">{topAgent.name}</p>
+                    <p className="text-xs text-muted-foreground">#{1} by paid revenue</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <div className="rounded-lg bg-muted/50 p-2 text-center">
+                    <p className="text-lg font-bold text-[hsl(var(--success))]">{fmtCurrency(topAgent.paidRevenue)}</p>
+                    <p className="text-[10px] text-muted-foreground">Paid Revenue</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-center">
+                    <p className="text-lg font-bold text-primary">{topAgent.paidCount}</p>
+                    <p className="text-[10px] text-muted-foreground">Paid Orders</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-center">
+                    <p className="text-lg font-bold text-card-foreground">{topAgent.conversionPct}%</p>
+                    <p className="text-[10px] text-muted-foreground">Conversion</p>
+                  </div>
+                  <div className="rounded-lg bg-muted/50 p-2 text-center">
+                    <p className={`text-lg font-bold ${topAgent.returnPct > 20 ? 'text-destructive' : 'text-card-foreground'}`}>{topAgent.returnPct}%</p>
+                    <p className="text-[10px] text-muted-foreground">Return Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Risk & Alert Panel */}
+          {isAdmin && (
+            <Card className="border-none shadow-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-destructive" />
+                  Risk & Alerts
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {alerts.length === 0 ? (
+                  <div className="flex items-center gap-2 text-xs text-[hsl(var(--success))]">
+                    <CheckCircle2 className="h-4 w-4" />
+                    All metrics healthy
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {alerts.map((a: any, i: number) => (
+                      <div key={i} className={`flex items-start gap-2 rounded-lg p-2.5 text-xs ${
+                        a.level === 'red' ? 'bg-destructive/10 text-destructive' : 'bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]'
+                      }`}>
+                        <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                        <span>{a.message}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
+
+      {/* === 7. AGENT RANKING TABLE + Status Distribution === */}
+      <div className="grid gap-6 lg:grid-cols-3 mb-6">
+        {/* Agent Ranking Table */}
+        {isAdmin && (
+          <Card className="lg:col-span-2 border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+                <Users className="h-4 w-4 text-primary" />
+                Agent Rankings (by Revenue)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {agentRankings.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">No agent data</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-xs text-muted-foreground">
+                        <th className="text-left py-2 font-medium">#</th>
+                        <th className="text-left py-2 font-medium">Agent</th>
+                        <th className="text-right py-2 font-medium">Paid</th>
+                        <th className="text-right py-2 font-medium">Revenue</th>
+                        <th className="text-right py-2 font-medium">Conv %</th>
+                        <th className="text-right py-2 font-medium">Ret %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {agentRankings.slice(0, 10).map((a: any, idx: number) => (
+                        <tr key={a.name} className={`border-b last:border-0 ${idx === 0 ? 'bg-primary/5' : ''}`}>
+                          <td className="py-2 text-xs font-bold text-muted-foreground">{idx + 1}</td>
+                          <td className="py-2 font-medium flex items-center gap-2">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary shrink-0">
+                              {a.name.charAt(0)}
+                            </div>
+                            <span className="truncate max-w-[120px]">{a.name}</span>
+                            {idx === 0 && <Trophy className="h-3.5 w-3.5 text-[hsl(var(--warning))]" />}
+                          </td>
+                          <td className="py-2 text-right font-bold">{a.paidCount}</td>
+                          <td className="py-2 text-right font-bold text-[hsl(var(--success))]">{fmtCurrency(a.paidRevenue)}</td>
+                          <td className="py-2 text-right">{a.conversionPct}%</td>
+                          <td className={`py-2 text-right ${a.returnPct > 20 ? 'text-destructive font-bold' : ''}`}>{a.returnPct}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Status Distribution Donut */}
         <Card className="border-none shadow-sm">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
@@ -400,7 +585,6 @@ export default function Dashboard() {
                 </PieChart>
               </ResponsiveContainer>
             )}
-            {/* Mini legend */}
             <div className="flex flex-wrap gap-2 mt-2 justify-center">
               {pieData.slice(0, 5).map((d, i) => (
                 <span key={d.name} className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
@@ -413,120 +597,53 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Team Performance + Stock Levels */}
+      {/* Stock Levels + Order Statuses */}
       <div className="grid gap-6 lg:grid-cols-3 mb-6">
-        {/* Agent Leaderboard */}
-        <Card className="lg:col-span-2 border-none shadow-sm">
-          <CardHeader className="pb-2 flex flex-row items-center justify-between">
-            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
-              <Users className="h-4 w-4 text-primary" />
-              Team Performance
-            </CardTitle>
-            <span className="text-xs text-muted-foreground">{agentStats.length} agents</span>
-          </CardHeader>
-          <CardContent>
-            {agentStats.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-6 text-center">No assignments yet</p>
-            ) : (
-              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1">
-                {agentStats.map((agent, idx) => {
-                  const maxCount = agentStats[0]?.count || 1;
-                  const pct = Math.round((agent.count / maxCount) * 100);
-                  return (
-                    <div key={agent.name} className="flex items-center gap-3">
-                      <span className="w-5 text-xs font-bold text-muted-foreground text-right">#{idx + 1}</span>
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary shrink-0">
-                        {agent.name.charAt(0)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-sm font-medium truncate">{agent.name}</span>
-                          <span className="text-xs font-bold text-primary ml-2">{agent.count}</span>
-                        </div>
-                        <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
-                          <div className="h-full rounded-full bg-primary/70 transition-all duration-500" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Stock Levels */}
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              Warehouse Stock Levels
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              {[
-                { label: 'Low Stock', count: lowStock, color: 'bg-destructive', textColor: 'text-destructive' },
-                { label: 'Medium Stock', count: medStock, color: 'bg-[hsl(var(--warning))]', textColor: 'text-[hsl(var(--warning))]' },
-                { label: 'High Stock', count: highStock, color: 'bg-[hsl(var(--success))]', textColor: 'text-[hsl(var(--success))]' },
-              ].map(level => (
-                <div key={level.label} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className={`h-2.5 w-2.5 rounded-full ${level.color}`} />
-                    <span className="text-sm font-medium">{level.label}</span>
+        {isAdmin && (
+          <Card className="border-none shadow-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+                <Package className="h-4 w-4 text-primary" />
+                Warehouse Stock Levels
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {[
+                  { label: 'Low Stock', count: lowStock, color: 'bg-destructive', textColor: 'text-destructive' },
+                  { label: 'Medium Stock', count: medStock, color: 'bg-[hsl(var(--warning))]', textColor: 'text-[hsl(var(--warning))]' },
+                  { label: 'High Stock', count: highStock, color: 'bg-[hsl(var(--success))]', textColor: 'text-[hsl(var(--success))]' },
+                ].map(level => (
+                  <div key={level.label} className="flex items-center justify-between rounded-lg bg-muted/50 p-3">
+                    <div className="flex items-center gap-2.5">
+                      <span className={`h-2.5 w-2.5 rounded-full ${level.color}`} />
+                      <span className="text-sm font-medium">{level.label}</span>
+                    </div>
+                    <span className={`text-lg font-bold ${level.textColor}`}>{level.count}</span>
                   </div>
-                  <span className={`text-lg font-bold ${level.textColor}`}>{level.count}</span>
+                ))}
+              </div>
+              <div className="rounded-lg bg-muted/50 p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-muted-foreground">Total Products</span>
+                  <span className="text-sm font-bold">{products.length}</span>
                 </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg bg-muted/50 p-3">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-muted-foreground">Total Products</span>
-                <span className="text-sm font-bold">{products.length}</span>
+                <div className="h-2 w-full rounded-full bg-muted overflow-hidden flex">
+                  {products.length > 0 && (
+                    <>
+                      <div className="h-full bg-destructive transition-all" style={{ width: `${(lowStock / products.length) * 100}%` }} />
+                      <div className="h-full bg-[hsl(var(--warning))] transition-all" style={{ width: `${(medStock / products.length) * 100}%` }} />
+                      <div className="h-full bg-[hsl(var(--success))] transition-all" style={{ width: `${(highStock / products.length) * 100}%` }} />
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted overflow-hidden flex">
-                {products.length > 0 && (
-                  <>
-                    <div className="h-full bg-destructive transition-all" style={{ width: `${(lowStock / products.length) * 100}%` }} />
-                    <div className="h-full bg-[hsl(var(--warning))] transition-all" style={{ width: `${(medStock / products.length) * 100}%` }} />
-                    <div className="h-full bg-[hsl(var(--success))] transition-all" style={{ width: `${(highStock / products.length) * 100}%` }} />
-                  </>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Orders per Day bar chart */}
-      <Card className="border-none shadow-sm mb-6">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
-            Orders per Day (Last 14 Days)
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {chartData.length === 0 ? (
-            <div className="flex items-center justify-center h-[220px] text-sm text-muted-foreground">No data available</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={chartData} barSize={24}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={chartTooltipStyle} cursor={{ fill: 'hsl(var(--muted))', radius: 4 }} />
-                <Bar dataKey="orders" fill="hsl(27, 95%, 48%)" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Recent Activity + Status Counters */}
-      <div className="grid gap-6 lg:grid-cols-3 mb-6">
-        {/* Activity Feed */}
+        {/* Recent Activity */}
         <Card className="lg:col-span-2 border-none shadow-sm">
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
@@ -539,15 +656,13 @@ export default function Dashboard() {
             {recentActivity.length === 0 ? (
               <p className="text-sm text-muted-foreground py-6 text-center">No recent activity</p>
             ) : (
-              <ScrollArea className="h-[360px] pr-3">
+              <ScrollArea className="h-[320px] pr-3">
                 <div className="relative">
-                  {/* Timeline line */}
                   <div className="absolute left-[15px] top-2 bottom-2 w-px bg-border" />
                   <div className="space-y-1">
                     {recentActivity.map((item: any) => {
                       const isCall = item.type === 'call';
                       const isNote = item.type === 'note';
-                      const isStatus = item.type === 'status_change';
                       const icon = isCall ? Phone : isNote ? MessageSquare : ArrowRightLeft;
                       const IconComp = icon;
                       const iconBg = isCall
@@ -555,7 +670,6 @@ export default function Dashboard() {
                         : isNote
                         ? 'bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))]'
                         : 'bg-primary/10 text-primary';
-
                       const timeAgo = getTimeAgo(item.timestamp);
 
                       return (
@@ -566,7 +680,7 @@ export default function Dashboard() {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-xs font-semibold text-card-foreground">{item.actor}</span>
-                              {isStatus && item.metadata?.to && (
+                              {item.type === 'status_change' && item.metadata?.to && (
                                 <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                                   item.metadata.to === 'confirmed' ? 'bg-[hsl(var(--success))]/15 text-[hsl(var(--success))]' :
                                   item.metadata.to === 'shipped' ? 'bg-[hsl(var(--info))]/15 text-[hsl(var(--info))]' :
@@ -598,35 +712,32 @@ export default function Dashboard() {
             )}
           </CardContent>
         </Card>
-
-        {/* Status Counters - vertical */}
-        <Card className="border-none shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
-              <FileText className="h-4 w-4 text-primary" />
-              Order Statuses
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {ALL_STATUSES.map(status => {
-                const count = Number(statusCounts[status] || 0);
-                const total = (Object.values(statusCounts) as number[]).reduce((s, v) => s + v, 0) || 1;
-                const pct = Math.round((count / total) * 100);
-                return (
-                  <div key={status} className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-muted-foreground w-20 truncate">{STATUS_LABELS[status]}</span>
-                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full rounded-full bg-primary/60 transition-all duration-500" style={{ width: `${pct}%` }} />
-                    </div>
-                    <span className="text-xs font-bold text-card-foreground w-8 text-right">{count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Order Statuses */}
+      <Card className="border-none shadow-sm mb-6">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold text-card-foreground flex items-center gap-2">
+            <FileText className="h-4 w-4 text-primary" />
+            Order Statuses
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            {ALL_STATUSES.map(status => {
+              const count = Number(statusCounts[status] || 0);
+              return (
+                <div key={status} className="flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+                  <div className="flex-1">
+                    <span className="text-xs font-medium text-muted-foreground">{STATUS_LABELS[status]}</span>
+                    <p className="text-lg font-bold text-card-foreground">{count}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
     </AppLayout>
   );
 }
