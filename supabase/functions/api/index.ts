@@ -1212,6 +1212,152 @@ serve(async (req) => {
       });
     }
 
+    // GET /api/ceo-dashboard-stats?period=today|yesterday|month|custom&from=&to=&agent_id=
+    if (req.method === "GET" && path === "ceo-dashboard-stats") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const period = url.searchParams.get("period") || "month";
+      const agentFilter = url.searchParams.get("agent_id") || null;
+      const customFrom = url.searchParams.get("from");
+      const customTo = url.searchParams.get("to");
+
+      const now = new Date();
+      const todayStr = now.toISOString().substring(0, 10);
+      const monthStart = todayStr.substring(0, 7) + "-01";
+
+      let fromDate: string, toDate: string;
+      if (customFrom && customTo) {
+        fromDate = customFrom + "T00:00:00Z";
+        toDate = customTo + "T23:59:59Z";
+      } else if (period === "today") {
+        fromDate = todayStr + "T00:00:00Z";
+        toDate = now.toISOString();
+      } else if (period === "yesterday") {
+        const y = new Date(now); y.setDate(y.getDate() - 1);
+        fromDate = y.toISOString().substring(0, 10) + "T00:00:00Z";
+        toDate = y.toISOString().substring(0, 10) + "T23:59:59Z";
+      } else {
+        fromDate = monthStart + "T00:00:00Z";
+        toDate = now.toISOString();
+      }
+
+      // Fetch orders with items for the period
+      let oq = adminClient.from("orders").select("id, status, price, quantity, created_at, assigned_agent_id, assigned_agent_name, order_items(price_per_unit, quantity, total_price, product_id), product_id").gte("created_at", fromDate).lte("created_at", toDate);
+      if (agentFilter) oq = oq.eq("assigned_agent_id", agentFilter);
+      const { data: allOrders } = await oq;
+      const orders = allOrders || [];
+
+      // Fetch products for cost_price lookup
+      const { data: allProducts } = await adminClient.from("products").select("id, cost_price");
+      const costMap: Record<string, number> = {};
+      for (const p of allProducts || []) costMap[p.id] = Number(p.cost_price || 0);
+
+      // === 1. FINANCIAL KPIs ===
+      const paidOrders = orders.filter((o: any) => o.status === "paid");
+      const revenue = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // Profit: revenue - cost for paid orders
+      let totalCost = 0;
+      for (const o of paidOrders) {
+        const items = o.order_items || [];
+        if (items.length > 0) {
+          for (const it of items) {
+            const cp = costMap[it.product_id] || 0;
+            totalCost += cp * (it.quantity || 1);
+          }
+        } else if (o.product_id) {
+          totalCost += (costMap[o.product_id] || 0) * (o.quantity || 1);
+        }
+      }
+      const profit = revenue - totalCost;
+
+      // Outstanding: sum of price for non-paid, non-cancelled, non-trashed orders
+      const outstandingOrders = orders.filter((o: any) => !["paid", "cancelled", "trashed"].includes(o.status));
+      const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // === 2. FUNNEL ===
+      const taken = orders.filter((o: any) => o.status === "take").length;
+      const allTaken = orders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const confirmed = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const paid = paidOrders.length;
+      const shipped = orders.filter((o: any) => ["shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const returned = orders.filter((o: any) => o.status === "returned").length;
+      const pending = orders.filter((o: any) => o.status === "pending").length;
+
+      const conversionRate = allTaken > 0 ? Math.round((paid / allTaken) * 10000) / 100 : 0;
+      const confirmationRate = allTaken > 0 ? Math.round((confirmed / allTaken) * 10000) / 100 : 0;
+      const returnRate = shipped > 0 ? Math.round((returned / shipped) * 10000) / 100 : 0;
+
+      // === 3. DAILY REVENUE TREND (paid only) ===
+      const dailyRevenue: Record<string, { revenue: number; orders: number; leads: number }> = {};
+      for (const o of orders) {
+        const day = o.created_at.substring(0, 10);
+        if (!dailyRevenue[day]) dailyRevenue[day] = { revenue: 0, orders: 0, leads: 0 };
+        dailyRevenue[day].orders++;
+        if (o.status === "paid") dailyRevenue[day].revenue += Number(o.price || 0);
+      }
+      // Also add prediction leads count
+      let lq = adminClient.from("prediction_leads").select("id, created_at").gte("created_at", fromDate).lte("created_at", toDate);
+      if (agentFilter) lq = lq.eq("assigned_agent_id", agentFilter);
+      const { data: pLeads } = await lq;
+      for (const l of pLeads || []) {
+        const day = l.created_at.substring(0, 10);
+        if (!dailyRevenue[day]) dailyRevenue[day] = { revenue: 0, orders: 0, leads: 0 };
+        dailyRevenue[day].leads++;
+      }
+
+      // === 4. AGENT RANKINGS ===
+      const agentMap: Record<string, { name: string; paidRevenue: number; paidCount: number; takenCount: number; shippedCount: number; returnedCount: number }> = {};
+      for (const o of orders) {
+        const agentName = o.assigned_agent_name || "Unassigned";
+        const agentId = o.assigned_agent_id || "none";
+        if (!agentMap[agentId]) agentMap[agentId] = { name: agentName, paidRevenue: 0, paidCount: 0, takenCount: 0, shippedCount: 0, returnedCount: 0 };
+        if (["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)) agentMap[agentId].takenCount++;
+        if (o.status === "paid") { agentMap[agentId].paidRevenue += Number(o.price || 0); agentMap[agentId].paidCount++; }
+        if (["shipped", "delivered", "returned", "paid"].includes(o.status)) agentMap[agentId].shippedCount++;
+        if (o.status === "returned") agentMap[agentId].returnedCount++;
+      }
+      const agentRankings = Object.values(agentMap)
+        .filter((a: any) => a.name !== "Unassigned")
+        .sort((a: any, b: any) => b.paidRevenue - a.paidRevenue)
+        .map((a: any) => ({
+          name: a.name,
+          paidRevenue: a.paidRevenue,
+          paidCount: a.paidCount,
+          conversionPct: a.takenCount > 0 ? Math.round((a.paidCount / a.takenCount) * 10000) / 100 : 0,
+          returnPct: a.shippedCount > 0 ? Math.round((a.returnedCount / a.shippedCount) * 10000) / 100 : 0,
+        }));
+
+      // === 5. RISK ALERTS ===
+      const alerts: { type: string; level: string; message: string }[] = [];
+      if (returnRate > 20) alerts.push({ type: "return_rate", level: "red", message: `Return rate is ${returnRate}% (above 20%)` });
+      if (conversionRate < 10 && allTaken > 5) alerts.push({ type: "conversion", level: "red", message: `Conversion rate is ${conversionRate}% (below 10%)` });
+      if (outstanding > revenue * 2 && outstanding > 0) alerts.push({ type: "outstanding", level: "yellow", message: `Outstanding balance (${outstanding.toFixed(2)}) is very high` });
+      if (pending > allTaken * 0.5 && pending > 10) alerts.push({ type: "pending", level: "yellow", message: `${pending} orders still pending` });
+
+      // === 6. TODAY SNAPSHOT ===
+      const todayStart = todayStr + "T00:00:00Z";
+      const todayOrders = orders.filter((o: any) => o.created_at >= todayStart);
+      const todaySnapshot = {
+        taken: todayOrders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length,
+        confirmed: todayOrders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length,
+        paid: todayOrders.filter((o: any) => o.status === "paid").length,
+        revenue: todayOrders.filter((o: any) => o.status === "paid").reduce((s: number, o: any) => s + Number(o.price || 0), 0),
+        returns: todayOrders.filter((o: any) => o.status === "returned").length,
+      };
+
+      return json({
+        revenue, profit, outstanding, totalCost,
+        funnel: { allTaken, confirmed, paid, shipped, returned, pending, conversionRate, confirmationRate, returnRate },
+        dailyRevenue,
+        agentRankings,
+        topAgent: agentRankings[0] || null,
+        alerts,
+        todaySnapshot,
+        period, from: fromDate, to: toDate,
+      });
+    }
+
     // GET /api/orders/stats
     if (req.method === "GET" && path === "orders/stats") {
       const from = url.searchParams.get("from");
