@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
 import { ALL_STATUSES, STATUS_LABELS, OrderStatus } from '@/types';
@@ -11,13 +10,14 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
-  Eye, Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User, Hash, Tag,
+  Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
+  CalendarIcon, X, User, Phone,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
+import { OrderModal, OrderModalData } from '@/components/OrderModal';
 
 const PAGE_SIZE = 20;
 
@@ -32,11 +32,14 @@ interface ApiOrder {
   customer_phone: string;
   customer_city: string;
   customer_address: string;
+  postal_code?: string;
   assigned_agent_name: string | null;
   assigned_agent_id: string | null;
   created_at: string;
   source_type?: string;
   source_lead_id?: string | null;
+  notes?: string | null;
+  order_items?: any[];
 }
 
 const STATUS_CHIP_COLORS: Record<OrderStatus, string> = {
@@ -52,6 +55,32 @@ const STATUS_CHIP_COLORS: Record<OrderStatus, string> = {
   cancelled: 'bg-red-100 text-red-800 border-red-200',
 };
 
+function orderToModalData(order: ApiOrder): OrderModalData {
+  return {
+    id: order.id,
+    displayId: order.display_id,
+    name: order.customer_name,
+    telephone: order.customer_phone,
+    address: order.customer_address,
+    city: order.customer_city,
+    postalCode: order.postal_code || '',
+    product: order.product_name,
+    status: order.status,
+    notes: order.notes || null,
+    quantity: order.quantity,
+    price: order.price,
+    assigned_agent_id: order.assigned_agent_id,
+    items: (order.order_items || []).map((i: any) => ({
+      id: i.id,
+      product_id: i.product_id,
+      product_name: i.product_name,
+      quantity: i.quantity,
+      price_per_unit: i.price_per_unit,
+      total_price: i.total_price,
+    })),
+  };
+}
+
 export default function Orders() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin;
@@ -66,24 +95,21 @@ export default function Orders() {
   const [orders, setOrders] = useState<ApiOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [modalOrder, setModalOrder] = useState<ApiOrder | null>(null);
 
-  // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
     return () => clearTimeout(t);
   }, [search]);
 
-  // Reset page on filter change
   useEffect(() => { setPage(1); }, [debouncedSearch, selectedStatuses, agentFilter, dateFrom, dateTo]);
 
-  // Agents list for admin
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
     queryFn: apiGetAgents,
     enabled: !!isAdmin,
   });
 
-  // Fetch orders (server filters: status single + search)
   const fetchOrders = () => {
     setLoading(true);
     apiGetOrders({
@@ -102,19 +128,14 @@ export default function Orders() {
 
   useEffect(() => { fetchOrders(); }, [page, selectedStatuses, debouncedSearch]);
 
-  // Client-side additional filters
   const filteredOrders = useMemo(() => {
     let result = orders;
-
-    // Multi-status (if >1 selected, server didn't filter)
     if (selectedStatuses.length > 1) {
       result = result.filter(o => selectedStatuses.includes(o.status));
     }
-
     if (agentFilter !== 'all') {
       result = result.filter(o => o.assigned_agent_id === agentFilter);
     }
-
     if (dateFrom) {
       result = result.filter(o => new Date(o.created_at) >= dateFrom);
     }
@@ -123,34 +144,17 @@ export default function Orders() {
       end.setHours(23, 59, 59, 999);
       result = result.filter(o => new Date(o.created_at) <= end);
     }
-
     return result;
   }, [orders, selectedStatuses, agentFilter, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
-
   const toggleStatus = (s: OrderStatus) => {
-    setSelectedStatuses(prev =>
-      prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
-    );
+    setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
-
   const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || agentFilter !== 'all' || dateFrom || dateTo;
-
   const clearAllFilters = () => {
-    setSearch('');
-    setSelectedStatuses([]);
-    setAgentFilter('all');
-    setDateFrom(undefined);
-    setDateTo(undefined);
+    setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); setDateFrom(undefined); setDateTo(undefined);
   };
-
-  // Unique products from current page (for display)
-  const uniqueProducts = useMemo(() => {
-    const s = new Set<string>();
-    orders.forEach(o => { if (o.product_name) s.add(o.product_name); });
-    return Array.from(s).sort();
-  }, [orders]);
 
   const exportCSV = () => {
     const header = 'Order ID,Customer,Phone,City,Address,Product,Quantity,Total Price,Status,Date\n';
@@ -160,72 +164,41 @@ export default function Orders() {
     const blob = new Blob([header + rows], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
-    a.download = 'orders.csv';
-    a.click();
+    a.href = url; a.download = 'orders.csv'; a.click();
   };
 
   return (
     <AppLayout title="Orders">
-      {/* ══════ Filter Bar ══════ */}
+      {/* Filter Bar */}
       <div className="sticky top-0 z-10 mb-4 space-y-3">
         <div className="rounded-xl border bg-card/80 backdrop-blur-sm p-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Search */}
             <div className="relative flex-1 min-w-[180px] max-w-xs">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search ID, customer, product..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-9 pl-8 text-sm rounded-lg bg-background"
-              />
+              <Input placeholder="Search ID, customer, product..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 pl-8 text-sm rounded-lg bg-background" />
             </div>
 
-            {/* Status multi-select */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
-                  <Filter className="h-3.5 w-3.5" />
-                  Status
-                  {selectedStatuses.length > 0 && (
-                    <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                      {selectedStatuses.length}
-                    </span>
-                  )}
+                  <Filter className="h-3.5 w-3.5" /> Status
+                  {selectedStatuses.length > 0 && <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">{selectedStatuses.length}</span>}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-2" align="start">
                 <div className="space-y-1">
                   {ALL_STATUSES.map(s => (
-                    <button
-                      key={s}
-                      onClick={() => toggleStatus(s)}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                        selectedStatuses.includes(s)
-                          ? 'bg-primary/10 text-primary font-medium'
-                          : 'hover:bg-muted text-foreground'
-                      )}
-                    >
-                      <div className={cn(
-                        'h-3.5 w-3.5 rounded border-2 flex items-center justify-center transition-colors',
-                        selectedStatuses.includes(s)
-                          ? 'border-primary bg-primary'
-                          : 'border-muted-foreground/30'
-                      )}>
+                    <button key={s} onClick={() => toggleStatus(s)} className={cn('flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors', selectedStatuses.includes(s) ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted text-foreground')}>
+                      <div className={cn('h-3.5 w-3.5 rounded border-2 flex items-center justify-center transition-colors', selectedStatuses.includes(s) ? 'border-primary bg-primary' : 'border-muted-foreground/30')}>
                         {selectedStatuses.includes(s) && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
                       </div>
-                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium border', STATUS_CHIP_COLORS[s])}>
-                        {STATUS_LABELS[s]}
-                      </span>
+                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-medium border', STATUS_CHIP_COLORS[s])}>{STATUS_LABELS[s]}</span>
                     </button>
                   ))}
                 </div>
               </PopoverContent>
             </Popover>
 
-            {/* Agent filter */}
             {isAdmin && (
               <Popover>
                 <PopoverTrigger asChild>
@@ -236,31 +209,11 @@ export default function Orders() {
                 </PopoverTrigger>
                 <PopoverContent className="w-56 p-2" align="start">
                   <div className="space-y-0.5 max-h-60 overflow-y-auto">
-                    <button
-                      onClick={() => setAgentFilter('all')}
-                      className={cn(
-                        'flex w-full rounded-lg px-3 py-2 text-sm transition-colors',
-                        agentFilter === 'all' ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
-                      )}
-                    >
-                      All Users
-                    </button>
+                    <button onClick={() => setAgentFilter('all')} className={cn('flex w-full rounded-lg px-3 py-2 text-sm transition-colors', agentFilter === 'all' ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted')}>All Users</button>
                     {(agentsData || []).map((a: any) => (
-                      <button
-                        key={a.user_id}
-                        onClick={() => setAgentFilter(a.user_id)}
-                        className={cn(
-                          'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors',
-                          agentFilter === a.user_id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted'
-                        )}
-                      >
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary shrink-0">
-                          {a.full_name?.charAt(0)?.toUpperCase() || '?'}
-                        </span>
+                      <button key={a.user_id} onClick={() => setAgentFilter(a.user_id)} className={cn('flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors', agentFilter === a.user_id ? 'bg-primary/10 text-primary font-medium' : 'hover:bg-muted')}>
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary shrink-0">{a.full_name?.charAt(0)?.toUpperCase() || '?'}</span>
                         <span className="flex-1 text-left">{a.full_name}</span>
-                        {a.roles && (
-                          <span className="text-[10px] text-muted-foreground capitalize">{a.roles.join(' + ')}</span>
-                        )}
                       </button>
                     ))}
                   </div>
@@ -268,101 +221,36 @@ export default function Orders() {
               </Popover>
             )}
 
-            {/* Date from */}
             <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {dateFrom ? format(dateFrom, 'MMM d') : 'From'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className={cn("p-3 pointer-events-auto")} />
-              </PopoverContent>
+              <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal"><CalendarIcon className="h-3.5 w-3.5" />{dateFrom ? format(dateFrom, 'MMM d') : 'From'}</Button></PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className="p-3 pointer-events-auto" /></PopoverContent>
+            </Popover>
+            <Popover>
+              <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal"><CalendarIcon className="h-3.5 w-3.5" />{dateTo ? format(dateTo, 'MMM d') : 'To'}</Button></PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={dateTo} onSelect={setDateTo} className="p-3 pointer-events-auto" /></PopoverContent>
             </Popover>
 
-            {/* Date to */}
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal">
-                  <CalendarIcon className="h-3.5 w-3.5" />
-                  {dateTo ? format(dateTo, 'MMM d') : 'To'}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar mode="single" selected={dateTo} onSelect={setDateTo} className={cn("p-3 pointer-events-auto")} />
-              </PopoverContent>
-            </Popover>
-
-            {/* Clear All */}
-            {hasActiveFilters && (
-              <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>
-                Clear all
-              </Button>
-            )}
-
-            {/* Export */}
-            <Button
-              onClick={exportCSV}
-              size="sm"
-              className="ml-auto h-9 gap-1.5 rounded-lg text-sm"
-            >
-              <Download className="h-3.5 w-3.5" /> Export
-            </Button>
+            {hasActiveFilters && <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>Clear all</Button>}
+            <Button onClick={exportCSV} size="sm" className="ml-auto h-9 gap-1.5 rounded-lg text-sm"><Download className="h-3.5 w-3.5" /> Export</Button>
           </div>
         </div>
 
-        {/* Active filter pills */}
         {hasActiveFilters && (
           <div className="flex flex-wrap items-center gap-1.5 px-1">
-            {selectedStatuses.map(s => (
-              <Badge
-                key={s}
-                variant="secondary"
-                className={cn('gap-1 cursor-pointer border text-xs', STATUS_CHIP_COLORS[s])}
-                onClick={() => toggleStatus(s)}
-              >
-                {STATUS_LABELS[s]}
-                <X className="h-3 w-3" />
-              </Badge>
-            ))}
-            {agentFilter !== 'all' && (
-              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setAgentFilter('all')}>
-                Assignee: {(agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || agentFilter.slice(0, 8)}
-                <X className="h-3 w-3" />
-              </Badge>
-            )}
-            {dateFrom && (
-              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateFrom(undefined)}>
-                From: {format(dateFrom, 'MMM d')}
-                <X className="h-3 w-3" />
-              </Badge>
-            )}
-            {dateTo && (
-              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateTo(undefined)}>
-                To: {format(dateTo, 'MMM d')}
-                <X className="h-3 w-3" />
-              </Badge>
-            )}
-            {search.trim() && (
-              <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setSearch('')}>
-                "{search}"
-                <X className="h-3 w-3" />
-              </Badge>
-            )}
-            <span className="ml-auto text-xs text-muted-foreground">
-              {filteredOrders.length} of {total} orders
-            </span>
+            {selectedStatuses.map(s => <Badge key={s} variant="secondary" className={cn('gap-1 cursor-pointer border text-xs', STATUS_CHIP_COLORS[s])} onClick={() => toggleStatus(s)}>{STATUS_LABELS[s]}<X className="h-3 w-3" /></Badge>)}
+            {agentFilter !== 'all' && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setAgentFilter('all')}>Assignee: {(agentsData || []).find((a: any) => a.user_id === agentFilter)?.full_name || agentFilter.slice(0, 8)}<X className="h-3 w-3" /></Badge>}
+            {dateFrom && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateFrom(undefined)}>From: {format(dateFrom, 'MMM d')}<X className="h-3 w-3" /></Badge>}
+            {dateTo && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setDateTo(undefined)}>To: {format(dateTo, 'MMM d')}<X className="h-3 w-3" /></Badge>}
+            {search.trim() && <Badge variant="secondary" className="gap-1 cursor-pointer text-xs" onClick={() => setSearch('')}>"{search}"<X className="h-3 w-3" /></Badge>}
+            <span className="ml-auto text-xs text-muted-foreground">{filteredOrders.length} of {total} orders</span>
           </div>
         )}
       </div>
 
-      {/* ══════ Table ══════ */}
+      {/* Table */}
       <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
+          <div className="flex items-center justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
         ) : (
           <table className="w-full text-sm">
             <thead>
@@ -391,40 +279,26 @@ export default function Orders() {
                   <td className="px-4 py-3">
                     {order.assigned_agent_name ? (
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                          {order.assigned_agent_name.charAt(0)}
-                        </span>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">{order.assigned_agent_name.charAt(0)}</span>
                         {order.assigned_agent_name}
                       </span>
-                    ) : (
-                      <span className="text-muted-foreground">Unassigned</span>
-                    )}
+                    ) : <span className="text-muted-foreground">Unassigned</span>}
                   </td>
                   <td className="px-4 py-3">
-                    <Badge variant={order.source_type === 'prediction_lead' ? 'secondary' : order.source_type === 'inbound_lead' ? 'secondary' : 'outline'} className="text-[10px]">
+                    <Badge variant={order.source_type === 'prediction_lead' || order.source_type === 'inbound_lead' ? 'secondary' : 'outline'} className="text-[10px]">
                       {order.source_type === 'prediction_lead' ? 'Lead' : order.source_type === 'inbound_lead' ? 'Webhook' : 'Manual'}
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
-                    <Link
-                      to={`/orders/${order.id}`}
-                      className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors"
-                    >
-                      <Eye className="h-4 w-4 text-muted-foreground" />
-                    </Link>
+                    <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setModalOrder(order)}>
+                      <Phone className="h-3 w-3" /> Open
+                    </Button>
                   </td>
                 </tr>
               ))}
               {filteredOrders.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
-                    No orders found.
-                    {hasActiveFilters && (
-                      <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
-                    )}
-                  </td>
-                </tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
               )}
             </tbody>
           </table>
@@ -434,39 +308,27 @@ export default function Orders() {
       {/* Pagination */}
       {totalPages > 1 && (
         <div className="mt-4 flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} ({total} total)
-          </p>
+          <p className="text-sm text-muted-foreground">Page {page} of {totalPages} ({total} total)</p>
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-muted disabled:opacity-40 transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
+            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-muted disabled:opacity-40 transition-colors"><ChevronLeft className="h-4 w-4" /></button>
             {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => i + 1).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors',
-                  p === page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'
-                )}
-              >
-                {p}
-              </button>
+              <button key={p} onClick={() => setPage(p)} className={cn('flex h-8 w-8 items-center justify-center rounded-lg text-sm font-medium transition-colors', p === page ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted')}>{p}</button>
             ))}
-            <button
-              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-muted disabled:opacity-40 transition-colors"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
+            <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="flex h-8 w-8 items-center justify-center rounded-lg border hover:bg-muted disabled:opacity-40 transition-colors"><ChevronRight className="h-4 w-4" /></button>
           </div>
         </div>
       )}
+
+      {/* Order Modal */}
+      <OrderModal
+        open={!!modalOrder}
+        onClose={(saved) => {
+          setModalOrder(null);
+          if (saved) fetchOrders();
+        }}
+        data={modalOrder ? orderToModalData(modalOrder) : null}
+        contextType="order"
+      />
     </AppLayout>
   );
 }

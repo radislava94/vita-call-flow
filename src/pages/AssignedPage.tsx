@@ -1,28 +1,53 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Link } from 'react-router-dom';
-import { Eye, Loader2 } from 'lucide-react';
+import { Loader2, Phone } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { apiGetOrders } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import { OrderModal, OrderModalData } from '@/components/OrderModal';
 
 export default function AssignedPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [modalOrder, setModalOrder] = useState<any>(null);
 
-  useEffect(() => {
-    // The backend RLS filters by assigned_agent_id for agents automatically
+  const fetchOrders = () => {
+    setLoading(true);
     apiGetOrders({ limit: 100 })
       .then((data) => setOrders(data.orders || []))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  };
 
-  // For agents, RLS already filters. For admins viewing this page, filter client-side
+  useEffect(() => { fetchOrders(); }, []);
+
   const myOrders = user?.isAdmin
     ? orders.filter(o => o.assigned_agent_id === user.id)
     : orders;
+
+  function orderToModalData(order: any): OrderModalData {
+    return {
+      id: order.id,
+      displayId: order.display_id,
+      name: order.customer_name,
+      telephone: order.customer_phone,
+      address: order.customer_address,
+      city: order.customer_city,
+      postalCode: order.postal_code || '',
+      product: order.product_name,
+      status: order.status,
+      notes: null,
+      quantity: order.quantity,
+      price: order.price,
+      assigned_agent_id: order.assigned_agent_id,
+      items: (order.order_items || []).map((i: any) => ({
+        id: i.id, product_id: i.product_id, product_name: i.product_name,
+        quantity: i.quantity, price_per_unit: i.price_per_unit, total_price: i.total_price,
+      })),
+    };
+  }
 
   return (
     <AppLayout title="Assigned to Me">
@@ -58,21 +83,31 @@ export default function AssignedPage() {
                 <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
                 <td className="px-4 py-3">
-                  <Link to={`/orders/${order.id}`} className="flex h-7 w-7 items-center justify-center rounded-md hover:bg-muted transition-colors">
-                    <Eye className="h-4 w-4 text-muted-foreground" />
-                  </Link>
+                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setModalOrder(order)}>
+                    <Phone className="h-3 w-3" /> Open
+                  </Button>
                 </td>
               </tr>
             ))}
             {myOrders.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No orders assigned to you.</td>
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No orders assigned to you.</td>
               </tr>
             )}
           </tbody>
         </table>
         )}
       </div>
+
+      <OrderModal
+        open={!!modalOrder}
+        onClose={(saved) => {
+          setModalOrder(null);
+          if (saved) fetchOrders();
+        }}
+        data={modalOrder ? orderToModalData(modalOrder) : null}
+        contextType="order"
+      />
     </AppLayout>
   );
 }
