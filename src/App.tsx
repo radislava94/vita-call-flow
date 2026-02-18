@@ -7,7 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
-import OrderDetails from "./pages/OrderDetails";
+// OrderDetails removed — all editing happens via OrderModal
 import UsersPage from "./pages/UsersPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssignedPage from "./pages/AssignedPage";
@@ -41,7 +41,7 @@ const App = () => (
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Dashboard /></ProtectedRoute>} />
             <Route path="/orders" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Orders /></ProtectedRoute>} />
-            <Route path="/orders/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><OrderDetails /></ProtectedRoute>} />
+            {/* /orders/:id route removed — OrderModal is the single editing UI */}
             <Route path="/users" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><UsersPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/assigned" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><AssignedPage /></ProtectedRoute>} />
