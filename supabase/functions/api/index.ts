@@ -1856,9 +1856,20 @@ serve(async (req) => {
         };
         const newStatus = statusMap[outcome];
         if (newStatus) {
+          const updatePayload: Record<string, any> = { status: newStatus };
+          // Ownership: lock lead to agent on interested/call_again
+          if (outcome === "interested" || outcome === "call_again") {
+            const { data: agentProfile } = await adminClient
+              .from("profiles")
+              .select("full_name")
+              .eq("user_id", user.id)
+              .single();
+            updatePayload.assigned_agent_id = user.id;
+            updatePayload.assigned_agent_name = agentProfile?.full_name || user.email;
+          }
           await adminClient
             .from("prediction_leads")
-            .update({ status: newStatus })
+            .update(updatePayload)
             .eq("id", context_id);
         }
       }
