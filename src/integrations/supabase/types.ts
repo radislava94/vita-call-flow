@@ -472,6 +472,57 @@ export type Database = {
           },
         ]
       }
+      prediction_lead_items: {
+        Row: {
+          created_at: string
+          id: string
+          lead_id: string
+          price_per_unit: number
+          product_id: string | null
+          product_name: string
+          quantity: number
+          total_price: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          lead_id: string
+          price_per_unit?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          total_price?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          lead_id?: string
+          price_per_unit?: number
+          product_id?: string | null
+          product_name?: string
+          quantity?: number
+          total_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "prediction_lead_items_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "prediction_leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "prediction_lead_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       prediction_leads: {
         Row: {
           address: string | null
