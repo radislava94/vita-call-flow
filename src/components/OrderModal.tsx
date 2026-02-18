@@ -15,7 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   apiGetCallScript, apiUpdateCallScript, apiLogCall, apiGetCallLogs,
   apiUpdateLead, apiGetProducts, apiAddLeadItem, apiUpdateLeadItem, apiDeleteLeadItem,
-  apiUpdateCustomer, apiUpdateOrderStatus, apiAddOrderItem, apiUpdateOrderItem, apiDeleteOrderItem,
+  apiUpdateCustomer, apiUpdateOrderStatus, apiSyncOrderItems,
   apiGetOrder,
 } from '@/lib/api';
 import { format } from 'date-fns';
@@ -306,30 +306,37 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
       }
 
       // 3. Sync products
-      const addItemFn = isLead ? apiAddLeadItem : (id: string, body: any) => apiAddOrderItem(id, body);
-      const updateItemFn = isLead ? apiUpdateLeadItem : apiUpdateOrderItem;
-      const deleteItemFn = isLead ? apiDeleteLeadItem : apiDeleteOrderItem;
-
-      for (const item of items) {
-        const isLegacy = item.id === '__legacy__';
-        const isNew = item._isNew || isLegacy;
-        if (item._deleted && !isNew) {
-          await deleteItemFn(item.id);
-        } else if (isNew && !item._deleted) {
-          await addItemFn(data.id, {
-            product_id: item.product_id || undefined,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            price_per_unit: item.price_per_unit,
-          });
-        } else if (!isNew && !item._deleted) {
-          await updateItemFn(item.id, {
-            product_id: item.product_id,
-            product_name: item.product_name,
-            quantity: item.quantity,
-            price_per_unit: item.price_per_unit,
-          });
+      if (isLead) {
+        // Lead: individual item operations
+        for (const item of items) {
+          const isLegacy = item.id === '__legacy__';
+          const isNew = item._isNew || isLegacy;
+          if (item._deleted && !isNew) {
+            await apiDeleteLeadItem(item.id);
+          } else if (isNew && !item._deleted) {
+            await apiAddLeadItem(data.id, {
+              product_id: item.product_id || undefined,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              price_per_unit: item.price_per_unit,
+            });
+          } else if (!isNew && !item._deleted) {
+            await apiUpdateLeadItem(item.id, {
+              product_id: item.product_id,
+              product_name: item.product_name,
+              quantity: item.quantity,
+              price_per_unit: item.price_per_unit,
+            });
+          }
         }
+      } else {
+        // Order: atomic sync – overwrite all items, backend recalculates totals
+        await apiSyncOrderItems(data.id, activeItems.map(i => ({
+          product_id: i.product_id,
+          product_name: i.product_name,
+          quantity: i.quantity,
+          price_per_unit: i.price_per_unit,
+        })));
       }
 
       toast({ title: 'Saved successfully' });
