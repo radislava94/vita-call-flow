@@ -6,18 +6,16 @@ import {
   PREDICTION_LEAD_LABELS,
 } from '@/types';
 import { cn } from '@/lib/utils';
-import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Loader2, Pencil, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, ShoppingCart, Plus, Trash2, HandMetal } from 'lucide-react';
+import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal } from 'lucide-react';
 import { format } from 'date-fns';
-import { apiGetMyLeads, apiUpdateLead, apiGetProducts, apiAddLeadItem, apiUpdateLeadItem, apiDeleteLeadItem, apiTakeLead } from '@/lib/api';
-import { CallPopup } from '@/components/CallPopup';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
+import { OrderModal, OrderModalData } from '@/components/OrderModal';
 
 interface LeadItem {
   id: string;
@@ -27,8 +25,6 @@ interface LeadItem {
   quantity: number;
   price_per_unit: number;
   total_price: number;
-  _isNew?: boolean;
-  _isDeleted?: boolean;
 }
 
 interface LeadRow {
@@ -60,8 +56,35 @@ function calcRowTotal(qty: number, price: number): number {
   return Math.round(Math.max(1, qty) * Math.max(0, price) * 100) / 100;
 }
 
-function calcLeadTotal(items: LeadItem[]): number {
-  return items.filter(i => !i._isDeleted).reduce((sum, i) => sum + calcRowTotal(i.quantity, i.price_per_unit), 0);
+function getLeadDisplayTotal(lead: LeadRow): number {
+  const items = lead.prediction_lead_items || [];
+  if (items.length > 0) {
+    return items.reduce((sum, i) => sum + calcRowTotal(i.quantity, i.price_per_unit), 0);
+  }
+  return (lead.quantity || 1) * (lead.price || 0);
+}
+
+function leadToModalData(lead: LeadRow): OrderModalData {
+  return {
+    id: lead.id,
+    name: lead.name,
+    telephone: lead.telephone,
+    address: lead.address,
+    city: lead.city,
+    product: lead.product,
+    status: lead.status,
+    notes: lead.notes,
+    quantity: lead.quantity,
+    price: lead.price,
+    items: (lead.prediction_lead_items || []).map(i => ({
+      id: i.id,
+      product_id: i.product_id,
+      product_name: i.product_name,
+      quantity: i.quantity,
+      price_per_unit: i.price_per_unit,
+      total_price: i.total_price,
+    })),
+  };
 }
 
 export default function PredictionLeadsPage() {
@@ -69,13 +92,7 @@ export default function PredictionLeadsPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editingField, setEditingField] = useState<{ id: string; field: string } | null>(null);
-  const [editValue, setEditValue] = useState('');
-  const [callPopupLead, setCallPopupLead] = useState<LeadRow | null>(null);
-  const [productsList, setProductsList] = useState<any[]>([]);
-  const [localItems, setLocalItems] = useState<Record<string, LeadItem[]>>({});
-  const [savingItems, setSavingItems] = useState(false);
+  const [modalLead, setModalLead] = useState<LeadRow | null>(null);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -88,28 +105,13 @@ export default function PredictionLeadsPage() {
     setLoading(true);
     setError(null);
     apiGetMyLeads()
-      .then((data) => {
-        setLeads(data || []);
-        // Initialize local items from server data
-        const itemsMap: Record<string, LeadItem[]> = {};
-        for (const lead of data || []) {
-          if (lead.prediction_lead_items?.length) {
-            itemsMap[lead.id] = lead.prediction_lead_items;
-          }
-        }
-        setLocalItems(itemsMap);
-      })
-      .catch((err) => {
-        console.error('Failed to load prediction leads:', err);
-        setError(err.message || 'Failed to load leads');
-      })
+      .then((data) => setLeads(data || []))
+      .catch((err) => setError(err.message || 'Failed to load leads'))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => { fetchLeads(); }, []);
-  useEffect(() => { apiGetProducts().then(setProductsList).catch(() => {}); }, []);
 
-  // Derived data
   const uniqueProducts = useMemo(() => {
     const prods = new Set<string>();
     leads.forEach(l => { if (l.product) prods.add(l.product); });
@@ -159,213 +161,6 @@ export default function PredictionLeadsPage() {
     );
   };
 
-  // Lead CRUD
-  const updateStatus = async (id: string, status: PredictionLeadStatus) => {
-    try {
-      await apiUpdateLead(id, { status });
-      fetchLeads();
-      toast({ title: 'Status updated' });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const updateNotes = (id: string, notes: string) => {
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, notes } : l));
-  };
-
-  const saveNotes = async (id: string) => {
-    const lead = leads.find(l => l.id === id);
-    if (!lead) return;
-    try {
-      await apiUpdateLead(id, { notes: lead.notes || '' });
-      toast({ title: 'Notes saved' });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const startEdit = (id: string, field: string, currentValue: string | null) => {
-    setEditingField({ id, field });
-    setEditValue(currentValue || '');
-  };
-
-  const cancelEdit = () => {
-    setEditingField(null);
-    setEditValue('');
-  };
-
-  const saveEdit = async () => {
-    if (!editingField) return;
-    const { id, field } = editingField;
-    try {
-      await apiUpdateLead(id, { [field]: editValue });
-      setLeads(prev => prev.map(l => l.id === id ? { ...l, [field]: editValue } : l));
-      toast({ title: 'Updated successfully' });
-      setEditingField(null);
-      setEditValue('');
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const isEditing = (id: string, field: string) =>
-    editingField?.id === id && editingField?.field === field;
-
-  // ── Multi-product item management ──
-  const getLeadItems = (leadId: string): LeadItem[] => {
-    return localItems[leadId] || [];
-  };
-
-  const addProductRow = async (leadId: string) => {
-    if (!productsList.length) return;
-    const defaultProduct = productsList.find(p => p.is_active) || productsList[0];
-    try {
-      const newItem = await apiAddLeadItem(leadId, {
-        product_id: defaultProduct.id,
-        product_name: defaultProduct.name,
-        quantity: 1,
-        price_per_unit: Number(defaultProduct.price) || 0,
-      });
-      setLocalItems(prev => ({
-        ...prev,
-        [leadId]: [...(prev[leadId] || []), newItem],
-      }));
-      toast({ title: 'Product added' });
-    } catch (err: any) {
-      toast({ title: 'Error adding product', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const updateItemField = async (itemId: string, leadId: string, field: string, value: any) => {
-    // Update locally first for instant feedback
-    setLocalItems(prev => {
-      const items = [...(prev[leadId] || [])];
-      const idx = items.findIndex(i => i.id === itemId);
-      if (idx >= 0) {
-        items[idx] = { ...items[idx], [field]: value };
-        // Recalculate total_price
-        items[idx].total_price = calcRowTotal(items[idx].quantity, items[idx].price_per_unit);
-      }
-      return { ...prev, [leadId]: items };
-    });
-  };
-
-  const saveItemField = async (itemId: string, leadId: string, updates: Record<string, any>) => {
-    try {
-      await apiUpdateLeadItem(itemId, updates);
-    } catch (err: any) {
-      toast({ title: 'Error saving', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const handleItemProductChange = async (itemId: string, leadId: string, productId: string) => {
-    const product = productsList.find(p => p.id === productId);
-    if (!product) return;
-    const updates = { product_id: productId, product_name: product.name, price_per_unit: Number(product.price) };
-    updateItemField(itemId, leadId, 'product_id', productId);
-    setLocalItems(prev => {
-      const items = [...(prev[leadId] || [])];
-      const idx = items.findIndex(i => i.id === itemId);
-      if (idx >= 0) {
-        items[idx] = { ...items[idx], ...updates, total_price: calcRowTotal(items[idx].quantity, Number(product.price)) };
-      }
-      return { ...prev, [leadId]: items };
-    });
-    try {
-      await apiUpdateLeadItem(itemId, updates);
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const removeItemRow = async (itemId: string, leadId: string) => {
-    try {
-      await apiDeleteLeadItem(itemId);
-      setLocalItems(prev => ({
-        ...prev,
-        [leadId]: (prev[leadId] || []).filter(i => i.id !== itemId),
-      }));
-      toast({ title: 'Product removed' });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  // Legacy single-product handler (for leads without items)
-  const handleProductSelect = async (leadId: string, productId: string) => {
-    const product = productsList.find(p => p.id === productId);
-    if (!product) return;
-    try {
-      await apiUpdateLead(leadId, { product: product.name, price: Number(product.price) });
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, product: product.name, price: Number(product.price) } : l));
-      toast({ title: 'Product updated' });
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const handleLeadFieldSave = async (leadId: string, field: string, value: number) => {
-    try {
-      await apiUpdateLead(leadId, { [field]: value });
-      setLeads(prev => prev.map(l => l.id === leadId ? { ...l, [field]: value } : l));
-    } catch (err: any) {
-      toast({ title: 'Error', description: err.message, variant: 'destructive' });
-    }
-  };
-
-  const renderEditableField = (lead: LeadRow, field: 'address' | 'city' | 'telephone', label: string) => {
-    const value = lead[field];
-    if (isEditing(lead.id, field)) {
-      return (
-        <div>
-          <p className="text-muted-foreground text-xs mb-1">{label}</p>
-          <div className="flex items-center gap-1">
-            <Input
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              className="h-8 text-sm"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') saveEdit();
-                if (e.key === 'Escape') cancelEdit();
-              }}
-            />
-            <button onClick={saveEdit} className="p-1 text-primary hover:bg-primary/10 rounded">
-              <Check className="h-4 w-4" />
-            </button>
-            <button onClick={cancelEdit} className="p-1 text-destructive hover:bg-destructive/10 rounded">
-              <XIcon className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <div>
-        <p className="text-muted-foreground text-xs mb-1">{label}</p>
-        <div className="flex items-center gap-1 group">
-          <p className={field === 'telephone' ? 'font-mono' : ''}>{value || '—'}</p>
-          <button
-            onClick={() => startEdit(lead.id, field, value)}
-            className="p-1 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity rounded"
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // Calculate lead total: use items if they exist, otherwise legacy single product
-  const getLeadDisplayTotal = (lead: LeadRow): number => {
-    const items = getLeadItems(lead.id);
-    if (items.length > 0) {
-      return calcLeadTotal(items);
-    }
-    return (lead.quantity || 1) * (lead.price || 0);
-  };
-
   if (loading) {
     return (
       <AppLayout title="Prediction Leads">
@@ -389,7 +184,7 @@ export default function PredictionLeadsPage() {
 
   return (
     <AppLayout title="Prediction Leads">
-      {/* ══════ Filter Bar ══════ */}
+      {/* Filter Bar */}
       <div className="sticky top-0 z-10 mb-4 space-y-3">
         <div className="rounded-xl border bg-card/80 backdrop-blur-sm p-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-2.5">
@@ -541,292 +336,99 @@ export default function PredictionLeadsPage() {
         )}
       </div>
 
-      {/* ══════ Leads List ══════ */}
-      <div className="space-y-3">
-        {filteredLeads.map(lead => {
-          const isExpanded = expandedId === lead.id;
-          const items = getLeadItems(lead.id);
-          const hasItems = items.length > 0;
-          const displayTotal = getLeadDisplayTotal(lead);
+      {/* Leads Table */}
+      <div className="overflow-hidden rounded-xl border bg-card shadow-sm">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Name</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Phone</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">City</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Product</th>
+              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Total</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredLeads.map(lead => {
+              const items = lead.prediction_lead_items || [];
+              const hasItems = items.length > 0;
+              const displayTotal = getLeadDisplayTotal(lead);
 
-          return (
-            <div key={lead.id} className="rounded-xl border bg-card shadow-sm overflow-hidden">
-              {/* Row header */}
-              <div
-                className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
-                onClick={() => setExpandedId(isExpanded ? null : lead.id)}
-              >
-                <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border shrink-0', STATUS_CHIP_COLORS[lead.status])}>
-                  {PREDICTION_LEAD_LABELS[lead.status]}
-                </span>
-                <span className="font-medium truncate">{lead.name}</span>
-                <span className="font-mono text-xs text-muted-foreground shrink-0">{lead.telephone}</span>
-                <span className="text-sm text-muted-foreground truncate hidden sm:inline">{lead.city}</span>
-                <span className="text-sm text-muted-foreground truncate hidden md:inline">
-                  {hasItems ? `${items.length} product${items.length > 1 ? 's' : ''}` : lead.product}
-                </span>
-                <span className="text-sm font-bold font-mono ml-auto shrink-0 tabular-nums text-right">
-                  {displayTotal.toFixed(2)}
-                </span>
-              </div>
-
-              {/* Expanded detail */}
-              {isExpanded && (
-                <div className="border-t px-4 py-4 space-y-4 bg-muted/10">
-                  {/* Action buttons */}
-                  <div className="flex gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setCallPopupLead(lead); }}
-                      className="flex items-center gap-2 flex-1 rounded-lg bg-primary text-primary-foreground py-2.5 font-medium text-sm hover:bg-primary/90 transition-colors justify-center"
-                    >
-                      <Phone className="h-4 w-4" />
-                      Start Call
-                    </button>
-                    {lead.status === 'not_contacted' && (
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            await apiTakeLead(lead.id);
-                            toast({ title: 'Order taken' });
-                            fetchLeads();
-                          } catch (err: any) {
-                            toast({ title: 'Error', description: err.message, variant: 'destructive' });
-                          }
-                        }}
-                        className="flex items-center gap-2 rounded-lg bg-emerald-600 text-white py-2.5 px-4 font-medium text-sm hover:bg-emerald-700 transition-colors justify-center"
-                      >
-                        <HandMetal className="h-4 w-4" />
-                        Take Order
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Customer Info */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Customer Info</h4>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      {renderEditableField(lead, 'address', 'Address')}
-                      {renderEditableField(lead, 'city', 'City')}
-                      {renderEditableField(lead, 'telephone', 'Telephone')}
-                    </div>
-                  </div>
-
-                  {/* Products & Pricing */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                      <ShoppingCart className="h-3 w-3" /> Products & Pricing
-                    </h4>
-                    <div className="rounded-lg border bg-card p-3 space-y-2">
-                      {/* Product rows */}
-                      {hasItems ? (
-                        <>
-                          {/* Header */}
-                          <div className="grid grid-cols-12 gap-2 text-xs font-medium text-muted-foreground pb-1 border-b">
-                            <div className="col-span-4">Product</div>
-                            <div className="col-span-2 text-right">Unit Price</div>
-                            <div className="col-span-2 text-center">Qty</div>
-                            <div className="col-span-3 text-right">Total</div>
-                            <div className="col-span-1"></div>
-                          </div>
-                          {items.map((item) => (
-                            <div key={item.id} className="grid grid-cols-12 gap-2 items-center py-1">
-                              <div className="col-span-4">
-                                <Select
-                                  value={item.product_id || ''}
-                                  onValueChange={(val) => handleItemProductChange(item.id, lead.id, val)}
-                                >
-                                  <SelectTrigger className="h-8 text-xs">
-                                    <SelectValue placeholder={item.product_name || 'Select'} />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {productsList.filter(p => p.is_active).map(p => (
-                                      <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-                              <div className="col-span-2">
-                                <Input
-                                  type="number"
-                                  min={0}
-                                  step="0.01"
-                                  value={item.price_per_unit}
-                                  onChange={(e) => {
-                                    const val = Math.max(0, parseFloat(e.target.value) || 0);
-                                    updateItemField(item.id, lead.id, 'price_per_unit', val);
-                                  }}
-                                  onBlur={() => saveItemField(item.id, lead.id, { price_per_unit: item.price_per_unit, quantity: item.quantity })}
-                                  className="h-8 text-xs text-right tabular-nums"
-                                />
-                              </div>
-                              <div className="col-span-2">
-                                <Input
-                                  type="number"
-                                  min={1}
-                                  value={item.quantity}
-                                  onChange={(e) => {
-                                    const val = Math.max(1, parseInt(e.target.value) || 1);
-                                    updateItemField(item.id, lead.id, 'quantity', val);
-                                  }}
-                                  onBlur={() => saveItemField(item.id, lead.id, { quantity: item.quantity, price_per_unit: item.price_per_unit })}
-                                  className="h-8 text-xs text-center"
-                                />
-                              </div>
-                              <div className="col-span-3 text-right font-mono text-sm tabular-nums font-medium">
-                                {calcRowTotal(item.quantity, item.price_per_unit).toFixed(2)}
-                              </div>
-                              <div className="col-span-1 flex justify-center">
-                                <button
-                                  onClick={() => removeItemRow(item.id, lead.id)}
-                                  className="p-1 text-muted-foreground hover:text-destructive transition-colors rounded"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      ) : (
-                        /* Legacy single-product view */
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <p className="text-muted-foreground text-xs mb-1">Product</p>
-                            <Select
-                              value={productsList.find(p => p.name === lead.product)?.id || ''}
-                              onValueChange={(val) => handleProductSelect(lead.id, val)}
-                            >
-                              <SelectTrigger className="h-8 text-sm">
-                                <SelectValue placeholder={lead.product || 'Select product'} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {productsList.filter(p => p.is_active).map(p => (
-                                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground text-xs mb-1">Unit Price</p>
-                            <Input
-                              type="number"
-                              min={0}
-                              step="0.01"
-                              value={lead.price || 0}
-                              onChange={(e) => {
-                                const val = Math.max(0, parseFloat(e.target.value) || 0);
-                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, price: val } : l));
-                              }}
-                              onBlur={(e) => handleLeadFieldSave(lead.id, 'price', Math.max(0, parseFloat(e.target.value) || 0))}
-                              className="h-8 text-sm text-right"
-                            />
-                          </div>
-                          <div>
-                            <p className="text-muted-foreground text-xs mb-1">Quantity</p>
-                            <Input
-                              type="number"
-                              min={1}
-                              value={lead.quantity || 1}
-                              onChange={(e) => {
-                                const val = Math.max(1, parseInt(e.target.value) || 1);
-                                setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, quantity: val } : l));
-                              }}
-                              onBlur={(e) => handleLeadFieldSave(lead.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
-                              className="h-8 text-sm"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Add Product button */}
+              return (
+                <tr key={lead.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border', STATUS_CHIP_COLORS[lead.status])}>
+                      {PREDICTION_LEAD_LABELS[lead.status]}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 font-medium">{lead.name}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{lead.telephone}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{lead.city || '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                    {hasItems ? `${items.length} product${items.length > 1 ? 's' : ''}` : lead.product || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-right font-bold font-mono tabular-nums text-primary">
+                    {displayTotal.toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5">
                       <Button
-                        variant="outline"
                         size="sm"
-                        onClick={() => addProductRow(lead.id)}
-                        className="w-full mt-2 gap-1.5 text-xs border-dashed"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => setModalLead(lead)}
                       >
-                        <Plus className="h-3.5 w-3.5" />
-                        Add Product
+                        <Phone className="h-3 w-3" />
+                        Open
                       </Button>
-
-                      {/* Payment Summary */}
-                      <div className="border-t pt-3 mt-3 space-y-1.5">
-                        <div className="flex justify-between text-xs text-muted-foreground">
-                          <span>Subtotal ({hasItems ? items.length : 1} item{(hasItems ? items.length : 1) > 1 ? 's' : ''})</span>
-                          <span className="font-mono tabular-nums">{displayTotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex justify-between text-sm font-bold pt-1.5 border-t border-dashed">
-                          <span>Final Total</span>
-                          <span className="text-primary font-mono text-base tabular-nums">
-                            {displayTotal.toFixed(2)}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Update Status</h4>
-                    <div className="flex flex-wrap gap-2">
-                      {PREDICTION_LEAD_STATUSES.map(s => (
-                        <button
-                          key={s}
-                          onClick={() => updateStatus(lead.id, s)}
-                          className={cn(
-                            'rounded-full px-3 py-1 text-xs font-medium transition-colors border',
-                            lead.status === s
-                              ? STATUS_CHIP_COLORS[s] + ' border-transparent ring-2 ring-primary/30'
-                              : 'border-border hover:bg-muted'
-                          )}
+                      {lead.status === 'not_contacted' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs"
+                          onClick={async () => {
+                            try {
+                              await apiTakeLead(lead.id);
+                              toast({ title: 'Order taken' });
+                              fetchLeads();
+                            } catch (err: any) {
+                              toast({ title: 'Error', description: err.message, variant: 'destructive' });
+                            }
+                          }}
                         >
-                          {PREDICTION_LEAD_LABELS[s]}
-                        </button>
-                      ))}
+                          <HandMetal className="h-3 w-3" />
+                          Take
+                        </Button>
+                      )}
                     </div>
-                  </div>
-
-                  {/* Notes */}
-                  <div>
-                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
-                      <MessageSquare className="h-3 w-3" /> Notes
-                    </h4>
-                    <Textarea
-                      value={lead.notes || ''}
-                      onChange={(e) => updateNotes(lead.id, e.target.value)}
-                      onBlur={() => saveNotes(lead.id)}
-                      placeholder="Add notes about this lead..."
-                      className="min-h-[60px] text-sm"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {filteredLeads.length === 0 && leads.length > 0 && (
-          <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
-            No leads match your filters.
-            <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
-          </div>
-        )}
-
-        {leads.length === 0 && (
-          <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">
-            No prediction leads assigned to you yet.
-          </div>
-        )}
+                  </td>
+                </tr>
+              );
+            })}
+            {filteredLeads.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                  No leads found.
+                  {hasActiveFilters && (
+                    <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
+                  )}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
-      <CallPopup
-        open={!!callPopupLead}
+      {/* Order Modal */}
+      <OrderModal
+        open={!!modalLead}
         onClose={(saved) => {
+          setModalLead(null);
           if (saved) fetchLeads();
-          setCallPopupLead(null);
         }}
+        data={modalLead ? leadToModalData(modalLead) : null}
         contextType="prediction_lead"
-        lead={callPopupLead}
       />
     </AppLayout>
   );
