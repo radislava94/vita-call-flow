@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { StatusBadge } from '@/components/StatusBadge';
-import { Loader2, Phone } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+// Button removed - rows are clickable
 import { apiGetOrders } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
@@ -69,12 +69,11 @@ export default function AssignedPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Qty</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Total Price</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
             </tr>
           </thead>
           <tbody>
             {myOrders.map(order => (
-              <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+              <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setModalOrder(order)}>
                 <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                 <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                 <td className="px-4 py-3">{order.customer_name}</td>
@@ -82,16 +81,11 @@ export default function AssignedPage() {
                 <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
                 <td className="px-4 py-3 font-bold text-primary">{((order.quantity || 1) * Number(order.price)).toFixed(2)}</td>
                 <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
-                <td className="px-4 py-3">
-                  <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setModalOrder(order)}>
-                    <Phone className="h-3 w-3" /> Open
-                  </Button>
-                </td>
               </tr>
             ))}
             {myOrders.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">No orders assigned to you.</td>
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">No orders assigned to you.</td>
               </tr>
             )}
           </tbody>

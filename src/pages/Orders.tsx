@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User, Phone,
+  CalendarIcon, X, User,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
@@ -264,12 +264,11 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredOrders.map(order => (
-                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setModalOrder(order)}>
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
@@ -290,15 +289,10 @@ export default function Orders() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
-                  <td className="px-4 py-3">
-                    <Button size="sm" variant="outline" className="h-7 gap-1 text-xs" onClick={() => setModalOrder(order)}>
-                      <Phone className="h-3 w-3" /> Open
-                    </Button>
-                  </td>
                 </tr>
               ))}
               {filteredOrders.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
               )}
             </tbody>
           </table>
