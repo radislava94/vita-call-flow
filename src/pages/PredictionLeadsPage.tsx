@@ -801,15 +801,16 @@ export default function PredictionLeadsPage() {
 
       <CallPopup
         open={!!callPopupLead}
-        onClose={(outcome) => {
+        onClose={(outcome, statusOverride) => {
           if (outcome && callPopupLead) {
+            // Use statusOverride from modal if provided, otherwise map from outcome
             const statusMap: Record<string, PredictionLeadStatus> = {
               no_answer: 'no_answer',
               interested: 'interested',
               not_interested: 'not_interested',
               call_again: 'not_contacted',
             };
-            const newStatus = statusMap[outcome];
+            const newStatus = (statusOverride as PredictionLeadStatus) || statusMap[outcome];
             if (newStatus) {
               setLeads(prev => prev.map(l => l.id === callPopupLead.id ? { ...l, status: newStatus } : l));
             }
@@ -821,6 +822,7 @@ export default function PredictionLeadsPage() {
         customerName={callPopupLead?.name || ''}
         phoneNumber={callPopupLead?.telephone || ''}
         productName={callPopupLead?.product || undefined}
+        currentStatus={callPopupLead?.status}
       />
     </AppLayout>
   );
