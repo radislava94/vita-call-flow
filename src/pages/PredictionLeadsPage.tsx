@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import {
   PredictionLeadStatus,
@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { MessageSquare, Loader2, Pencil, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag } from 'lucide-react';
+import { MessageSquare, Loader2, Pencil, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, ShoppingCart } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiGetMyLeads, apiUpdateLead, apiGetProducts } from '@/lib/api';
 import { CallPopup, CallOutcome } from '@/components/CallPopup';
@@ -472,18 +472,21 @@ export default function PredictionLeadsPage() {
                 className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-muted/30 transition-colors"
                 onClick={() => setExpandedId(isExpanded ? null : lead.id)}
               >
-                <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border', STATUS_CHIP_COLORS[lead.status])}>
+                <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border shrink-0', STATUS_CHIP_COLORS[lead.status])}>
                   {PREDICTION_LEAD_LABELS[lead.status]}
                 </span>
-                <span className="font-medium">{lead.name}</span>
-                <span className="font-mono text-xs text-muted-foreground">{lead.telephone}</span>
-                <span className="text-sm text-muted-foreground">{lead.city}</span>
-                <span className="text-sm text-muted-foreground">{lead.product}</span>
-                <span className="text-sm font-semibold ml-auto">{((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}</span>
+                <span className="font-medium truncate">{lead.name}</span>
+                <span className="font-mono text-xs text-muted-foreground shrink-0">{lead.telephone}</span>
+                <span className="text-sm text-muted-foreground truncate hidden sm:inline">{lead.city}</span>
+                <span className="text-sm text-muted-foreground truncate hidden md:inline">{lead.product}</span>
+                <span className="text-sm font-bold font-mono ml-auto shrink-0 tabular-nums text-right">
+                  {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
+                </span>
               </div>
 
               {isExpanded && (
                 <div className="border-t px-4 py-4 space-y-4 bg-muted/10">
+                  {/* Call button */}
                   <button
                     onClick={(e) => { e.stopPropagation(); setCallPopupLead(lead); }}
                     className="flex items-center gap-2 w-full rounded-lg bg-primary text-primary-foreground py-2.5 font-medium text-sm hover:bg-primary/90 transition-colors justify-center"
@@ -492,56 +495,98 @@ export default function PredictionLeadsPage() {
                     Start Call with {lead.name || 'Customer'}
                   </button>
 
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    {renderEditableField(lead, 'address', 'Address')}
-                    {renderEditableField(lead, 'city', 'City')}
-                    {renderEditableField(lead, 'telephone', 'Telephone')}
-                    
-                    {/* Product dropdown */}
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Product</p>
-                      <Select
-                        value={productsList.find(p => p.name === lead.product)?.id || ''}
-                        onValueChange={(val) => handleProductSelect(lead.id, val)}
-                      >
-                        <SelectTrigger className="h-8 text-sm">
-                          <SelectValue placeholder={lead.product || 'Select product'} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {productsList.filter(p => p.is_active).map(p => (
-                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Quantity */}
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Quantity</p>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={lead.quantity || 1}
-                        onChange={(e) => {
-                          const val = Math.max(1, parseInt(e.target.value) || 1);
-                          setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, quantity: val } : l));
-                        }}
-                        onBlur={(e) => handleLeadFieldSave(lead.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
-                        className="h-8 text-sm"
-                      />
-                    </div>
-
-                    {/* Total Price */}
-                    <div>
-                      <p className="text-muted-foreground text-xs mb-1">Total Price</p>
-                      <p className="h-8 flex items-center font-bold text-primary">
-                        {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
-                      </p>
+                  {/* ── Customer Info ── */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Customer Info</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {renderEditableField(lead, 'address', 'Address')}
+                      {renderEditableField(lead, 'city', 'City')}
+                      {renderEditableField(lead, 'telephone', 'Telephone')}
                     </div>
                   </div>
 
+                  {/* ── Product & Pricing ── */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2">Update Status</p>
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                      <ShoppingCart className="h-3 w-3" /> Product & Pricing
+                    </h4>
+                    <div className="rounded-lg border bg-card p-3 space-y-3">
+                      {/* Product selector */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-muted-foreground text-xs mb-1">Product</p>
+                          <Select
+                            value={productsList.find(p => p.name === lead.product)?.id || ''}
+                            onValueChange={(val) => handleProductSelect(lead.id, val)}
+                          >
+                            <SelectTrigger className="h-8 text-sm">
+                              <SelectValue placeholder={lead.product || 'Select product'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {productsList.filter(p => p.is_active).map(p => (
+                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs mb-1">Unit Price</p>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={lead.price || 0}
+                            onChange={(e) => {
+                              const val = Math.max(0, parseFloat(e.target.value) || 0);
+                              setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, price: val } : l));
+                            }}
+                            onBlur={(e) => handleLeadFieldSave(lead.id, 'price', Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="h-8 text-sm text-right"
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-muted-foreground text-xs mb-1">Quantity</p>
+                          <Input
+                            type="number"
+                            min={1}
+                            value={lead.quantity || 1}
+                            onChange={(e) => {
+                              const val = Math.max(1, parseInt(e.target.value) || 1);
+                              setLeads(prev => prev.map(l => l.id === lead.id ? { ...l, quantity: val } : l));
+                            }}
+                            onBlur={(e) => handleLeadFieldSave(lead.id, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <p className="text-muted-foreground text-xs mb-1">Line Total</p>
+                          <p className="h-8 flex items-center justify-end font-mono text-sm">
+                            {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Payment Summary */}
+                      <div className="border-t pt-3 space-y-1.5">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Subtotal</span>
+                          <span className="font-mono">{((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-sm font-bold pt-1 border-t border-dashed">
+                          <span>Total</span>
+                          <span className="text-primary font-mono text-base">
+                            {((lead.quantity || 1) * (lead.price || 0)).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ── Status ── */}
+                  <div>
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Update Status</h4>
                     <div className="flex flex-wrap gap-2">
                       {PREDICTION_LEAD_STATUSES.map(s => (
                         <button
@@ -550,7 +595,7 @@ export default function PredictionLeadsPage() {
                           className={cn(
                             'rounded-full px-3 py-1 text-xs font-medium transition-colors border',
                             lead.status === s
-                              ? 'bg-primary text-primary-foreground border-primary'
+                              ? STATUS_CHIP_COLORS[s] + ' border-transparent ring-2 ring-primary/30'
                               : 'border-border hover:bg-muted'
                           )}
                         >
@@ -560,10 +605,11 @@ export default function PredictionLeadsPage() {
                     </div>
                   </div>
 
+                  {/* ── Notes ── */}
                   <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-2 flex items-center gap-1">
+                    <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1">
                       <MessageSquare className="h-3 w-3" /> Notes
-                    </p>
+                    </h4>
                     <Textarea
                       value={lead.notes || ''}
                       onChange={(e) => updateNotes(lead.id, e.target.value)}
