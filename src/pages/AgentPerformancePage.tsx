@@ -62,6 +62,7 @@ interface AgentPerf {
   outstanding_revenue: number;
   returned_value: number;
   total_profit: number;
+  net_contribution: number;
   avg_order_value: number;
   revenue_per_lead: number;
   profit_per_lead: number;
@@ -173,12 +174,13 @@ export default function AgentPerformancePage() {
     const outstanding = s('outstanding_revenue');
     const returnedValue = s('returned_value');
     const profit = s('total_profit');
+    const netContribution = s('net_contribution');
     const convRate = leads > 0 ? Math.round((confirmed / leads) * 10000) / 100 : 0;
     const shipRate = confirmed > 0 ? Math.round((shipped / confirmed) * 10000) / 100 : 0;
     const collectRate = shipped > 0 ? Math.round((paid / shipped) * 10000) / 100 : 0;
     const retRate = shipped > 0 ? Math.round((returned / shipped) * 10000) / 100 : 0;
     const aov = paid > 0 ? Math.round((paidRevenue / paid) * 100) / 100 : 0;
-    return { leads, confirmed, shipped, paid, returned, cancelled, grossRevenue, paidRevenue, outstanding, returnedValue, profit, convRate, shipRate, collectRate, retRate, aov };
+    return { leads, confirmed, shipped, paid, returned, cancelled, grossRevenue, paidRevenue, outstanding, returnedValue, profit, netContribution, convRate, shipRate, collectRate, retRate, aov };
   }, [data]);
 
   return (
@@ -316,12 +318,13 @@ export default function AgentPerformancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
             <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />
             <SummaryCard label="Paid Revenue" value={fmt(totals.paidRevenue)} accent desc="Paid only" />
             <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />
             <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />
             <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />
+            <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />
             <SummaryCard label="Avg Order" value={fmt(totals.aov)} desc="Paid Rev / Paid" />
             <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />
             <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />
@@ -355,6 +358,7 @@ export default function AgentPerformancePage() {
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
                 </tr>
               </thead>
@@ -390,6 +394,7 @@ export default function AgentPerformancePage() {
                     <td className="px-3 py-3 text-right font-semibold text-primary">{fmt(a.paid_revenue)}</td>
                     <td className="px-3 py-3 text-right">{fmt(a.outstanding_revenue)}</td>
                     <td className="px-3 py-3 text-right font-semibold">{fmt(a.total_profit)}</td>
+                    <td className={`px-3 py-3 text-right font-semibold ${(a.net_contribution ?? 0) < 0 ? 'text-destructive' : 'text-primary'}`}>{fmt(a.net_contribution)}</td>
                     <td className="px-3 py-3 text-right">{fmt(a.avg_order_value)}</td>
                   </tr>
                 ))}
