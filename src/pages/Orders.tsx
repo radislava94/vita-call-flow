@@ -252,6 +252,7 @@ export default function Orders() {
 
             {hasActiveFilters && <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>Clear all</Button>}
             <Button onClick={exportCSV} size="sm" className="ml-auto h-9 gap-1.5 rounded-lg text-sm"><Download className="h-3.5 w-3.5" /> Export</Button>
+            <Button onClick={() => setShowCreateModal(true)} size="sm" className="h-9 gap-1.5 rounded-lg text-sm"><Plus className="h-3.5 w-3.5" /> Create Order</Button>
           </div>
         </div>
 
