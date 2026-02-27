@@ -305,7 +305,11 @@ export default function Orders() {
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
-                  <td className="px-4 py-3">{order.product_name}</td>
+                  <td className="px-4 py-3">
+                    {order.order_items && order.order_items.length > 0
+                      ? order.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
+                      : order.product_name}
+                  </td>
                   <td className="px-4 py-3 text-center">{order.quantity || 1}</td>
                   <td className="px-4 py-3 font-bold text-primary">{Number(order.price).toFixed(2)}</td>
                   <td className="px-4 py-3">

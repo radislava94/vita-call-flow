@@ -605,7 +605,7 @@ serve(async (req) => {
 
       let query = client
         .from("orders")
-        .select("*", { count: "exact" })
+        .select("*, order_items(id, product_id, product_name, quantity, price_per_unit, total_price)", { count: "exact" })
         .order("created_at", { ascending: false })
         .range((page - 1) * limit, page * limit - 1);
 
