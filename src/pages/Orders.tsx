@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User,
+  CalendarIcon, X, User, Plus,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
