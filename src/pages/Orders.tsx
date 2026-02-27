@@ -157,9 +157,9 @@ export default function Orders() {
   const toggleStatus = (s: OrderStatus) => {
     setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
-  const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || agentFilter !== 'all' || dateFrom || dateTo;
+  const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || agentFilter !== 'all' || (myOrdersOnly && isAdmin) || dateFrom || dateTo;
   const clearAllFilters = () => {
-    setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); setDateFrom(undefined); setDateTo(undefined);
+    setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); if (isAdmin) setMyOrdersOnly(false); setDateFrom(undefined); setDateTo(undefined);
   };
 
   const exportCSV = () => {
