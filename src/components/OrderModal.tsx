@@ -94,12 +94,13 @@ function calcRowTotal(qty: number, price: number): number {
   return Math.round(Math.max(1, qty) * Math.max(0, price) * 100) / 100;
 }
 
-export function OrderModal({ open, onClose, data, contextType }: OrderModalProps) {
+export function OrderModal({ open, onClose, data, contextType, readOnly = false }: OrderModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.isAdmin || user?.isManager;
   const isLead = contextType === 'prediction_lead';
   const statusOptions = isLead ? LEAD_STATUS_OPTIONS : ORDER_STATUS_OPTIONS;
+  const isEditable = !readOnly;
 
   // Script
   const [script, setScript] = useState('');
