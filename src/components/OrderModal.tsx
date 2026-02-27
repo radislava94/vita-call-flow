@@ -537,6 +537,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                           value={item.price_per_unit}
                           onChange={e => updateItem(idx, 'price_per_unit', Math.max(0, parseFloat(e.target.value) || 0))}
                           className="h-7 text-xs text-right tabular-nums"
+                          disabled={!isEditable}
                         />
                       </div>
                       <div className="col-span-2">
