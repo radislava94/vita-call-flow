@@ -421,7 +421,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                 {!isLead && (
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Postal Code</label>
-                    <Input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="h-8 text-sm" />
+                    <Input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                   </div>
                 )}
               </div>
