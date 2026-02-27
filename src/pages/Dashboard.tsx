@@ -288,15 +288,17 @@ export default function Dashboard() {
 
       {/* === 1. TOP FINANCIAL ROW === */}
       {isAdmin && ceoStats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-6">
-          <MetricCard title="Revenue (Paid)" value={fmtCurrency(ceoStats.revenue || 0)} icon={DollarSign}
-            color="bg-[hsl(var(--success))]" subtitle="Only PAID orders" />
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
+          <MetricCard title="Revenue" value={fmtCurrency(ceoStats.revenue || 0)} icon={DollarSign}
+            color="bg-[hsl(var(--success))]" subtitle="Confirmed + Delivered + Paid" />
+          <MetricCard title="Paid" value={`${ceoStats.paidCount || 0} / ${fmtCurrency(ceoStats.paidAmount || 0)}`} icon={CheckCircle2}
+            color="bg-primary" subtitle="Paid orders count & total" />
           <MetricCard title="Outstanding" value={fmtCurrency(ceoStats.outstanding || 0)} icon={Clock}
-            color="bg-[hsl(var(--warning))]" subtitle="Unpaid balance" />
+            color="bg-[hsl(var(--warning))]" subtitle="Confirmed + Delivered" />
           <MetricCard title="Profit" value={fmtCurrency(ceoStats.profit || 0)} icon={TrendingUp}
-            color="bg-primary" subtitle="Revenue - Cost" />
+            color="bg-[hsl(var(--info))]" subtitle="Paid revenue - cost" />
           <MetricCard title="Total Orders" value={totalOrders} icon={ShoppingCart}
-            trend={orderTrend} color="bg-[hsl(var(--info))]" />
+            trend={orderTrend} color="bg-muted" />
         </div>
       )}
 

@@ -1350,18 +1350,17 @@ serve(async (req) => {
         const calls = periodCalls || [];
 
         const lead_count = leads.length;
-        const confirmedLeads = leads.filter((l: any) => l.status === "confirmed");
-        // deals_won includes confirmed/paid orders AND confirmed prediction leads
-        const deals_won = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length + confirmedLeads.length;
+        // deals_won: orders only
+        const deals_won = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length;
         const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
         const total_value = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
         const tasks_completed = calls.length;
-        // total_orders includes standard orders + confirmed prediction leads
-        const total_orders = orders.length + confirmedLeads.length;
+        // total_orders: orders only
+        const total_orders = orders.length;
 
         // Source breakdown
         const orders_from_standard = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length;
-        const orders_from_leads = confirmedLeads.length;
+        const orders_from_leads = 0;
 
         const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
         for (const o of orders) {
@@ -1375,10 +1374,6 @@ serve(async (req) => {
           const day = l.created_at.substring(0, 10);
           if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
           dailyBreakdown[day].leads++;
-          if (l.status === "confirmed") {
-            dailyBreakdown[day].deals_won++;
-            dailyBreakdown[day].orders++;
-          }
         }
         for (const c of calls) {
           const day = c.created_at.substring(0, 10);
@@ -1389,10 +1384,6 @@ serve(async (req) => {
         const statusCounts: Record<string, number> = {};
         for (const o of orders) {
           statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
-        }
-        // Add confirmed leads to the confirmed status count
-        if (confirmedLeads.length > 0) {
-          statusCounts["confirmed"] = (statusCounts["confirmed"] || 0) + confirmedLeads.length;
         }
 
         return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts, orders_from_standard, orders_from_leads };
@@ -1464,9 +1455,14 @@ serve(async (req) => {
 
       // === 1. FINANCIAL KPIs ===
       const paidOrders = orders.filter((o: any) => o.status === "paid");
-      const revenue = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+      const paidCount = paidOrders.length;
+      const paidAmount = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
-      // Profit: revenue - cost for paid orders
+      // Revenue: confirmed + delivered + paid
+      const revenueOrders = orders.filter((o: any) => ["confirmed", "delivered", "paid"].includes(o.status));
+      const revenue = revenueOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // Profit: paid orders only (revenue - cost)
       let totalCost = 0;
       for (const o of paidOrders) {
         const items = o.order_items || [];
@@ -1479,10 +1475,10 @@ serve(async (req) => {
           totalCost += (costMap[o.product_id] || 0) * (o.quantity || 1);
         }
       }
-      const profit = revenue - totalCost;
+      const profit = paidAmount - totalCost;
 
-      // Outstanding: sum of price for non-paid, non-cancelled, non-trashed orders
-      const outstandingOrders = orders.filter((o: any) => !["paid", "cancelled", "trashed"].includes(o.status));
+      // Outstanding: confirmed + delivered only (exclude paid, returned, cancelled)
+      const outstandingOrders = orders.filter((o: any) => ["confirmed", "delivered"].includes(o.status));
       const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // === 2. FUNNEL ===
@@ -1557,7 +1553,7 @@ serve(async (req) => {
       };
 
       return json({
-        revenue, profit, outstanding, totalCost,
+        revenue, profit, outstanding, totalCost, paidCount, paidAmount,
         funnel: { allTaken, confirmed, paid, shipped, returned, pending, conversionRate, confirmationRate, returnRate },
         dailyRevenue,
         agentRankings,
