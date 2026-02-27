@@ -40,10 +40,14 @@ export const apiDeleteUser = (userId: string) =>
   apiFetch(`users/${userId}`, { method: 'DELETE' });
 
 // Orders
-export const apiGetOrders = (params?: { status?: string; search?: string; page?: number; limit?: number }) => {
+export const apiGetOrders = (params?: { status?: string; search?: string; agent_id?: string; source?: string; from?: string; to?: string; page?: number; limit?: number }) => {
   const sp = new URLSearchParams();
   if (params?.status) sp.set('status', params.status);
   if (params?.search) sp.set('search', params.search);
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  if (params?.source) sp.set('source', params.source);
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
   if (params?.page) sp.set('page', String(params.page));
   if (params?.limit) sp.set('limit', String(params.limit));
   return apiFetch(`orders?${sp.toString()}`);
