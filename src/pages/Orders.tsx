@@ -164,15 +164,33 @@ export default function Orders() {
     setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); if (isAdmin) setMyOrdersOnly(false); setDateFrom(undefined); setDateTo(undefined);
   };
 
-  const exportCSV = () => {
-    const header = 'Order ID,Customer,Phone,City,Address,Product,Quantity,Total Price,Status,Date\n';
-    const rows = filteredOrders.map(o =>
-      `${o.display_id},"${(o.customer_name || '').replace(/"/g, '""')}",${o.customer_phone || ''},"${(o.customer_city || '').replace(/"/g, '""')}","${(o.customer_address || '').replace(/"/g, '""')}","${(o.product_name || '').replace(/"/g, '""')}",${o.quantity || 1},${Number(o.price).toFixed(2)},${o.status},${new Date(o.created_at).toLocaleDateString()}`
-    ).join('\n');
-    const blob = new Blob([header + rows], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'orders.csv'; a.click();
+  const exportXLSX = async () => {
+    const XLSX = await import('xlsx');
+    const confirmedOrders = filteredOrders.filter(o => o.status === 'confirmed');
+    const rows = confirmedOrders.map(o => {
+      const items = o.order_items && o.order_items.length > 0
+        ? o.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
+        : `${o.product_name} x${o.quantity || 1}`;
+      return {
+        'ORDER ID': o.display_id,
+        'RECEIVER': o.customer_name || '',
+        'PHONE': o.customer_phone || '',
+        'CITY': o.customer_city || '',
+        'ADDRESS': o.customer_address || '',
+        'COD AMOUNT': Number(o.price),
+        'PRODUCT': items,
+        'COMMENT': o.notes || '',
+        'OPEN PACKAGE': 0,
+        'PRIORITY': 0,
+        'WEIGHT': 1,
+        'SHIPPING TYPE': 4,
+        'NUMBER OF PACKAGES': 1,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+    XLSX.writeFile(wb, `confirmed_orders_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   return (
@@ -251,7 +269,7 @@ export default function Orders() {
             </Popover>
 
             {hasActiveFilters && <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>Clear all</Button>}
-            <Button onClick={exportCSV} size="sm" className="ml-auto h-9 gap-1.5 rounded-lg text-sm"><Download className="h-3.5 w-3.5" /> Export</Button>
+            <Button onClick={exportXLSX} size="sm" className="ml-auto h-9 gap-1.5 rounded-lg text-sm"><Download className="h-3.5 w-3.5" /> Export</Button>
             <Button onClick={() => setShowCreateModal(true)} size="sm" className="h-9 gap-1.5 rounded-lg text-sm"><Plus className="h-3.5 w-3.5" /> Create Order</Button>
           </div>
         </div>
