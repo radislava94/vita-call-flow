@@ -3517,6 +3517,64 @@ serve(async (req) => {
       return json(enriched);
     }
 
+    // GET /api/search-prediction?q=...
+    if (req.method === "GET" && path === "search-prediction") {
+      const q = (url.searchParams.get("q") || "").trim();
+      if (!q) return json({ orders: [], leads: [], order_history: [] });
+
+      // Normalize phone: extract last 8 digits for matching
+      const digitsOnly = q.replace(/\D/g, "");
+      const last8 = digitsOnly.length >= 8 ? digitsOnly.slice(-8) : "";
+
+      // Build search: name OR phone (last 8 digits pattern)
+      // For orders
+      let orderQuery = adminClient
+        .from("orders")
+        .select("*, order_items(id, product_name, quantity, price_per_unit, total_price)")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      let leadQuery = adminClient
+        .from("prediction_leads")
+        .select("*, prediction_lists(name)")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (last8) {
+        // Search by last 8 digits of phone OR name
+        orderQuery = orderQuery.or(`customer_name.ilike.%${q}%,customer_phone.ilike.%${last8}%,display_id.ilike.%${q}%`);
+        leadQuery = leadQuery.or(`name.ilike.%${q}%,telephone.ilike.%${last8}%`);
+      } else {
+        // Text-only search (name / display_id)
+        orderQuery = orderQuery.or(`customer_name.ilike.%${q}%,display_id.ilike.%${q}%`);
+        leadQuery = leadQuery.or(`name.ilike.%${q}%`);
+      }
+
+      const [ordersRes, leadsRes] = await Promise.all([orderQuery, leadQuery]);
+      const orders = (ordersRes.data || []).map((o: any) => ({
+        ...o,
+        is_owned: isAdminOrManager || o.assigned_agent_id === user.id,
+      }));
+      const leads = (leadsRes.data || []).map((l: any) => ({
+        ...l,
+        is_owned: isAdminOrManager || l.assigned_agent_id === user.id,
+      }));
+
+      // Get order history for found orders
+      const orderIds = orders.map((o: any) => o.id);
+      let historyData: any[] = [];
+      if (orderIds.length > 0) {
+        const { data: history } = await adminClient
+          .from("order_history")
+          .select("*")
+          .in("order_id", orderIds)
+          .order("changed_at", { ascending: false });
+        historyData = history || [];
+      }
+
+      return json({ orders, leads, order_history: historyData });
+    }
+
     return json({ error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);
