@@ -496,38 +496,93 @@ serve(async (req) => {
       return json(assignableUsers);
     }
 
-    // POST /api/orders (create order)
+    // POST /api/orders (create order — admin/manager/agent)
     if (req.method === "POST" && path === "orders") {
-      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
       let body;
       try { body = parseBody(createOrderSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
+
+      // Determine status: agents can only set confirmed or call_again
+      const status = body.status || "pending";
+      // If agent (not admin), auto-assign to self
+      const { data: agentProfile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      const agentName = agentProfile?.full_name || user.email;
+
+      const assignToSelf = !isAdminOrManager;
+      const assignedAgentId = assignToSelf ? user.id : null;
+      const assignedAgentName = assignToSelf ? agentName : null;
+
+      // Calculate total from items if provided
+      const hasItems = body.items && body.items.length > 0;
+      let totalPrice = body.price || 0;
+      let totalQty = body.quantity || 1;
+      let productSummary = body.product_name;
+
+      if (hasItems) {
+        totalPrice = body.items.reduce((s: number, i: any) => s + (i.quantity * i.price_per_unit), 0);
+        totalQty = body.items.reduce((s: number, i: any) => s + i.quantity, 0);
+        productSummary = body.items.map((i: any) => i.product_name).join(", ");
+      }
 
       const { data: order, error: orderErr } = await adminClient
         .from("orders")
         .insert({
           product_id: body.product_id,
-          product_name: body.product_name,
+          product_name: productSummary,
           customer_name: body.customer_name,
           customer_phone: body.customer_phone,
           customer_city: body.customer_city,
           customer_address: body.customer_address,
           postal_code: body.postal_code,
           birthday: body.birthday,
-          price: body.price,
-          quantity: body.quantity,
-          status: "pending",
+          price: totalPrice,
+          quantity: totalQty,
+          status,
+          source_type: "manual",
+          assigned_agent_id: assignedAgentId,
+          assigned_agent_name: assignedAgentName,
+          assigned_at: assignToSelf ? new Date().toISOString() : null,
         })
         .select()
         .single();
 
       if (orderErr) return json({ error: sanitizeDbError(orderErr) }, 400);
 
-      // Log initial status
+      // Insert order items
+      if (hasItems) {
+        const orderItems = body.items.map((i: any) => ({
+          order_id: order.id,
+          product_id: i.product_id || null,
+          product_name: i.product_name,
+          quantity: i.quantity,
+          price_per_unit: i.price_per_unit,
+          total_price: Math.round(i.quantity * i.price_per_unit * 100) / 100,
+        }));
+        await adminClient.from("order_items").insert(orderItems);
+      }
+
+      // Add notes if provided
+      if (body.notes && body.notes.trim()) {
+        await adminClient.from("order_notes").insert({
+          order_id: order.id,
+          text: body.notes.trim(),
+          author_id: user.id,
+          author_name: agentName,
+        });
+      }
+
+      // Log creation in order history
       await adminClient.from("order_history").insert({
         order_id: order.id,
-        to_status: "pending",
+        to_status: status,
         changed_by: user.id,
-        changed_by_name: "System",
+        changed_by_name: agentName,
+      });
+      // Add source note
+      await adminClient.from("order_notes").insert({
+        order_id: order.id,
+        text: "Manual Order Created",
+        author_id: user.id,
+        author_name: "System",
       });
 
       return json(order);
