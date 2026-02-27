@@ -78,6 +78,11 @@ export function CreateOrderModal({ open, onClose }: CreateOrderModalProps) {
   const totalPrice = items.reduce((s, i) => s + Math.max(1, i.quantity) * Math.max(0, i.price_per_unit), 0);
 
   const handleSave = async () => {
+    if (saving) return; // prevent double-submit
+    if (!name.trim()) {
+      toast({ title: 'Customer name is required', variant: 'destructive' });
+      return;
+    }
     if (!phone.trim()) {
       toast({ title: 'Phone is required', variant: 'destructive' });
       return;

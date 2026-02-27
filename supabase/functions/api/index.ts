@@ -1579,13 +1579,7 @@ serve(async (req) => {
 
       const { data: orders } = await query;
 
-      // Also fetch confirmed prediction leads
-      let leadsQuery = adminClient.from("prediction_leads").select("status, created_at, assigned_agent_id, assigned_agent_name").eq("status", "confirmed");
-      if (from) leadsQuery = leadsQuery.gte("created_at", from);
-      if (to) leadsQuery = leadsQuery.lte("created_at", to);
-      const { data: confirmedLeads } = await leadsQuery;
-      
-      // Status counts
+      // Status counts — orders only (do NOT mix prediction_leads into order stats)
       const statusCounts: Record<string, number> = {};
       const agentCounts: Record<string, number> = {};
       const dailyCounts: Record<string, number> = {};
@@ -1599,17 +1593,7 @@ serve(async (req) => {
         dailyCounts[day] = (dailyCounts[day] || 0) + 1;
       }
 
-      // Include confirmed prediction leads in counts
-      for (const l of confirmedLeads || []) {
-        statusCounts["confirmed"] = (statusCounts["confirmed"] || 0) + 1;
-        if (l.assigned_agent_name) {
-          agentCounts[l.assigned_agent_name] = (agentCounts[l.assigned_agent_name] || 0) + 1;
-        }
-        const day = l.created_at.substring(0, 10);
-        dailyCounts[day] = (dailyCounts[day] || 0) + 1;
-      }
-
-      const total = (orders?.length || 0) + (confirmedLeads?.length || 0);
+      const total = orders?.length || 0;
       return json({ statusCounts, agentCounts, dailyCounts, total });
     }
 

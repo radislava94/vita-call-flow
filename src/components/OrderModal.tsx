@@ -264,7 +264,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
 
   // ── SAVE ──
   const handleSave = async () => {
-    if (!data) return;
+    if (!data || saving) return; // prevent double-submit
     if (!selectedOutcome) {
       toast({ title: 'Select an outcome', description: 'Please select a call outcome before saving.', variant: 'destructive' });
       return;
@@ -272,6 +272,17 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
     if (selectedOutcome === 'call_again' && !followUpDate) {
       toast({ title: 'Follow-up date required', description: 'Please select a follow-up date for Call Again.', variant: 'destructive' });
       return;
+    }
+    // Validate required fields for confirm status
+    if (['confirmed', 'shipped'].includes(selectedStatus)) {
+      if (!customerName.trim() || !customerPhone.trim()) {
+        toast({ title: 'Name and Phone required', description: 'Please fill in customer name and phone before confirming.', variant: 'destructive' });
+        return;
+      }
+      if (activeItems.length === 0) {
+        toast({ title: 'Products required', description: 'Add at least one product before confirming.', variant: 'destructive' });
+        return;
+      }
     }
 
     setSaving(true);
