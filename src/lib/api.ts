@@ -132,7 +132,12 @@ export const apiAssignLeads = (listId: string, agentId: string, leadIds: string[
   apiFetch(`prediction-lists/${listId}/assign`, { method: 'POST', body: JSON.stringify({ agent_id: agentId, lead_ids: leadIds }) });
 
 // Prediction Leads
-export const apiGetMyLeads = () => apiFetch('prediction-leads/my');
+export const apiGetMyLeads = (params?: { search?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.search) sp.set('search', params.search);
+  const qs = sp.toString();
+  return apiFetch(`prediction-leads/my${qs ? `?${qs}` : ''}`);
+};
 export const apiUpdateLead = (id: string, body: { status?: string; notes?: string; address?: string; city?: string; telephone?: string; product?: string; quantity?: number; price?: number }) =>
   apiFetch(`prediction-leads/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiUnassignLeads = (leadIds: string[]) =>

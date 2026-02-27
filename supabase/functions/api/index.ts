@@ -1813,22 +1813,43 @@ serve(async (req) => {
 
     // GET /api/prediction-leads/my (agent's assigned leads)
     if (req.method === "GET" && path === "prediction-leads/my") {
-      // Admins/managers see all assigned leads; agents see only their own
-      let query = isAdminOrManager
-        ? adminClient
-            .from("prediction_leads")
-            .select("*, prediction_lists(name), prediction_lead_items(*)")
-            .not("assigned_agent_id", "is", null)
-        : supabase
-            .from("prediction_leads")
-            .select("*, prediction_lists(name), prediction_lead_items(*)")
-            .eq("assigned_agent_id", user.id);
+      const search = url.searchParams.get("search");
+      const isGlobalSearch = search && isAgent && !isAdminOrManager;
+
+      // When agent searches, use adminClient for global search
+      let query: any;
+      if (isAdminOrManager) {
+        query = adminClient
+          .from("prediction_leads")
+          .select("*, prediction_lists(name), prediction_lead_items(*)")
+          .not("assigned_agent_id", "is", null);
+      } else if (isGlobalSearch) {
+        // Global search: use adminClient, no agent filter
+        query = adminClient
+          .from("prediction_leads")
+          .select("*, prediction_lists(name), prediction_lead_items(*)");
+      } else {
+        query = supabase
+          .from("prediction_leads")
+          .select("*, prediction_lists(name), prediction_lead_items(*)")
+          .eq("assigned_agent_id", user.id);
+      }
+
+      if (search) {
+        query = query.or(`name.ilike.%${search}%,telephone.ilike.%${search}%`);
+      }
 
       const { data, error } = await query
         .order("updated_at", { ascending: false })
         .limit(3000);
       if (error) return json({ error: sanitizeDbError(error) }, 400);
-      return json(data || []);
+
+      // Add is_owned flag
+      const enriched = (data || []).map((l: any) => ({
+        ...l,
+        is_owned: isAdminOrManager || l.assigned_agent_id === user.id,
+      }));
+      return json(enriched);
     }
 
     // ============================================================
