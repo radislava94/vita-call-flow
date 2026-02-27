@@ -55,7 +55,7 @@ const sections: NavSection[] = [
     label: 'Sales',
     allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'],
     items: [
-      { title: 'Orders', path: '/orders', icon: ShoppingCart, allowedRoles: ['admin', 'manager'] },
+      { title: 'Orders', path: '/orders', icon: ShoppingCart, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
       { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, allowedRoles: ['admin', 'manager'] },
       { title: 'Assigner', path: '/assigner', icon: UserPlus, allowedRoles: ['admin', 'manager'] },
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },

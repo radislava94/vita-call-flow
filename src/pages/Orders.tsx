@@ -83,12 +83,14 @@ function orderToModalData(order: ApiOrder): OrderModalData {
 
 export default function Orders() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
+  const isAgent = !isAdmin;
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<OrderStatus[]>([]);
   const [agentFilter, setAgentFilter] = useState('all');
+  const [myOrdersOnly, setMyOrdersOnly] = useState(isAgent); // agents default to my orders
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [page, setPage] = useState(1);
@@ -102,7 +104,7 @@ export default function Orders() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStatuses, agentFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStatuses, agentFilter, myOrdersOnly, dateFrom, dateTo]);
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
@@ -136,6 +138,10 @@ export default function Orders() {
     if (agentFilter !== 'all') {
       result = result.filter(o => o.assigned_agent_id === agentFilter);
     }
+    // "My Orders" filter – agents always, admins optionally
+    if (myOrdersOnly && user?.id) {
+      result = result.filter(o => o.assigned_agent_id === user.id);
+    }
     if (dateFrom) {
       result = result.filter(o => new Date(o.created_at) >= dateFrom);
     }
@@ -145,15 +151,15 @@ export default function Orders() {
       result = result.filter(o => new Date(o.created_at) <= end);
     }
     return result;
-  }, [orders, selectedStatuses, agentFilter, dateFrom, dateTo]);
+  }, [orders, selectedStatuses, agentFilter, myOrdersOnly, user?.id, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const toggleStatus = (s: OrderStatus) => {
     setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   };
-  const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || agentFilter !== 'all' || dateFrom || dateTo;
+  const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || agentFilter !== 'all' || (myOrdersOnly && isAdmin) || dateFrom || dateTo;
   const clearAllFilters = () => {
-    setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); setDateFrom(undefined); setDateTo(undefined);
+    setSearch(''); setSelectedStatuses([]); setAgentFilter('all'); if (isAdmin) setMyOrdersOnly(false); setDateFrom(undefined); setDateTo(undefined);
   };
 
   const exportCSV = () => {
@@ -220,6 +226,18 @@ export default function Orders() {
                 </PopoverContent>
               </Popover>
             )}
+
+            {/* My Orders toggle */}
+            <Button
+              variant={myOrdersOnly ? 'default' : 'outline'}
+              size="sm"
+              className="h-9 gap-1.5 rounded-lg text-sm font-normal"
+              onClick={() => !isAgent && setMyOrdersOnly(!myOrdersOnly)}
+              disabled={isAgent}
+            >
+              <User className="h-3.5 w-3.5" />
+              My Orders
+            </Button>
 
             <Popover>
               <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal"><CalendarIcon className="h-3.5 w-3.5" />{dateFrom ? format(dateFrom, 'MMM d') : 'From'}</Button></PopoverTrigger>

@@ -40,7 +40,7 @@ const App = () => (
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Dashboard /></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Orders /></ProtectedRoute>} />
+            <Route path="/orders" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><Orders /></ProtectedRoute>} />
             {/* /orders/:id route removed — OrderModal is the single editing UI */}
             <Route path="/users" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><UsersPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
