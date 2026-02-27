@@ -64,7 +64,6 @@ interface AgentPerf {
   total_profit: number;
   net_contribution: number;
   avg_order_value: number;
-  avg_order_value: number;
   revenue_per_lead: number;
   profit_per_lead: number;
 }
