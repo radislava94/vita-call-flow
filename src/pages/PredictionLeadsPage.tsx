@@ -90,6 +90,8 @@ function leadToModalData(lead: LeadRow): OrderModalData {
 
 export default function PredictionLeadsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin || user?.isManager;
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -97,21 +99,27 @@ export default function PredictionLeadsPage() {
 
   // Filter state
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<PredictionLeadStatus[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('all');
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const fetchLeads = () => {
     setLoading(true);
     setError(null);
-    apiGetMyLeads()
+    apiGetMyLeads(debouncedSearch ? { search: debouncedSearch } : undefined)
       .then((data) => setLeads(data || []))
       .catch((err) => setError(err.message || 'Failed to load leads'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchLeads(); }, []);
+  useEffect(() => { fetchLeads(); }, [debouncedSearch]);
 
   const uniqueProducts = useMemo(() => {
     const prods = new Set<string>();
