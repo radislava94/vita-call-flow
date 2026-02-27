@@ -99,6 +99,7 @@ export default function Orders() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [modalOrder, setModalOrder] = useState<ApiOrder | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
