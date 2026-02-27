@@ -138,6 +138,10 @@ export default function Orders() {
     if (agentFilter !== 'all') {
       result = result.filter(o => o.assigned_agent_id === agentFilter);
     }
+    // "My Orders" filter – agents always, admins optionally
+    if (myOrdersOnly && user?.id) {
+      result = result.filter(o => o.assigned_agent_id === user.id);
+    }
     if (dateFrom) {
       result = result.filter(o => new Date(o.created_at) >= dateFrom);
     }
@@ -147,7 +151,7 @@ export default function Orders() {
       result = result.filter(o => new Date(o.created_at) <= end);
     }
     return result;
-  }, [orders, selectedStatuses, agentFilter, dateFrom, dateTo]);
+  }, [orders, selectedStatuses, agentFilter, myOrdersOnly, user?.id, dateFrom, dateTo]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const toggleStatus = (s: OrderStatus) => {
