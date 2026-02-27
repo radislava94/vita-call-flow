@@ -288,18 +288,33 @@ export default function Dashboard() {
 
       {/* === 1. TOP FINANCIAL ROW === */}
       {isAdmin && ceoStats && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
-          <MetricCard title="Revenue" value={fmtCurrency(ceoStats.revenue || 0)} icon={DollarSign}
-            color="bg-[hsl(var(--success))]" subtitle="Confirmed + Delivered + Paid" />
-          <MetricCard title="Paid" value={`${ceoStats.paidCount || 0} / ${fmtCurrency(ceoStats.paidAmount || 0)}`} icon={CheckCircle2}
-            color="bg-primary" subtitle="Paid orders count & total" />
-          <MetricCard title="Outstanding" value={fmtCurrency(ceoStats.outstanding || 0)} icon={Clock}
-            color="bg-[hsl(var(--warning))]" subtitle="Confirmed + Delivered" />
-          <MetricCard title="Profit" value={fmtCurrency(ceoStats.profit || 0)} icon={TrendingUp}
-            color="bg-[hsl(var(--info))]" subtitle="Paid revenue - cost" />
-          <MetricCard title="Total Orders" value={totalOrders} icon={ShoppingCart}
-            trend={orderTrend} color="bg-muted" />
-        </div>
+        <>
+          {/* Operational Status Counts */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-4">
+            <MetricCard title="Confirmed" value={ceoStats.confirmedCount || 0} icon={CheckCircle2}
+              color="bg-[hsl(var(--warning))]" subtitle="Orders with status = Confirmed" />
+            <MetricCard title="Shipped" value={ceoStats.shippedCount || 0} icon={Truck}
+              color="bg-[hsl(var(--info))]" subtitle="Orders with status = Shipped" />
+            <MetricCard title="Paid" value={ceoStats.paidCount || 0} icon={DollarSign}
+              color="bg-[hsl(var(--success))]" subtitle="Orders with status = Paid" />
+            <MetricCard title="Returned" value={ceoStats.returnedCount || 0} icon={TrendingDown}
+              color="bg-destructive" subtitle="Orders with status = Returned" />
+          </div>
+
+          {/* Financial Metrics */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5 mb-6">
+            <MetricCard title="Gross Revenue" value={fmtCurrency(ceoStats.revenue || 0)} icon={DollarSign}
+              color="bg-[hsl(var(--success))]" subtitle="Sum price: Shipped + Paid" />
+            <MetricCard title="Outstanding" value={fmtCurrency(ceoStats.outstanding || 0)} icon={Clock}
+              color="bg-[hsl(var(--warning))]" subtitle="Sum price: Shipped only" />
+            <MetricCard title="Paid Revenue" value={fmtCurrency(ceoStats.paidAmount || 0)} icon={CheckCircle2}
+              color="bg-primary" subtitle="Sum price: Paid only" />
+            <MetricCard title="Returned" value={fmtCurrency(ceoStats.returnedAmount || 0)} icon={TrendingDown}
+              color="bg-destructive" subtitle="Sum price: Returned only" />
+            <MetricCard title="Profit" value={fmtCurrency(ceoStats.profit || 0)} icon={TrendingUp}
+              color="bg-[hsl(var(--info))]" subtitle="Paid revenue − cost snapshot" />
+          </div>
+        </>
       )}
 
       {/* === 6. DAILY SNAPSHOT STRIP === */}

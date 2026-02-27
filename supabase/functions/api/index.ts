@@ -1454,13 +1454,22 @@ serve(async (req) => {
       for (const p of allProducts || []) costMap[p.id] = Number(p.cost_price || 0);
 
       // === 1. FINANCIAL KPIs ===
+      // Status counts
+      const confirmedCount = orders.filter((o: any) => o.status === "confirmed").length;
+      const shippedCount = orders.filter((o: any) => o.status === "shipped").length;
       const paidOrders = orders.filter((o: any) => o.status === "paid");
       const paidCount = paidOrders.length;
       const paidAmount = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+      const returnedCount = orders.filter((o: any) => o.status === "returned").length;
+      const returnedAmount = orders.filter((o: any) => o.status === "returned").reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
-      // Revenue: confirmed + delivered + paid
-      const revenueOrders = orders.filter((o: any) => ["confirmed", "delivered", "paid"].includes(o.status));
+      // Gross Revenue: shipped + paid
+      const revenueOrders = orders.filter((o: any) => ["shipped", "paid"].includes(o.status));
       const revenue = revenueOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // Outstanding: shipped only (not paid, not returned)
+      const outstandingOrders = orders.filter((o: any) => o.status === "shipped");
+      const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // Profit: paid orders only (revenue - cost)
       let totalCost = 0;
@@ -1476,10 +1485,6 @@ serve(async (req) => {
         }
       }
       const profit = paidAmount - totalCost;
-
-      // Outstanding: confirmed + delivered only (exclude paid, returned, cancelled)
-      const outstandingOrders = orders.filter((o: any) => ["confirmed", "delivered"].includes(o.status));
-      const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // === 2. FUNNEL ===
       const taken = orders.filter((o: any) => o.status === "take").length;
@@ -1554,6 +1559,7 @@ serve(async (req) => {
 
       return json({
         revenue, profit, outstanding, totalCost, paidCount, paidAmount,
+        confirmedCount, shippedCount, returnedCount, returnedAmount,
         funnel: { allTaken, confirmed, paid, shipped, returned, pending, conversionRate, confirmationRate, returnRate },
         dailyRevenue,
         agentRankings,
