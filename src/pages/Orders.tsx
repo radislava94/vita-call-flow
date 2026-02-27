@@ -134,7 +134,9 @@ export default function Orders() {
         setOrders(data.orders || []);
         setTotal(data.total || 0);
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.error('Failed to fetch orders:', err);
+      })
       .finally(() => setLoading(false));
   };
 
