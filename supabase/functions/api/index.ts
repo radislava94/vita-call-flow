@@ -1374,10 +1374,6 @@ serve(async (req) => {
           const day = l.created_at.substring(0, 10);
           if (!dailyBreakdown[day]) dailyBreakdown[day] = { leads: 0, deals_won: 0, deals_lost: 0, orders: 0, calls: 0 };
           dailyBreakdown[day].leads++;
-          if (l.status === "confirmed") {
-            dailyBreakdown[day].deals_won++;
-            dailyBreakdown[day].orders++;
-          }
         }
         for (const c of calls) {
           const day = c.created_at.substring(0, 10);
