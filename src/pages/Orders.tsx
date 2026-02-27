@@ -116,9 +116,13 @@ export default function Orders() {
 
   const fetchOrders = () => {
     setLoading(true);
+    const effectiveAgentId = myOrdersOnly && user?.id ? user.id : (agentFilter !== 'all' ? agentFilter : undefined);
     apiGetOrders({
       status: selectedStatuses.length === 1 ? selectedStatuses[0] : undefined,
       search: debouncedSearch || undefined,
+      agent_id: effectiveAgentId,
+      from: dateFrom ? format(dateFrom, "yyyy-MM-dd'T'00:00:00") : undefined,
+      to: dateTo ? format(dateTo, "yyyy-MM-dd'T'23:59:59") : undefined,
       page,
       limit: PAGE_SIZE,
     })
@@ -130,30 +134,16 @@ export default function Orders() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchOrders(); }, [page, selectedStatuses, debouncedSearch]);
+  useEffect(() => { fetchOrders(); }, [page, selectedStatuses, debouncedSearch, agentFilter, myOrdersOnly, dateFrom, dateTo]);
 
   const filteredOrders = useMemo(() => {
     let result = orders;
+    // Multi-status client-side filter (API only supports single status)
     if (selectedStatuses.length > 1) {
       result = result.filter(o => selectedStatuses.includes(o.status));
     }
-    if (agentFilter !== 'all') {
-      result = result.filter(o => o.assigned_agent_id === agentFilter);
-    }
-    // "My Orders" filter – agents always, admins optionally
-    if (myOrdersOnly && user?.id) {
-      result = result.filter(o => o.assigned_agent_id === user.id);
-    }
-    if (dateFrom) {
-      result = result.filter(o => new Date(o.created_at) >= dateFrom);
-    }
-    if (dateTo) {
-      const end = new Date(dateTo);
-      end.setHours(23, 59, 59, 999);
-      result = result.filter(o => new Date(o.created_at) <= end);
-    }
     return result;
-  }, [orders, selectedStatuses, agentFilter, myOrdersOnly, user?.id, dateFrom, dateTo]);
+  }, [orders, selectedStatuses]);
 
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const toggleStatus = (s: OrderStatus) => {

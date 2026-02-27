@@ -592,6 +592,10 @@ serve(async (req) => {
     if (req.method === "GET" && path === "orders") {
       const status = url.searchParams.get("status");
       const search = url.searchParams.get("search");
+      const agentId = url.searchParams.get("agent_id");
+      const source = url.searchParams.get("source");
+      const from = url.searchParams.get("from");
+      const to = url.searchParams.get("to");
       const page = parseInt(url.searchParams.get("page") || "1");
       const limit = parseInt(url.searchParams.get("limit") || "20");
 
@@ -602,6 +606,10 @@ serve(async (req) => {
         .range((page - 1) * limit, page * limit - 1);
 
       if (status && status !== "all") query = query.eq("status", status);
+      if (agentId && agentId !== "all") query = query.eq("assigned_agent_id", agentId);
+      if (source && source !== "all") query = query.eq("source_type", source);
+      if (from) query = query.gte("created_at", from);
+      if (to) query = query.lte("created_at", to);
       if (search) query = query.or(`display_id.ilike.%${search}%,customer_name.ilike.%${search}%,product_name.ilike.%${search}%`);
 
       const { data: orders, count, error } = await query;
