@@ -101,6 +101,7 @@ export default function AssignedPage() {
         }}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
+        readOnly={!!(modalOrder && !(modalOrder as any).is_owned)}
       />
     </AppLayout>
   );

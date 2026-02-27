@@ -116,7 +116,11 @@ export default function Orders() {
 
   const fetchOrders = () => {
     setLoading(true);
-    const effectiveAgentId = myOrdersOnly && user?.id ? user.id : (agentFilter !== 'all' ? agentFilter : undefined);
+    // When agent is searching, don't restrict by agent_id (global search)
+    const isSearching = !!debouncedSearch;
+    const effectiveAgentId = isSearching && isAgent
+      ? undefined
+      : (myOrdersOnly && user?.id ? user.id : (agentFilter !== 'all' ? agentFilter : undefined));
     apiGetOrders({
       status: selectedStatuses.length === 1 ? selectedStatuses[0] : undefined,
       search: debouncedSearch || undefined,
@@ -351,6 +355,7 @@ export default function Orders() {
         }}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
+        readOnly={!!(modalOrder && !(modalOrder as any).is_owned)}
       />
 
       {/* Create Order Modal */}

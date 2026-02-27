@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 
 interface LeadItem {
@@ -89,6 +90,8 @@ function leadToModalData(lead: LeadRow): OrderModalData {
 
 export default function PredictionLeadsPage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.isAdmin || user?.isManager;
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,21 +99,27 @@ export default function PredictionLeadsPage() {
 
   // Filter state
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<PredictionLeadStatus[]>([]);
   const [selectedProduct, setSelectedProduct] = useState('all');
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
 
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
   const fetchLeads = () => {
     setLoading(true);
     setError(null);
-    apiGetMyLeads()
+    apiGetMyLeads(debouncedSearch ? { search: debouncedSearch } : undefined)
       .then((data) => setLeads(data || []))
       .catch((err) => setError(err.message || 'Failed to load leads'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { fetchLeads(); }, []);
+  useEffect(() => { fetchLeads(); }, [debouncedSearch]);
 
   const uniqueProducts = useMemo(() => {
     const prods = new Set<string>();
@@ -120,7 +129,8 @@ export default function PredictionLeadsPage() {
 
   const filteredLeads = useMemo(() => {
     let result = leads;
-    if (search.trim()) {
+    // Only client-side filter by search if not doing server-side search
+    if (search.trim() && !debouncedSearch) {
       const s = search.toLowerCase();
       result = result.filter(l =>
         l.name.toLowerCase().includes(s) ||
@@ -143,7 +153,7 @@ export default function PredictionLeadsPage() {
       result = result.filter(l => l.created_at && new Date(l.created_at) <= end);
     }
     return result;
-  }, [leads, search, selectedStatuses, selectedProduct, dateFrom, dateTo]);
+  }, [leads, search, debouncedSearch, selectedStatuses, selectedProduct, dateFrom, dateTo]);
 
   const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || selectedProduct !== 'all' || dateFrom || dateTo;
 
@@ -356,7 +366,7 @@ export default function PredictionLeadsPage() {
               const hasItems = items.length > 0;
               const displayTotal = getLeadDisplayTotal(lead);
 
-              return (
+                return (
                 <tr key={lead.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border', STATUS_CHIP_COLORS[lead.status])}>
@@ -380,9 +390,9 @@ export default function PredictionLeadsPage() {
                         onClick={() => setModalLead(lead)}
                       >
                         <Phone className="h-3 w-3" />
-                        Open
+                        {(lead as any).is_owned === false ? 'View' : 'Open'}
                       </Button>
-                      {lead.status === 'not_contacted' && (
+                      {(lead as any).is_owned !== false && lead.status === 'not_contacted' && (
                         <Button
                           size="sm"
                           variant="outline"
@@ -429,6 +439,7 @@ export default function PredictionLeadsPage() {
         }}
         data={modalLead ? leadToModalData(modalLead) : null}
         contextType="prediction_lead"
+        readOnly={!!(modalLead && (modalLead as any).is_owned === false)}
       />
     </AppLayout>
   );

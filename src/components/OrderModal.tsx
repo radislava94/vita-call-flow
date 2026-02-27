@@ -87,18 +87,20 @@ interface OrderModalProps {
   onClose: (saved?: boolean) => void;
   data: OrderModalData | null;
   contextType: OrderModalContextType;
+  readOnly?: boolean;
 }
 
 function calcRowTotal(qty: number, price: number): number {
   return Math.round(Math.max(1, qty) * Math.max(0, price) * 100) / 100;
 }
 
-export function OrderModal({ open, onClose, data, contextType }: OrderModalProps) {
+export function OrderModal({ open, onClose, data, contextType, readOnly = false }: OrderModalProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.isAdmin || user?.isManager;
   const isLead = contextType === 'prediction_lead';
   const statusOptions = isLead ? LEAD_STATUS_OPTIONS : ORDER_STATUS_OPTIONS;
+  const isEditable = !readOnly;
 
   // Script
   const [script, setScript] = useState('');
@@ -385,8 +387,9 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="font-semibold text-card-foreground text-sm truncate">
-                Order Editor {data.displayId ? `— ${data.displayId}` : ''}
-              </h2>
+                 Order Editor {data.displayId ? `— ${data.displayId}` : ''}
+                 {readOnly && <span className="text-xs font-normal text-muted-foreground ml-2">(View Only)</span>}
+               </h2>
               <a href={`tel:${customerPhone}`} className="text-xs font-mono text-primary hover:underline">
                 {customerPhone}
               </a>
@@ -401,24 +404,24 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Name</label>
-                  <Input value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-8 text-sm" />
+                  <Input value={customerName} onChange={e => setCustomerName(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Phone</label>
-                  <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-8 text-sm font-mono" />
+                  <Input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} className="h-8 text-sm font-mono" disabled={!isEditable} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Address</label>
-                  <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="h-8 text-sm" />
+                  <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">City</label>
-                  <Input value={customerCity} onChange={e => setCustomerCity(e.target.value)} className="h-8 text-sm" />
+                  <Input value={customerCity} onChange={e => setCustomerCity(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                 </div>
                 {!isLead && (
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Postal Code</label>
-                    <Input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="h-8 text-sm" />
+                    <Input value={postalCode} onChange={e => setPostalCode(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                   </div>
                 )}
               </div>
@@ -431,12 +434,14 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                 {OUTCOME_CONFIG.map(({ value, label, className }) => (
                   <button
                     key={value}
-                    onClick={() => setSelectedOutcome(value)}
+                    onClick={() => isEditable && setSelectedOutcome(value)}
+                    disabled={!isEditable}
                     className={cn(
                       'rounded-lg border-2 px-2 py-2 text-xs font-medium transition-all',
                       selectedOutcome === value
                         ? className + ' ring-2 ring-primary/40 shadow-sm'
-                        : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+                        : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground',
+                      !isEditable && 'opacity-50 cursor-not-allowed'
                     )}
                   >
                     {label}
@@ -472,7 +477,7 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
             {/* C) Status Dropdown */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Status</h3>
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <Select value={selectedStatus} onValueChange={setSelectedStatus} disabled={!isEditable}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
@@ -511,7 +516,8 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                       <div className="col-span-4">
                         <Select
                           value={item.product_id || ''}
-                          onValueChange={(val) => changeItemProduct(idx, val)}
+                          onValueChange={(val) => isEditable && changeItemProduct(idx, val)}
+                          disabled={!isEditable}
                         >
                           <SelectTrigger className="h-7 text-xs">
                             <SelectValue placeholder={item.product_name || 'Select'} />
@@ -531,6 +537,7 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                           value={item.price_per_unit}
                           onChange={e => updateItem(idx, 'price_per_unit', Math.max(0, parseFloat(e.target.value) || 0))}
                           className="h-7 text-xs text-right tabular-nums"
+                          disabled={!isEditable}
                         />
                       </div>
                       <div className="col-span-2">
@@ -540,33 +547,38 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                           value={item.quantity}
                           onChange={e => updateItem(idx, 'quantity', Math.max(1, parseInt(e.target.value) || 1))}
                           className="h-7 text-xs text-center"
+                          disabled={!isEditable}
                         />
                       </div>
                       <div className="col-span-3 text-right font-mono text-xs tabular-nums font-medium">
                         {calcRowTotal(item.quantity, item.price_per_unit).toFixed(2)}
                       </div>
                       <div className="col-span-1 flex justify-center">
-                        <button
-                          onClick={() => removeItem(idx)}
-                          className="p-0.5 text-muted-foreground hover:text-destructive transition-colors rounded"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {isEditable && (
+                          <button
+                            onClick={() => removeItem(idx)}
+                            className="p-0.5 text-muted-foreground hover:text-destructive transition-colors rounded"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
                 })}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addProductRow}
-                  disabled={loadingProducts || productsList.length === 0}
-                  className="w-full gap-1.5 text-xs border-dashed h-7"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add Product
-                </Button>
+                {isEditable && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addProductRow}
+                    disabled={loadingProducts || productsList.length === 0}
+                    className="w-full gap-1.5 text-xs border-dashed h-7"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Product
+                  </Button>
+                )}
               </div>
             </section>
 
@@ -614,6 +626,7 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
                 onChange={e => setCallNotes(e.target.value)}
                 placeholder="Add notes..."
                 className="min-h-[60px] text-sm"
+                disabled={!isEditable}
               />
             </section>
 
@@ -676,16 +689,20 @@ export function OrderModal({ open, onClose, data, contextType }: OrderModalProps
 
           {/* Footer */}
           <div className="border-t px-5 py-3 flex items-center justify-end gap-2 bg-card rounded-b-xl">
-            <Button variant="outline" size="sm" onClick={() => onClose()}>Cancel</Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || !selectedOutcome}
-              className="gap-1.5"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save
+            <Button variant="outline" size="sm" onClick={() => onClose()}>
+              {readOnly ? 'Close' : 'Cancel'}
             </Button>
+            {isEditable && (
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || !selectedOutcome}
+                className="gap-1.5"
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Save
+              </Button>
+            )}
           </div>
         </div>
       </div>
