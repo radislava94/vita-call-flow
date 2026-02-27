@@ -162,31 +162,28 @@ export default function Orders() {
 
   const exportXLSX = async () => {
     const XLSX = await import('xlsx');
-    const confirmedOrders = filteredOrders.filter(o => o.status === 'confirmed');
-    const rows = confirmedOrders.map(o => {
+    const rows = filteredOrders.map(o => {
       const items = o.order_items && o.order_items.length > 0
         ? o.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
         : `${o.product_name} x${o.quantity || 1}`;
       return {
         'ORDER ID': o.display_id,
+        'STATUS': o.status,
         'RECEIVER': o.customer_name || '',
         'PHONE': o.customer_phone || '',
         'CITY': o.customer_city || '',
         'ADDRESS': o.customer_address || '',
         'COD AMOUNT': Number(o.price),
         'PRODUCT': items,
-        'COMMENT': o.notes || '',
-        'OPEN PACKAGE': 0,
-        'PRIORITY': 0,
-        'WEIGHT': 1,
-        'SHIPPING TYPE': 4,
-        'NUMBER OF PACKAGES': 1,
+        'ASSIGNEE': o.assigned_agent_name || '',
+        'SOURCE': o.source_type || 'manual',
+        'DATE': new Date(o.created_at).toLocaleDateString(),
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Orders');
-    XLSX.writeFile(wb, `confirmed_orders_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
+    XLSX.writeFile(wb, `orders_export_${format(new Date(), 'yyyy-MM-dd')}.xlsx`);
   };
 
   return (
