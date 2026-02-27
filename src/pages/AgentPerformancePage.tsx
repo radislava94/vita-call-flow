@@ -321,16 +321,16 @@ export default function AgentPerformancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
-            <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${canSeeFinance ? 'lg:grid-cols-9' : 'lg:grid-cols-4'} gap-3`}>
+            {canSeeFinance && <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />}
             <SummaryCard label="Paid Revenue" value={fmt(totals.paidRevenue)} accent desc="Paid only" />
-            <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />
-            <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />
-            <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />
-            <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />
+            {canSeeFinance && <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />}
+            {canSeeFinance && <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />}
+            {canSeeFinance && <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />}
+            {canSeeFinance && <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />}
             <SummaryCard label="Avg Order" value={fmt(totals.aov)} desc="Paid Rev / Paid" />
-            <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />
-            <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />
+            {canSeeFinance && <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />}
+            {canSeeFinance && <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />}
           </div>
         </CardContent>
       </Card>
