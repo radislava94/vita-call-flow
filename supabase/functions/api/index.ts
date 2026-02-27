@@ -14,6 +14,13 @@ const createUserSchema = z.object({
   role: z.string().optional(),
 });
 
+const createOrderItemSchema = z.object({
+  product_id: z.string().uuid().nullable().optional(),
+  product_name: z.string().trim().min(1).max(200),
+  quantity: z.number().int().min(1).max(100000),
+  price_per_unit: z.number().min(0).max(10000000),
+});
+
 const createOrderSchema = z.object({
   product_id: z.string().uuid().nullable().optional(),
   product_name: z.string().trim().min(1, "Product name is required").max(200),
@@ -25,6 +32,9 @@ const createOrderSchema = z.object({
   birthday: z.string().nullable().optional().default(null),
   price: z.number().min(0).max(10000000).optional().default(0),
   quantity: z.number().int().min(1).max(100000).optional().default(1),
+  status: z.enum(["confirmed", "call_again"]).optional(),
+  items: z.array(createOrderItemSchema).optional(),
+  notes: z.string().max(2000).optional(),
 });
 
 const updateCustomerSchema = z.object({
