@@ -567,16 +567,18 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                   );
                 })}
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={addProductRow}
-                  disabled={loadingProducts || productsList.length === 0}
-                  className="w-full gap-1.5 text-xs border-dashed h-7"
-                >
-                  <Plus className="h-3 w-3" />
-                  Add Product
-                </Button>
+                {isEditable && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={addProductRow}
+                    disabled={loadingProducts || productsList.length === 0}
+                    className="w-full gap-1.5 text-xs border-dashed h-7"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Add Product
+                  </Button>
+                )}
               </div>
             </section>
 
