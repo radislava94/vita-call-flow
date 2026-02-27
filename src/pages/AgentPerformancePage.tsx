@@ -174,12 +174,13 @@ export default function AgentPerformancePage() {
     const outstanding = s('outstanding_revenue');
     const returnedValue = s('returned_value');
     const profit = s('total_profit');
+    const netContribution = s('net_contribution');
     const convRate = leads > 0 ? Math.round((confirmed / leads) * 10000) / 100 : 0;
     const shipRate = confirmed > 0 ? Math.round((shipped / confirmed) * 10000) / 100 : 0;
     const collectRate = shipped > 0 ? Math.round((paid / shipped) * 10000) / 100 : 0;
     const retRate = shipped > 0 ? Math.round((returned / shipped) * 10000) / 100 : 0;
     const aov = paid > 0 ? Math.round((paidRevenue / paid) * 100) / 100 : 0;
-    return { leads, confirmed, shipped, paid, returned, cancelled, grossRevenue, paidRevenue, outstanding, returnedValue, profit, convRate, shipRate, collectRate, retRate, aov };
+    return { leads, confirmed, shipped, paid, returned, cancelled, grossRevenue, paidRevenue, outstanding, returnedValue, profit, netContribution, convRate, shipRate, collectRate, retRate, aov };
   }, [data]);
 
   return (
