@@ -18,6 +18,7 @@ import { apiGetOrders, apiGetAgents } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
+import { CreateOrderModal } from '@/components/CreateOrderModal';
 
 const PAGE_SIZE = 20;
 
