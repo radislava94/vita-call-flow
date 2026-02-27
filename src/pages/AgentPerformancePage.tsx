@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Download, Search, TrendingUp, DollarSign, Users, Target, BarChart3, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiGetAgents } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
 
