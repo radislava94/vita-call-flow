@@ -344,6 +344,15 @@ export default function Orders() {
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
       />
+
+      {/* Create Order Modal */}
+      <CreateOrderModal
+        open={showCreateModal}
+        onClose={(created) => {
+          setShowCreateModal(false);
+          if (created) fetchOrders();
+        }}
+      />
     </AppLayout>
   );
 }
