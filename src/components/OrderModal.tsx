@@ -516,7 +516,8 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                       <div className="col-span-4">
                         <Select
                           value={item.product_id || ''}
-                          onValueChange={(val) => changeItemProduct(idx, val)}
+                          onValueChange={(val) => isEditable && changeItemProduct(idx, val)}
+                          disabled={!isEditable}
                         >
                           <SelectTrigger className="h-7 text-xs">
                             <SelectValue placeholder={item.product_name || 'Select'} />
