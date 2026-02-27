@@ -439,6 +439,7 @@ export default function PredictionLeadsPage() {
         }}
         data={modalLead ? leadToModalData(modalLead) : null}
         contextType="prediction_lead"
+        readOnly={!!(modalLead && (modalLead as any).is_owned === false)}
       />
     </AppLayout>
   );
