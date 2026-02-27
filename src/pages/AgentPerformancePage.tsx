@@ -318,7 +318,7 @@ export default function AgentPerformancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
             <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />
             <SummaryCard label="Paid Revenue" value={fmt(totals.paidRevenue)} accent desc="Paid only" />
             <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />
