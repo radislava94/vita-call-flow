@@ -104,7 +104,7 @@ export default function Orders() {
     return () => clearTimeout(t);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStatuses, agentFilter, dateFrom, dateTo]);
+  useEffect(() => { setPage(1); }, [debouncedSearch, selectedStatuses, agentFilter, myOrdersOnly, dateFrom, dateTo]);
 
   const { data: agentsData } = useQuery({
     queryKey: ['agents'],
