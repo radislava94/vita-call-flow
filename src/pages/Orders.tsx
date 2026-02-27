@@ -83,12 +83,14 @@ function orderToModalData(order: ApiOrder): OrderModalData {
 
 export default function Orders() {
   const { user } = useAuth();
-  const isAdmin = user?.isAdmin;
+  const isAdmin = user?.isAdmin || user?.isManager;
+  const isAgent = !isAdmin;
 
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedStatuses, setSelectedStatuses] = useState<OrderStatus[]>([]);
   const [agentFilter, setAgentFilter] = useState('all');
+  const [myOrdersOnly, setMyOrdersOnly] = useState(isAgent); // agents default to my orders
   const [dateFrom, setDateFrom] = useState<Date | undefined>();
   const [dateTo, setDateTo] = useState<Date | undefined>();
   const [page, setPage] = useState(1);
