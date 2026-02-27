@@ -2183,6 +2183,11 @@ serve(async (req) => {
       const from = url.searchParams.get("from");
       const to = url.searchParams.get("to");
       const search = url.searchParams.get("search")?.toLowerCase();
+      const sourceFilter = url.searchParams.get("source"); // prediction, inbound_lead, manual
+      const statusFilter = url.searchParams.get("status");
+      const includeCancelled = url.searchParams.get("include_cancelled") === "true";
+      const agentIdFilter = url.searchParams.get("agent_id");
+      const showZero = url.searchParams.get("show_zero") === "true";
 
       // Get all agents
       const { data: agents } = await adminClient
@@ -2200,12 +2205,18 @@ serve(async (req) => {
       if (search) {
         agentProfiles = agentProfiles.filter((a: any) => a.full_name.toLowerCase().includes(search) || a.email.toLowerCase().includes(search));
       }
+      if (agentIdFilter) {
+        agentProfiles = agentProfiles.filter((a: any) => a.user_id === agentIdFilter);
+      }
 
-      // Get ALL orders for these agents in date range
-      const statusesToFetch = ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid", "cancelled"];
-      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, price, quantity, product_id, created_at, order_items(price_per_unit, quantity, total_price, product_id)").in("status", statusesToFetch);
+      // Fetch orders — include cancelled only if toggled
+      const statusesToFetch = ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"];
+      if (includeCancelled) statusesToFetch.push("cancelled");
+      let ordersQuery = adminClient.from("orders").select("id, status, assigned_agent_id, price, quantity, product_id, created_at, source_type, order_items(price_per_unit, quantity, total_price, product_id)").in("status", statusesToFetch);
       if (from) ordersQuery = ordersQuery.gte("created_at", from);
       if (to) ordersQuery = ordersQuery.lte("created_at", to);
+      if (sourceFilter) ordersQuery = ordersQuery.eq("source_type", sourceFilter);
+      if (statusFilter) ordersQuery = ordersQuery.eq("status", statusFilter);
       const { data: allOrders } = await ordersQuery;
 
       // Get cost prices for profit calculation
@@ -2213,8 +2224,23 @@ serve(async (req) => {
       const costMap: Record<string, number> = {};
       for (const p of allProducts || []) costMap[p.id] = Number(p.cost_price || 0);
 
-      const results = agentProfiles.map((agent: any) => {
-        const agentOrders = (allOrders || []).filter((o: any) => o.assigned_agent_id === agent.user_id);
+      // Build per-agent metrics — include agent if they have ANY order in range (assigned_agent_id)
+      const agentOrderMap: Record<string, any[]> = {};
+      for (const o of allOrders || []) {
+        const aid = o.assigned_agent_id;
+        if (!aid) continue;
+        if (!agentOrderMap[aid]) agentOrderMap[aid] = [];
+        agentOrderMap[aid].push(o);
+      }
+
+      // Determine which agents to include: those with activity OR all if showZero
+      const activeAgentIds = new Set(Object.keys(agentOrderMap));
+      const filteredProfiles = showZero
+        ? agentProfiles
+        : agentProfiles.filter((a: any) => activeAgentIds.has(a.user_id));
+
+      const results = filteredProfiles.map((agent: any) => {
+        const agentOrders = agentOrderMap[agent.user_id] || [];
 
         const leadsAssigned = agentOrders.length;
         const confirmedOrders = agentOrders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status));
@@ -2268,19 +2294,16 @@ serve(async (req) => {
           user_id: agent.user_id,
           full_name: agent.full_name,
           email: agent.email,
-          // Activity
           leads_assigned: leadsAssigned,
           total_confirmed: confirmedCount,
           total_shipped: shippedCount,
           total_paid: paidCount,
           total_returned: returnedOrders.length,
           total_cancelled: cancelledOrders.length,
-          // Quality
           conversion_rate: conversionRate,
           shipment_rate: shipmentRate,
           collection_rate: collectionRate,
           return_rate: returnRate,
-          // Financial
           gross_revenue: grossRevenue,
           paid_revenue: paidRevenue,
           outstanding_revenue: outstandingRevenue,
@@ -2292,7 +2315,6 @@ serve(async (req) => {
         };
       });
 
-      // Sort by paid_revenue descending
       results.sort((a: any, b: any) => b.paid_revenue - a.paid_revenue);
 
       return json(results);
