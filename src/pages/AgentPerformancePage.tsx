@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, Download, Search, TrendingUp, DollarSign, Users, Target, BarChart3, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiGetAgents } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
 
@@ -98,6 +99,8 @@ function exportCSV(data: AgentPerf[]) {
 
 export default function AgentPerformancePage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canSeeFinance = user?.isAdmin || user?.isManager;
   const [data, setData] = useState<AgentPerf[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterPreset>('month');
@@ -318,16 +321,16 @@ export default function AgentPerformancePage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-9 gap-3">
-            <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${canSeeFinance ? 'lg:grid-cols-9' : 'lg:grid-cols-4'} gap-3`}>
+            {canSeeFinance && <SummaryCard label="Gross Revenue" value={fmt(totals.grossRevenue)} accent desc="Shipped + Paid" />}
             <SummaryCard label="Paid Revenue" value={fmt(totals.paidRevenue)} accent desc="Paid only" />
-            <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />
-            <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />
-            <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />
-            <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />
+            {canSeeFinance && <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />}
+            {canSeeFinance && <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />}
+            {canSeeFinance && <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />}
+            {canSeeFinance && <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />}
             <SummaryCard label="Avg Order" value={fmt(totals.aov)} desc="Paid Rev / Paid" />
-            <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />
-            <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />
+            {canSeeFinance && <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />}
+            {canSeeFinance && <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />}
           </div>
         </CardContent>
       </Card>
@@ -345,22 +348,22 @@ export default function AgentPerformancePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
-                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Leads</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conf.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ship.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Coll%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
-                </tr>
+                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
+                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Leads</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conf.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ship.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Coll%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>}
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>}
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>}
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
+                 </tr>
               </thead>
               <tbody>
                 {data.map((a, i) => (
@@ -392,9 +395,9 @@ export default function AgentPerformancePage() {
                       <RateBadge value={a.return_rate ?? 0} thresholds={[15, 5]} invert />
                     </td>
                     <td className="px-3 py-3 text-right font-semibold text-primary">{fmt(a.paid_revenue)}</td>
-                    <td className="px-3 py-3 text-right">{fmt(a.outstanding_revenue)}</td>
-                    <td className="px-3 py-3 text-right font-semibold">{fmt(a.total_profit)}</td>
-                    <td className={`px-3 py-3 text-right font-semibold ${(a.net_contribution ?? 0) < 0 ? 'text-destructive' : 'text-primary'}`}>{fmt(a.net_contribution)}</td>
+                    {canSeeFinance && <td className="px-3 py-3 text-right">{fmt(a.outstanding_revenue)}</td>}
+                    {canSeeFinance && <td className="px-3 py-3 text-right font-semibold">{fmt(a.total_profit)}</td>}
+                    {canSeeFinance && <td className={`px-3 py-3 text-right font-semibold ${(a.net_contribution ?? 0) < 0 ? 'text-destructive' : 'text-primary'}`}>{fmt(a.net_contribution)}</td>}
                     <td className="px-3 py-3 text-right">{fmt(a.avg_order_value)}</td>
                   </tr>
                 ))}
