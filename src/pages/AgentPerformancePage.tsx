@@ -62,7 +62,7 @@ function getDateRange(preset: FilterPreset): { from: string; to: string } | null
   return null;
 }
 
-const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : n.toFixed(2);
+const fmt = (n: number | undefined | null) => { const v = n ?? 0; return v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(2); };
 
 function exportCSV(data: AgentPerf[]) {
   const header = 'Agent,Leads,Confirmed,Shipped,Paid,Returned,Cancelled,Conv%,Ship%,Collect%,Ret%,Gross Rev,Paid Rev,Outstanding,Returned Val,Profit,AOV,Rev/Lead,Profit/Lead';
