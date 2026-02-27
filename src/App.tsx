@@ -25,6 +25,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AdsPanelPage from "./pages/AdsPanelPage";
 import InboundLeadsPage from "./pages/InboundLeadsPage";
 import WebhookManagementPage from "./pages/WebhookManagementPage";
+import SearchPredictionPage from "./pages/SearchPredictionPage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
