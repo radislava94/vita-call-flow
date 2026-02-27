@@ -23,6 +23,7 @@ import {
   Inbox,
   Webhook,
   UserPlus,
+  SearchIcon,
 } from 'lucide-react';
 import {
   Tooltip,
@@ -61,6 +62,7 @@ const sections: NavSection[] = [
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
       { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager', 'prediction_agent'] },
       { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager'] },
+      { title: 'Search Prediction', path: '/search-prediction', icon: SearchIcon, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
     ],
   },
   {

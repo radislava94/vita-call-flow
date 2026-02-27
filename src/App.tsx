@@ -25,6 +25,7 @@ import SettingsPage from "./pages/SettingsPage";
 import AdsPanelPage from "./pages/AdsPanelPage";
 import InboundLeadsPage from "./pages/InboundLeadsPage";
 import WebhookManagementPage from "./pages/WebhookManagementPage";
+import SearchPredictionPage from "./pages/SearchPredictionPage";
 import LoginPage from "./pages/LoginPage";
 import NotFound from "./pages/NotFound";
 
@@ -59,6 +60,7 @@ const App = () => (
             <Route path="/ads" element={<ProtectedRoute allowedRoles={['admin', 'ads_admin']}><AdsPanelPage /></ProtectedRoute>} />
             <Route path="/inbound-leads" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><InboundLeadsPage /></ProtectedRoute>} />
             <Route path="/webhooks" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><WebhookManagementPage /></ProtectedRoute>} />
+            <Route path="/search-prediction" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><SearchPredictionPage /></ProtectedRoute>} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
