@@ -358,6 +358,7 @@ export default function AgentPerformancePage() {
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>
+                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
                 </tr>
               </thead>
