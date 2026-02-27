@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 
 interface LeadItem {
