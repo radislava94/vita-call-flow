@@ -554,12 +554,14 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                         {calcRowTotal(item.quantity, item.price_per_unit).toFixed(2)}
                       </div>
                       <div className="col-span-1 flex justify-center">
-                        <button
-                          onClick={() => removeItem(idx)}
-                          className="p-0.5 text-muted-foreground hover:text-destructive transition-colors rounded"
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </button>
+                        {isEditable && (
+                          <button
+                            onClick={() => removeItem(idx)}
+                            className="p-0.5 text-muted-foreground hover:text-destructive transition-colors rounded"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
