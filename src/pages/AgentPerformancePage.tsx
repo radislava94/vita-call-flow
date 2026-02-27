@@ -1,20 +1,36 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Download, Search, TrendingUp, Package, DollarSign, CheckCircle, Undo2, XCircle, Percent, Truck, Users, Target, BarChart3 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Loader2, Download, Search, TrendingUp, DollarSign, Users, Target, BarChart3, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { apiGetAgents } from '@/lib/api';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
 
-async function fetchPerformance(params: { from?: string; to?: string; search?: string }) {
+interface FetchParams {
+  from?: string; to?: string; search?: string;
+  source?: string; status?: string; agent_id?: string;
+  include_cancelled?: boolean; show_zero?: boolean;
+}
+
+async function fetchPerformance(params: FetchParams) {
   const { supabase } = await import('@/integrations/supabase/client');
   const { data: { session } } = await supabase.auth.getSession();
   const sp = new URLSearchParams();
   if (params.from) sp.set('from', params.from);
   if (params.to) sp.set('to', params.to);
   if (params.search) sp.set('search', params.search);
+  if (params.source) sp.set('source', params.source);
+  if (params.status) sp.set('status', params.status);
+  if (params.agent_id) sp.set('agent_id', params.agent_id);
+  if (params.include_cancelled) sp.set('include_cancelled', 'true');
+  if (params.show_zero) sp.set('show_zero', 'true');
   const res = await fetch(`${API_BASE}/agent-performance?${sp.toString()}`, {
     headers: {
       'Content-Type': 'application/json',
@@ -67,7 +83,7 @@ const fmt = (n: number | undefined | null) => { const v = n ?? 0; return v >= 10
 function exportCSV(data: AgentPerf[]) {
   const header = 'Agent,Leads,Confirmed,Shipped,Paid,Returned,Cancelled,Conv%,Ship%,Collect%,Ret%,Gross Rev,Paid Rev,Outstanding,Returned Val,Profit,AOV,Rev/Lead,Profit/Lead';
   const rows = data.map(a =>
-    `"${a.full_name}",${a.leads_assigned},${a.total_confirmed},${a.total_shipped},${a.total_paid},${a.total_returned},${a.total_cancelled},${a.conversion_rate},${a.shipment_rate},${a.collection_rate},${a.return_rate},${a.gross_revenue.toFixed(2)},${a.paid_revenue.toFixed(2)},${a.outstanding_revenue.toFixed(2)},${a.returned_value.toFixed(2)},${a.total_profit.toFixed(2)},${a.avg_order_value.toFixed(2)},${a.revenue_per_lead.toFixed(2)},${a.profit_per_lead.toFixed(2)}`
+    `"${a.full_name}",${a.leads_assigned},${a.total_confirmed},${a.total_shipped},${a.total_paid},${a.total_returned},${a.total_cancelled},${a.conversion_rate},${a.shipment_rate},${a.collection_rate},${a.return_rate},${(a.gross_revenue ?? 0).toFixed(2)},${(a.paid_revenue ?? 0).toFixed(2)},${(a.outstanding_revenue ?? 0).toFixed(2)},${(a.returned_value ?? 0).toFixed(2)},${(a.total_profit ?? 0).toFixed(2)},${(a.avg_order_value ?? 0).toFixed(2)},${(a.revenue_per_lead ?? 0).toFixed(2)},${(a.profit_per_lead ?? 0).toFixed(2)}`
   );
   const csv = [header, ...rows].join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
@@ -87,38 +103,76 @@ export default function AgentPerformancePage() {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [search, setSearch] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [agentFilter, setAgentFilter] = useState('all');
+  const [includeCancelled, setIncludeCancelled] = useState(false);
+  const [showZero, setShowZero] = useState(false);
 
-  const loadData = (preset: FilterPreset, cFrom?: string, cTo?: string) => {
-    setLoading(true);
+  const { data: agents = [] } = useQuery<{ user_id: string; full_name: string }[]>({
+    queryKey: ['agents'],
+    queryFn: apiGetAgents,
+  });
+
+  const buildParams = (preset: FilterPreset, cFrom?: string, cTo?: string): FetchParams => {
     let range = getDateRange(preset);
     if (preset === 'custom' && cFrom && cTo) range = { from: cFrom, to: cTo };
-    fetchPerformance({ from: range?.from, to: range?.to, search: search || undefined })
+    return {
+      from: range?.from,
+      to: range?.to,
+      search: search || undefined,
+      source: sourceFilter !== 'all' ? sourceFilter : undefined,
+      status: statusFilter !== 'all' ? statusFilter : undefined,
+      agent_id: agentFilter !== 'all' ? agentFilter : undefined,
+      include_cancelled: includeCancelled,
+      show_zero: showZero,
+    };
+  };
+
+  const loadData = (preset?: FilterPreset, cFrom?: string, cTo?: string) => {
+    setLoading(true);
+    const p = preset ?? filter;
+    fetchPerformance(buildParams(p, cFrom, cTo))
       .then(setData)
       .catch((err) => toast({ title: 'Error', description: err.message, variant: 'destructive' }))
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { loadData(filter); }, []);
+  useEffect(() => { loadData(); }, []);
 
   const handleFilterChange = (preset: FilterPreset) => {
     setFilter(preset);
     if (preset !== 'custom') loadData(preset);
   };
 
-  const handleSearch = () => loadData(filter, customFrom, customTo);
+  const applyFilters = () => loadData(filter, customFrom, customTo);
+
+  const clearFilters = () => {
+    setSourceFilter('all');
+    setStatusFilter('all');
+    setAgentFilter('all');
+    setIncludeCancelled(false);
+    setShowZero(false);
+    setSearch('');
+    // reload with defaults
+    setTimeout(() => loadData(filter), 0);
+  };
+
+  const hasActiveFilters = sourceFilter !== 'all' || statusFilter !== 'all' || agentFilter !== 'all' || includeCancelled || showZero || search;
 
   const totals = useMemo(() => {
-    const leads = data.reduce((s, a) => s + a.leads_assigned, 0);
-    const confirmed = data.reduce((s, a) => s + a.total_confirmed, 0);
-    const shipped = data.reduce((s, a) => s + a.total_shipped, 0);
-    const paid = data.reduce((s, a) => s + a.total_paid, 0);
-    const returned = data.reduce((s, a) => s + a.total_returned, 0);
-    const cancelled = data.reduce((s, a) => s + a.total_cancelled, 0);
-    const grossRevenue = data.reduce((s, a) => s + a.gross_revenue, 0);
-    const paidRevenue = data.reduce((s, a) => s + a.paid_revenue, 0);
-    const outstanding = data.reduce((s, a) => s + a.outstanding_revenue, 0);
-    const returnedValue = data.reduce((s, a) => s + a.returned_value, 0);
-    const profit = data.reduce((s, a) => s + a.total_profit, 0);
+    const s = (key: keyof AgentPerf) => data.reduce((sum, a) => sum + (Number(a[key]) || 0), 0);
+    const leads = s('leads_assigned');
+    const confirmed = s('total_confirmed');
+    const shipped = s('total_shipped');
+    const paid = s('total_paid');
+    const returned = s('total_returned');
+    const cancelled = s('total_cancelled');
+    const grossRevenue = s('gross_revenue');
+    const paidRevenue = s('paid_revenue');
+    const outstanding = s('outstanding_revenue');
+    const returnedValue = s('returned_value');
+    const profit = s('total_profit');
     const convRate = leads > 0 ? Math.round((confirmed / leads) * 10000) / 100 : 0;
     const shipRate = confirmed > 0 ? Math.round((shipped / confirmed) * 10000) / 100 : 0;
     const collectRate = shipped > 0 ? Math.round((paid / shipped) * 10000) / 100 : 0;
@@ -129,8 +183,95 @@ export default function AgentPerformancePage() {
 
   return (
     <AppLayout title="Performance">
-      {/* === SUMMARY SECTIONS === */}
+      {/* === FILTERS === */}
+      <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border bg-card/60 backdrop-blur-sm p-3">
+        {/* Date presets */}
+        <div className="flex items-center gap-1">
+          {(['today', 'week', 'month', 'custom'] as FilterPreset[]).map(p => (
+            <Button key={p} variant={filter === p ? 'default' : 'outline'} size="sm" className="h-8 text-xs" onClick={() => handleFilterChange(p)}>
+              {p === 'today' ? 'Today' : p === 'week' ? 'Week' : p === 'month' ? 'Month' : 'Custom'}
+            </Button>
+          ))}
+        </div>
 
+        {filter === 'custom' && (
+          <div className="flex items-center gap-2">
+            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-8 w-auto text-xs" />
+            <span className="text-muted-foreground text-xs">to</span>
+            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-8 w-auto text-xs" />
+          </div>
+        )}
+
+        {/* Agent */}
+        <Select value={agentFilter} onValueChange={setAgentFilter}>
+          <SelectTrigger className="w-40 h-8 text-xs">
+            <SelectValue placeholder="All Agents" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Agents</SelectItem>
+            {agents.map(a => <SelectItem key={a.user_id} value={a.user_id}>{a.full_name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+
+        {/* Source */}
+        <Select value={sourceFilter} onValueChange={setSourceFilter}>
+          <SelectTrigger className="w-36 h-8 text-xs">
+            <SelectValue placeholder="All Sources" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="prediction">Prediction</SelectItem>
+            <SelectItem value="inbound_lead">Webhook</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Status */}
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-32 h-8 text-xs">
+            <SelectValue placeholder="All Statuses" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="confirmed">Confirmed</SelectItem>
+            <SelectItem value="shipped">Shipped</SelectItem>
+            <SelectItem value="paid">Paid</SelectItem>
+            <SelectItem value="returned">Returned</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Toggles */}
+        <div className="flex items-center gap-2">
+          <Switch id="incCanc" checked={includeCancelled} onCheckedChange={setIncludeCancelled} className="scale-75" />
+          <Label htmlFor="incCanc" className="text-xs text-muted-foreground cursor-pointer">Cancelled</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Switch id="showZero" checked={showZero} onCheckedChange={setShowZero} className="scale-75" />
+          <Label htmlFor="showZero" className="text-xs text-muted-foreground cursor-pointer">Show 0</Label>
+        </div>
+
+        {/* Apply / Clear */}
+        <Button size="sm" className="h-8 text-xs" onClick={applyFilters}>Apply</Button>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={clearFilters}>
+            <X className="h-3 w-3 mr-1" /> Clear
+          </Button>
+        )}
+
+        {/* Search + Export */}
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input placeholder="Search agent..." value={search} onChange={e => setSearch(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && applyFilters()} className="h-8 pl-7 w-40 text-xs" />
+          </div>
+          <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportCSV(data)} disabled={data.length === 0}>
+            <Download className="h-3.5 w-3.5 mr-1" /> CSV
+          </Button>
+        </div>
+      </div>
+
+      {/* === SUMMARY SECTIONS === */}
       {/* Activity */}
       <Card className="mb-4 border-none shadow-sm">
         <CardHeader className="pb-2">
@@ -188,34 +329,6 @@ export default function AgentPerformancePage() {
         </CardContent>
       </Card>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        {(['today', 'week', 'month', 'custom'] as FilterPreset[]).map(p => (
-          <Button key={p} variant={filter === p ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange(p)}>
-            {p === 'today' ? 'Today' : p === 'week' ? 'This Week' : p === 'month' ? 'This Month' : 'Custom'}
-          </Button>
-        ))}
-        {filter === 'custom' && (
-          <div className="flex items-center gap-2 ml-2">
-            <Input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="h-9 w-auto" />
-            <span className="text-muted-foreground text-sm">to</span>
-            <Input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="h-9 w-auto" />
-            <Button size="sm" onClick={() => loadData('custom', customFrom, customTo)}>Apply</Button>
-          </div>
-        )}
-        <div className="ml-auto flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input placeholder="Search agent..." value={search} onChange={e => setSearch(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()} className="h-9 pl-8 w-48" />
-          </div>
-          <Button variant="outline" size="sm" onClick={handleSearch}><Search className="h-4 w-4" /></Button>
-          <Button variant="outline" size="sm" onClick={() => exportCSV(data)} disabled={data.length === 0}>
-            <Download className="h-4 w-4 mr-1" /> CSV
-          </Button>
-        </div>
-      </div>
-
       {/* Table */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -231,17 +344,14 @@ export default function AgentPerformancePage() {
                 <tr className="border-b bg-muted/30">
                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
-                  {/* Activity */}
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Leads</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conf.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ship.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret.</th>
-                  {/* Quality */}
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv%</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Coll%</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret%</th>
-                  {/* Financial */}
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>
                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>
@@ -269,13 +379,13 @@ export default function AgentPerformancePage() {
                     <td className="px-3 py-3 text-right font-semibold">{a.total_paid}</td>
                     <td className="px-3 py-3 text-right text-destructive">{a.total_returned}</td>
                     <td className="px-3 py-3 text-right">
-                      <RateBadge value={a.conversion_rate} thresholds={[25, 50]} />
+                      <RateBadge value={a.conversion_rate ?? 0} thresholds={[25, 50]} />
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <RateBadge value={a.collection_rate} thresholds={[40, 70]} />
+                      <RateBadge value={a.collection_rate ?? 0} thresholds={[40, 70]} />
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <RateBadge value={a.return_rate} thresholds={[15, 5]} invert />
+                      <RateBadge value={a.return_rate ?? 0} thresholds={[15, 5]} invert />
                     </td>
                     <td className="px-3 py-3 text-right font-semibold text-primary">{fmt(a.paid_revenue)}</td>
                     <td className="px-3 py-3 text-right">{fmt(a.outstanding_revenue)}</td>
