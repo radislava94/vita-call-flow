@@ -394,6 +394,7 @@ export default function AgentPerformancePage() {
                     <td className="px-3 py-3 text-right font-semibold text-primary">{fmt(a.paid_revenue)}</td>
                     <td className="px-3 py-3 text-right">{fmt(a.outstanding_revenue)}</td>
                     <td className="px-3 py-3 text-right font-semibold">{fmt(a.total_profit)}</td>
+                    <td className={`px-3 py-3 text-right font-semibold ${(a.net_contribution ?? 0) < 0 ? 'text-destructive' : 'text-primary'}`}>{fmt(a.net_contribution)}</td>
                     <td className="px-3 py-3 text-right">{fmt(a.avg_order_value)}</td>
                   </tr>
                 ))}
