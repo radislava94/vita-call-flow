@@ -129,7 +129,8 @@ export default function PredictionLeadsPage() {
 
   const filteredLeads = useMemo(() => {
     let result = leads;
-    if (search.trim()) {
+    // Only client-side filter by search if not doing server-side search
+    if (search.trim() && !debouncedSearch) {
       const s = search.toLowerCase();
       result = result.filter(l =>
         l.name.toLowerCase().includes(s) ||
@@ -152,7 +153,7 @@ export default function PredictionLeadsPage() {
       result = result.filter(l => l.created_at && new Date(l.created_at) <= end);
     }
     return result;
-  }, [leads, search, selectedStatuses, selectedProduct, dateFrom, dateTo]);
+  }, [leads, search, debouncedSearch, selectedStatuses, selectedProduct, dateFrom, dateTo]);
 
   const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || selectedProduct !== 'all' || dateFrom || dateTo;
 
