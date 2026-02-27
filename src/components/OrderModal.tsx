@@ -689,16 +689,20 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
 
           {/* Footer */}
           <div className="border-t px-5 py-3 flex items-center justify-end gap-2 bg-card rounded-b-xl">
-            <Button variant="outline" size="sm" onClick={() => onClose()}>Cancel</Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving || !selectedOutcome}
-              className="gap-1.5"
-            >
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Save
+            <Button variant="outline" size="sm" onClick={() => onClose()}>
+              {readOnly ? 'Close' : 'Cancel'}
             </Button>
+            {isEditable && (
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving || !selectedOutcome}
+                className="gap-1.5"
+              >
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Save
+              </Button>
+            )}
           </div>
         </div>
       </div>
