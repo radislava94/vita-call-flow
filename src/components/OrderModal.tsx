@@ -626,6 +626,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                 onChange={e => setCallNotes(e.target.value)}
                 placeholder="Add notes..."
                 className="min-h-[60px] text-sm"
+                disabled={!isEditable}
               />
             </section>
 
