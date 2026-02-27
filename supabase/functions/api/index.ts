@@ -1942,64 +1942,125 @@ serve(async (req) => {
 
       // Auto-create order when prediction lead reaches call_again or confirmed
       if (body.status && ["call_again", "confirmed"].includes(body.status)) {
-        // Check if an order already exists for this lead
+        // Check if an order already exists for this lead (prevent duplicates)
         const { data: existingOrder } = await adminClient
           .from("orders")
-          .select("id")
+          .select("id, status")
           .eq("source_lead_id", leadId)
           .maybeSingle();
 
         if (!existingOrder) {
           // Get the lead data for order creation
           const lead = data;
-          const { data: agentProfile } = lead.assigned_agent_id
-            ? await adminClient.from("profiles").select("full_name").eq("user_id", lead.assigned_agent_id).single()
-            : { data: null };
 
-          const { data: newOrder } = await adminClient
-            .from("orders")
-            .insert({
-              product_name: lead.product || "From Prediction Lead",
-              customer_name: lead.name || "",
-              customer_phone: lead.telephone || "",
-              customer_city: lead.city || "",
-              customer_address: lead.address || "",
-              price: lead.price || 0,
-              quantity: lead.quantity || 1,
-              status: body.status === "confirmed" ? "confirmed" : "call_again",
-              source_type: "prediction_lead",
-              source_lead_id: leadId,
-              assigned_agent_id: lead.assigned_agent_id,
-              assigned_agent_name: agentProfile?.full_name || lead.assigned_agent_name || null,
-              assigned_at: lead.assigned_agent_id ? new Date().toISOString() : null,
-            })
-            .select()
-            .single();
+          // Validate: do not create empty order
+          if (!lead.name && !lead.telephone) {
+            // Skip order creation if no meaningful data
+          } else {
+            const { data: agentProfile } = lead.assigned_agent_id
+              ? await adminClient.from("profiles").select("full_name").eq("user_id", lead.assigned_agent_id).single()
+              : { data: null };
 
-          if (newOrder) {
-            // Log initial status in order history
-            await adminClient.from("order_history").insert({
-              order_id: newOrder.id,
-              to_status: newOrder.status,
-              changed_by: user.id,
-              changed_by_name: "System (from Prediction Lead)",
-            });
+            // Fetch prediction_lead_items for multi-product transfer
+            const { data: leadItems } = await adminClient
+              .from("prediction_lead_items")
+              .select("*")
+              .eq("lead_id", leadId);
+
+            // Determine product summary from items or lead fields
+            const hasItems = leadItems && leadItems.length > 0;
+            const productSummary = hasItems
+              ? leadItems.map((i: any) => i.product_name).join(", ")
+              : (lead.product || "From Prediction Lead");
+            const totalPrice = hasItems
+              ? leadItems.reduce((s: number, i: any) => s + Number(i.total_price || 0), 0)
+              : Number(lead.price || 0);
+            const totalQty = hasItems
+              ? leadItems.reduce((s: number, i: any) => s + Number(i.quantity || 1), 0)
+              : Number(lead.quantity || 1);
+
+            const { data: newOrder } = await adminClient
+              .from("orders")
+              .insert({
+                product_name: productSummary,
+                customer_name: lead.name || "",
+                customer_phone: lead.telephone || "",
+                customer_city: lead.city || "",
+                customer_address: lead.address || "",
+                postal_code: "",
+                price: totalPrice,
+                quantity: totalQty,
+                status: body.status === "confirmed" ? "confirmed" : "call_again",
+                source_type: "prediction_lead",
+                source_lead_id: leadId,
+                assigned_agent_id: lead.assigned_agent_id,
+                assigned_agent_name: agentProfile?.full_name || lead.assigned_agent_name || null,
+                assigned_at: lead.assigned_agent_id ? new Date().toISOString() : null,
+              })
+              .select()
+              .single();
+
+            if (newOrder) {
+              // Transfer multi-product items to order_items
+              if (hasItems) {
+                const orderItems = leadItems.map((i: any) => ({
+                  order_id: newOrder.id,
+                  product_id: i.product_id,
+                  product_name: i.product_name,
+                  quantity: i.quantity,
+                  price_per_unit: Number(i.price_per_unit),
+                  total_price: Number(i.total_price),
+                }));
+                await adminClient.from("order_items").insert(orderItems);
+              } else if (lead.product) {
+                // Single product fallback
+                await adminClient.from("order_items").insert({
+                  order_id: newOrder.id,
+                  product_id: null,
+                  product_name: lead.product,
+                  quantity: lead.quantity || 1,
+                  price_per_unit: Number(lead.price || 0),
+                  total_price: totalPrice,
+                });
+              }
+
+              // Transfer notes
+              if (lead.notes && lead.notes.trim()) {
+                const changerName = agentProfile?.full_name || "System";
+                await adminClient.from("order_notes").insert({
+                  order_id: newOrder.id,
+                  text: lead.notes.trim(),
+                  author_id: user.id,
+                  author_name: changerName,
+                });
+              }
+
+              // Log conversion in order history
+              const { data: converterProfile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+              await adminClient.from("order_history").insert({
+                order_id: newOrder.id,
+                to_status: newOrder.status,
+                changed_by: user.id,
+                changed_by_name: converterProfile?.full_name || "System",
+              });
+              // Add conversion note
+              await adminClient.from("order_notes").insert({
+                order_id: newOrder.id,
+                text: "Converted from Prediction Lead",
+                author_id: user.id,
+                author_name: "System",
+              });
+            }
           }
         } else {
           // Update existing order status to match lead
           const newStatus = body.status === "confirmed" ? "confirmed" : "call_again";
-          const { data: currentOrder } = await adminClient
-            .from("orders")
-            .select("status")
-            .eq("id", existingOrder.id)
-            .single();
-
-          if (currentOrder && currentOrder.status !== newStatus) {
+          if (existingOrder.status !== newStatus) {
             await adminClient.from("orders").update({ status: newStatus }).eq("id", existingOrder.id);
             const { data: profile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
             await adminClient.from("order_history").insert({
               order_id: existingOrder.id,
-              from_status: currentOrder.status,
+              from_status: existingOrder.status,
               to_status: newStatus,
               changed_by: user.id,
               changed_by_name: profile?.full_name || "System",
