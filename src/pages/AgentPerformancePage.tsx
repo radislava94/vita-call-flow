@@ -348,22 +348,22 @@ export default function AgentPerformancePage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/30">
-                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
-                  <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Leads</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conf.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ship.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Coll%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret%</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>
-                  <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
-                </tr>
+                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">#</th>
+                   <th className="text-left px-3 py-3 font-medium text-muted-foreground">Agent</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Leads</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conf.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ship.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret.</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Conv%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Coll%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Ret%</th>
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">Paid Rev</th>
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Outstand.</th>}
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Profit</th>}
+                   {canSeeFinance && <th className="text-right px-3 py-3 font-medium text-muted-foreground">Net C.</th>}
+                   <th className="text-right px-3 py-3 font-medium text-muted-foreground">AOV</th>
+                 </tr>
               </thead>
               <tbody>
                 {data.map((a, i) => (
