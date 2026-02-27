@@ -227,6 +227,18 @@ export default function Orders() {
               </Popover>
             )}
 
+            {/* My Orders toggle */}
+            <Button
+              variant={myOrdersOnly ? 'default' : 'outline'}
+              size="sm"
+              className="h-9 gap-1.5 rounded-lg text-sm font-normal"
+              onClick={() => !isAgent && setMyOrdersOnly(!myOrdersOnly)}
+              disabled={isAgent}
+            >
+              <User className="h-3.5 w-3.5" />
+              My Orders
+            </Button>
+
             <Popover>
               <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-lg text-sm font-normal"><CalendarIcon className="h-3.5 w-3.5" />{dateFrom ? format(dateFrom, 'MMM d') : 'From'}</Button></PopoverTrigger>
               <PopoverContent className="w-auto p-0" align="start"><Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className="p-3 pointer-events-auto" /></PopoverContent>
