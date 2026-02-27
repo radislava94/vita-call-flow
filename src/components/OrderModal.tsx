@@ -87,6 +87,7 @@ interface OrderModalProps {
   onClose: (saved?: boolean) => void;
   data: OrderModalData | null;
   contextType: OrderModalContextType;
+  readOnly?: boolean;
 }
 
 function calcRowTotal(qty: number, price: number): number {
