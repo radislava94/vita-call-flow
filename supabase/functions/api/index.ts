@@ -2277,6 +2277,24 @@ serve(async (req) => {
           totalProfit += Number(o.price || 0) - orderCost;
         }
 
+        // Net Contribution: (Paid Revenue - Returned Value) - Total Cost for Paid + Returned orders
+        let returnedCost = 0;
+        for (const o of returnedOrders) {
+          const items = o.order_items || [];
+          let orderCost = 0;
+          if (items.length > 0) {
+            for (const it of items) {
+              orderCost += (costMap[it.product_id] || 0) * (it.quantity || 1);
+            }
+          } else if (o.product_id) {
+            orderCost = (costMap[o.product_id] || 0) * (o.quantity || 1);
+          }
+          returnedCost += orderCost;
+        }
+        // totalCost for paid orders is already: paidRevenue - totalProfit
+        const paidCost = paidRevenue - totalProfit;
+        const netContribution = (paidRevenue - returnedValue) - (paidCost + returnedCost);
+
         const paidCount = paidOrders.length;
         const confirmedCount = confirmedOrders.length;
         const shippedCount = shippedOrders.length;
@@ -2309,6 +2327,7 @@ serve(async (req) => {
           outstanding_revenue: outstandingRevenue,
           returned_value: returnedValue,
           total_profit: totalProfit,
+          net_contribution: netContribution,
           avg_order_value: avgOrderValue,
           revenue_per_lead: revenuePerLead,
           profit_per_lead: profitPerLead,
