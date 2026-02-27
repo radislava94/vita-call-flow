@@ -1385,10 +1385,6 @@ serve(async (req) => {
         for (const o of orders) {
           statusCounts[o.status] = (statusCounts[o.status] || 0) + 1;
         }
-        // Add confirmed leads to the confirmed status count
-        if (confirmedLeads.length > 0) {
-          statusCounts["confirmed"] = (statusCounts["confirmed"] || 0) + confirmedLeads.length;
-        }
 
         return { lead_count, deals_won, deals_lost, total_value, tasks_completed, total_orders, daily: dailyBreakdown, statusCounts, orders_from_standard, orders_from_leads };
       }
