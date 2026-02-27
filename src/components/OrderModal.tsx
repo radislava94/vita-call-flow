@@ -387,8 +387,9 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
             </div>
             <div className="min-w-0 flex-1">
               <h2 className="font-semibold text-card-foreground text-sm truncate">
-                Order Editor {data.displayId ? `— ${data.displayId}` : ''}
-              </h2>
+                 Order Editor {data.displayId ? `— ${data.displayId}` : ''}
+                 {readOnly && <span className="text-xs font-normal text-muted-foreground ml-2">(View Only)</span>}
+               </h2>
               <a href={`tel:${customerPhone}`} className="text-xs font-mono text-primary hover:underline">
                 {customerPhone}
               </a>
