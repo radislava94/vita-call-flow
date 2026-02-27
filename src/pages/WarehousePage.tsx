@@ -368,8 +368,9 @@ function IncomingOrdersTab() {
                               <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
                               <td className="px-4 py-2.5 text-xs">
-                                {o.product_name}
-                                {o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}
+                                {o.order_items && o.order_items.length > 0
+                                  ? o.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
+                                  : <>{o.product_name}{o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}</>}
                               </td>
                               <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? Number(o.price).toFixed(2) : '—'}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
