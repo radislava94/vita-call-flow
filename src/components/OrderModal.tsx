@@ -434,12 +434,14 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                 {OUTCOME_CONFIG.map(({ value, label, className }) => (
                   <button
                     key={value}
-                    onClick={() => setSelectedOutcome(value)}
+                    onClick={() => isEditable && setSelectedOutcome(value)}
+                    disabled={!isEditable}
                     className={cn(
                       'rounded-lg border-2 px-2 py-2 text-xs font-medium transition-all',
                       selectedOutcome === value
                         ? className + ' ring-2 ring-primary/40 shadow-sm'
-                        : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground'
+                        : 'border-border text-muted-foreground hover:border-foreground/20 hover:text-foreground',
+                      !isEditable && 'opacity-50 cursor-not-allowed'
                     )}
                   >
                     {label}
