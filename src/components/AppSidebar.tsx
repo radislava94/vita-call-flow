@@ -23,6 +23,7 @@ import {
   Inbox,
   Webhook,
   UserPlus,
+  SearchIcon,
 } from 'lucide-react';
 import {
   Tooltip,
