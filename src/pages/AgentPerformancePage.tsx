@@ -99,6 +99,8 @@ function exportCSV(data: AgentPerf[]) {
 
 export default function AgentPerformancePage() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canSeeFinance = user?.isAdmin || user?.isManager;
   const [data, setData] = useState<AgentPerf[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<FilterPreset>('month');
