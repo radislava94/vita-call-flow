@@ -477,7 +477,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
             {/* C) Status Dropdown */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Status</h3>
-              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+              <Select value={selectedStatus} onValueChange={setSelectedStatus} disabled={!isEditable}>
                 <SelectTrigger className="h-8 text-sm">
                   <SelectValue />
                 </SelectTrigger>
