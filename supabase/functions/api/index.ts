@@ -1464,9 +1464,14 @@ serve(async (req) => {
 
       // === 1. FINANCIAL KPIs ===
       const paidOrders = orders.filter((o: any) => o.status === "paid");
-      const revenue = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+      const paidCount = paidOrders.length;
+      const paidAmount = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
-      // Profit: revenue - cost for paid orders
+      // Revenue: confirmed + delivered + paid
+      const revenueOrders = orders.filter((o: any) => ["confirmed", "delivered", "paid"].includes(o.status));
+      const revenue = revenueOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // Profit: paid orders only (revenue - cost)
       let totalCost = 0;
       for (const o of paidOrders) {
         const items = o.order_items || [];
@@ -1479,10 +1484,10 @@ serve(async (req) => {
           totalCost += (costMap[o.product_id] || 0) * (o.quantity || 1);
         }
       }
-      const profit = revenue - totalCost;
+      const profit = paidAmount - totalCost;
 
-      // Outstanding: sum of price for non-paid, non-cancelled, non-trashed orders
-      const outstandingOrders = orders.filter((o: any) => !["paid", "cancelled", "trashed"].includes(o.status));
+      // Outstanding: confirmed + delivered only (exclude paid, returned, cancelled)
+      const outstandingOrders = orders.filter((o: any) => ["confirmed", "delivered"].includes(o.status));
       const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // === 2. FUNNEL ===
