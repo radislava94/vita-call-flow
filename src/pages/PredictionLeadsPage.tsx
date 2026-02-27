@@ -366,7 +366,7 @@ export default function PredictionLeadsPage() {
               const hasItems = items.length > 0;
               const displayTotal = getLeadDisplayTotal(lead);
 
-              return (
+                return (
                 <tr key={lead.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold border', STATUS_CHIP_COLORS[lead.status])}>
@@ -390,9 +390,9 @@ export default function PredictionLeadsPage() {
                         onClick={() => setModalLead(lead)}
                       >
                         <Phone className="h-3 w-3" />
-                        Open
+                        {(lead as any).is_owned === false ? 'View' : 'Open'}
                       </Button>
-                      {lead.status === 'not_contacted' && (
+                      {(lead as any).is_owned !== false && lead.status === 'not_contacted' && (
                         <Button
                           size="sm"
                           variant="outline"
