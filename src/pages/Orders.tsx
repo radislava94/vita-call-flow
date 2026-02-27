@@ -11,13 +11,14 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User,
+  CalendarIcon, X, User, Plus,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
+import { CreateOrderModal } from '@/components/CreateOrderModal';
 
 const PAGE_SIZE = 20;
 
@@ -98,6 +99,7 @@ export default function Orders() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [modalOrder, setModalOrder] = useState<ApiOrder | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -250,6 +252,7 @@ export default function Orders() {
 
             {hasActiveFilters && <Button variant="ghost" size="sm" className="h-9 text-xs text-muted-foreground hover:text-foreground" onClick={clearAllFilters}>Clear all</Button>}
             <Button onClick={exportCSV} size="sm" className="ml-auto h-9 gap-1.5 rounded-lg text-sm"><Download className="h-3.5 w-3.5" /> Export</Button>
+            <Button onClick={() => setShowCreateModal(true)} size="sm" className="h-9 gap-1.5 rounded-lg text-sm"><Plus className="h-3.5 w-3.5" /> Create Order</Button>
           </div>
         </div>
 
@@ -340,6 +343,15 @@ export default function Orders() {
         }}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
+      />
+
+      {/* Create Order Modal */}
+      <CreateOrderModal
+        open={showCreateModal}
+        onClose={(created) => {
+          setShowCreateModal(false);
+          if (created) fetchOrders();
+        }}
       />
     </AppLayout>
   );
