@@ -412,7 +412,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">Address</label>
-                  <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="h-8 text-sm" />
+                  <Input value={customerAddress} onChange={e => setCustomerAddress(e.target.value)} className="h-8 text-sm" disabled={!isEditable} />
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground mb-1 block">City</label>
