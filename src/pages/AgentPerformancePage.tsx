@@ -324,6 +324,7 @@ export default function AgentPerformancePage() {
             <SummaryCard label="Outstanding" value={fmt(totals.outstanding)} desc="Shipped only" />
             <SummaryCard label="Returned Val" value={fmt(totals.returnedValue)} negative desc="Returned only" />
             <SummaryCard label="Profit" value={fmt(totals.profit)} accent desc="Paid − cost" />
+            <SummaryCard label="Net Contrib." value={fmt(totals.netContribution)} accent={totals.netContribution > 0} negative={totals.netContribution < 0} desc="(Paid−Ret) − costs" />
             <SummaryCard label="Avg Order" value={fmt(totals.aov)} desc="Paid Rev / Paid" />
             <SummaryCard label="Rev / Lead" value={totals.leads > 0 ? fmt(totals.paidRevenue / totals.leads) : '0'} desc="Paid Rev / Leads" />
             <SummaryCard label="Profit / Lead" value={totals.leads > 0 ? fmt(totals.profit / totals.leads) : '0'} desc="Profit / Leads" />
