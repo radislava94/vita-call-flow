@@ -1350,18 +1350,17 @@ serve(async (req) => {
         const calls = periodCalls || [];
 
         const lead_count = leads.length;
-        const confirmedLeads = leads.filter((l: any) => l.status === "confirmed");
-        // deals_won includes confirmed/paid orders AND confirmed prediction leads
-        const deals_won = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length + confirmedLeads.length;
+        // deals_won: orders only
+        const deals_won = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length;
         const deals_lost = orders.filter((o: any) => ["returned", "cancelled", "trashed"].includes(o.status)).length;
         const total_value = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
         const tasks_completed = calls.length;
-        // total_orders includes standard orders + confirmed prediction leads
-        const total_orders = orders.length + confirmedLeads.length;
+        // total_orders: orders only
+        const total_orders = orders.length;
 
         // Source breakdown
         const orders_from_standard = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "paid"].includes(o.status)).length;
-        const orders_from_leads = confirmedLeads.length;
+        const orders_from_leads = 0;
 
         const dailyBreakdown: Record<string, { leads: number; deals_won: number; deals_lost: number; orders: number; calls: number }> = {};
         for (const o of orders) {
