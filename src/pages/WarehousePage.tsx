@@ -78,11 +78,11 @@ function IncomingOrdersTab() {
   const fetchOrders = () => {
     setLoading(true);
     apiGetIncomingOrders({
-      agent_id: agentFilter || undefined,
+      agent_id: agentFilter && agentFilter !== 'all' ? agentFilter : undefined,
       from: dateFrom ? dateFrom + 'T00:00:00Z' : undefined,
       to: dateTo ? dateTo + 'T23:59:59Z' : undefined,
-      source: sourceFilter || undefined,
-      status: statusFilter || undefined,
+      source: sourceFilter && sourceFilter !== 'all' ? sourceFilter : undefined,
+      status: statusFilter && statusFilter !== 'all' ? statusFilter : undefined,
     })
       .then(setOrders)
       .catch(() => {})
