@@ -1562,7 +1562,7 @@ serve(async (req) => {
       };
 
       return json({
-        revenue, profit, outstanding, totalCost,
+        revenue, profit, outstanding, totalCost, paidCount, paidAmount,
         funnel: { allTaken, confirmed, paid, shipped, returned, pending, conversionRate, confirmationRate, returnRate },
         dailyRevenue,
         agentRankings,
