@@ -355,6 +355,7 @@ export default function Orders() {
         }}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
+        readOnly={!!(modalOrder && !(modalOrder as any).is_owned)}
       />
 
       {/* Create Order Modal */}
