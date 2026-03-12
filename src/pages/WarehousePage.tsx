@@ -3,11 +3,13 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -45,6 +47,14 @@ import {
   ArrowDownCircle,
   RotateCcw,
   Truck,
+  Search,
+  ClipboardList,
+  History,
+  Users,
+  Boxes,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
 } from 'lucide-react';
 import { format, isToday, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -510,6 +520,8 @@ function InventoryTab() {
   const isAdmin = user?.isAdmin || user?.isManager;
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [showRestock, setShowRestock] = useState(false);
   const [restockProduct, setRestockProduct] = useState<any>(null);
   const [restockQty, setRestockQty] = useState('');
@@ -525,6 +537,19 @@ function InventoryTab() {
   };
 
   useEffect(() => { fetchProducts(); }, []);
+
+  const categories = useMemo(() => {
+    const cats = new Set(products.map(p => p.category).filter(Boolean));
+    return Array.from(cats).sort();
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    return products.filter(p => {
+      if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !(p.sku || '').toLowerCase().includes(search.toLowerCase())) return false;
+      if (categoryFilter && categoryFilter !== 'all' && p.category !== categoryFilter) return false;
+      return true;
+    });
+  }, [products, search, categoryFilter]);
 
   const lowStockProducts = products.filter(p => p.stock_quantity < p.low_stock_threshold);
 
@@ -576,6 +601,24 @@ function InventoryTab() {
         </div>
       )}
 
+      {/* Search & filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search products or SKU..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        {categories.length > 0 && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="All Categories" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        <span className="text-sm text-muted-foreground ml-auto">{filtered.length} of {products.length} products</span>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
@@ -586,15 +629,15 @@ function InventoryTab() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Supplier</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Min Qty</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground min-w-[160px]">Stock Level</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               {isAdmin && <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {products.map((p: any) => {
+            {filtered.map((p: any) => {
               const isLowStock = p.stock_quantity < p.low_stock_threshold;
+              const stockPercent = p.low_stock_threshold > 0 ? Math.min((p.stock_quantity / (p.low_stock_threshold * 3)) * 100, 100) : (p.stock_quantity > 0 ? 100 : 0);
               return (
                 <tr key={p.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isLowStock && "bg-destructive/5")}>
                   <td className="px-4 py-3">
@@ -613,16 +656,20 @@ function InventoryTab() {
                   <td className="px-4 py-3 text-muted-foreground">{p.suppliers?.name || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{Number(p.cost_price || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 font-semibold text-primary">{Number(p.price).toFixed(2)}</td>
-                  <td className="px-4 py-3">
-                    {p.stock_quantity <= 0 ? (
-                      <Badge variant="destructive">Out of Stock</Badge>
-                    ) : isLowStock ? (
-                      <Badge variant="destructive">{p.stock_quantity}</Badge>
-                    ) : (
-                      <Badge className="bg-primary text-primary-foreground">{p.stock_quantity}</Badge>
-                    )}
+                  <td className="px-4 py-3 min-w-[160px]">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={cn("font-semibold", p.stock_quantity <= 0 ? "text-destructive" : isLowStock ? "text-destructive" : "text-foreground")}>{p.stock_quantity}</span>
+                        <span className="text-muted-foreground">min: {p.low_stock_threshold}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all", p.stock_quantity <= 0 ? "bg-destructive" : isLowStock ? "bg-destructive" : "bg-primary")}
+                          style={{ width: `${stockPercent}%` }}
+                        />
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.low_stock_threshold}</td>
                   <td className="px-4 py-3">
                     <Badge variant={p.is_active ? 'default' : 'secondary'}>{p.is_active ? 'Active' : 'Disabled'}</Badge>
                   </td>
@@ -636,8 +683,8 @@ function InventoryTab() {
                 </tr>
               );
             })}
-            {products.length === 0 && (
-              <tr><td colSpan={isAdmin ? 10 : 9} className="px-4 py-8 text-center text-muted-foreground">No products</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-muted-foreground">{search || categoryFilter ? 'No products match your filters' : 'No products'}</td></tr>
             )}
           </tbody>
         </table>
@@ -1148,39 +1195,93 @@ export default function WarehousePage() {
   const isWarehouse = user?.isWarehouse;
   const canManage = isAdmin || isWarehouse;
 
+  const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [statsLoaded, setStatsLoaded] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      apiGetProducts().then(setProducts).catch(() => {}),
+      canManage ? apiGetIncomingOrders({}).then(setOrders).catch(() => {}) : Promise.resolve(),
+    ]).finally(() => setStatsLoaded(true));
+  }, []);
+
+  const totalProducts = products.length;
+  const lowStockCount = products.filter(p => p.stock_quantity < p.low_stock_threshold).length;
+  const totalStockValue = products.reduce((sum, p) => sum + (p.stock_quantity * Number(p.price || 0)), 0);
+  const pendingOrders = orders.filter(o => o.status === 'confirmed' || o.status === 'pending').length;
+
+  const kpiCards = [
+    { label: 'Total Products', value: totalProducts, icon: Boxes, color: 'bg-primary/10 text-primary' },
+    { label: 'Low Stock', value: lowStockCount, icon: TrendingDown, color: lowStockCount > 0 ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground' },
+    { label: 'Stock Value', value: `$${totalStockValue.toLocaleString()}`, icon: DollarSign, color: 'bg-emerald-500/10 text-emerald-600' },
+    ...(canManage ? [{ label: 'Pending Orders', value: pendingOrders, icon: ShoppingCart, color: pendingOrders > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground' }] : []),
+  ];
+
   return (
     <AppLayout title="Warehouse">
-      <Tabs defaultValue="inventory" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
-          <TabsTrigger value="movements">Stock Movements</TabsTrigger>
-          {canManage && <TabsTrigger value="incoming">Incoming Orders</TabsTrigger>}
-          <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-          <TabsTrigger value="user-warehouse">User Warehouse</TabsTrigger>
-        </TabsList>
+      <div className="space-y-6">
+        {/* KPI Cards */}
+        <div className={cn("grid gap-4", canManage ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3")}>
+          {kpiCards.map(card => (
+            <Card key={card.label} className="border-none shadow-sm">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", card.color)}>
+                  <card.icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">{card.label}</p>
+                  <p className="text-xl font-bold">{statsLoaded ? card.value : '—'}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-        <TabsContent value="inventory">
-          <InventoryTab />
-        </TabsContent>
+        <Tabs defaultValue="inventory" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="inventory" className="gap-1.5">
+              <Package className="h-3.5 w-3.5" /> Inventory
+            </TabsTrigger>
+            <TabsTrigger value="movements" className="gap-1.5">
+              <History className="h-3.5 w-3.5" /> Stock Movements
+            </TabsTrigger>
+            {canManage && (
+              <TabsTrigger value="incoming" className="gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" /> Incoming Orders
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="suppliers" className="gap-1.5">
+              <Truck className="h-3.5 w-3.5" /> Suppliers
+            </TabsTrigger>
+            <TabsTrigger value="user-warehouse" className="gap-1.5">
+              <Users className="h-3.5 w-3.5" /> User Warehouse
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="movements">
-          <StockMovementsTab />
-        </TabsContent>
-
-        {canManage && (
-          <TabsContent value="incoming">
-            <IncomingOrdersTab />
+          <TabsContent value="inventory">
+            <InventoryTab />
           </TabsContent>
-        )}
 
-        <TabsContent value="suppliers">
-          <SuppliersTab />
-        </TabsContent>
+          <TabsContent value="movements">
+            <StockMovementsTab />
+          </TabsContent>
 
-        <TabsContent value="user-warehouse">
-          <UserWarehouseTab />
-        </TabsContent>
-      </Tabs>
+          {canManage && (
+            <TabsContent value="incoming">
+              <IncomingOrdersTab />
+            </TabsContent>
+          )}
+
+          <TabsContent value="suppliers">
+            <SuppliersTab />
+          </TabsContent>
+
+          <TabsContent value="user-warehouse">
+            <UserWarehouseTab />
+          </TabsContent>
+        </Tabs>
+      </div>
     </AppLayout>
   );
 }
