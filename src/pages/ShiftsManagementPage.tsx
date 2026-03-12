@@ -801,67 +801,6 @@ export default function ShiftsManagementPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Assign Week Dialog */}
-        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Assign Weekly Shifts</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Shift Template *</Label>
-                <Select value={assignTemplateId} onValueChange={setAssignTemplateId}>
-                  <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
-                  <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} ({t.start_time.substring(0, 5)} → {t.end_time.substring(0, 5)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Week Starting (Monday) *</Label>
-                <Input type="date" value={assignWeekStart} onChange={e => setAssignWeekStart(e.target.value)} />
-              </div>
-              <div>
-                <Label>Days</Label>
-                <div className="flex gap-2 mt-1">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
-                    <label key={day} className={`flex flex-col items-center gap-1 cursor-pointer px-2 py-1.5 rounded-md border text-xs transition-colors ${assignDays[i] ? 'bg-primary/10 border-primary text-primary' : 'bg-card border-border text-muted-foreground'}`}>
-                      <input type="checkbox" checked={assignDays[i]} onChange={() => {
-                        const next = [...assignDays];
-                        next[i] = !next[i];
-                        setAssignDays(next);
-                      }} className="sr-only" />
-                      {day}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Assign Agents *</Label>
-                <div className="mt-1 border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
-                  {agents.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No agents available</p>
-                  ) : agents.map(a => (
-                    <label key={a.user_id} className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-2 py-1">
-                      <input type="checkbox" checked={assignAgents.includes(a.user_id)} onChange={() => setAssignAgents(prev => prev.includes(a.user_id) ? prev.filter(x => x !== a.user_id) : [...prev, a.user_id])} className="rounded" />
-                      <span className="text-sm">{a.full_name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAssignWeek} disabled={assignWeekMutation.isPending}>
-                  {assignWeekMutation.isPending ? 'Assigning...' : 'Assign Shifts'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </AppLayout>
   );
