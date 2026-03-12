@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents, apiGetShiftStatistics } from '@/lib/api';
+import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents, apiGetShiftStatistics, apiGetLoginActivity } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Clock, BarChart3, Calendar as CalendarDays, Briefcase } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Clock, BarChart3, Calendar as CalendarDays, Briefcase, LogIn } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 
 interface ShiftAgent { user_id: string; full_name: string; }
