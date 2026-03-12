@@ -104,6 +104,11 @@ export default function SearchPredictionPage() {
           Phone search normalizes numbers — formats like 078319044, +38978319044, 38978319044 all match the same record.
         </p>
 
+        {/* Customer Intelligence Panel */}
+        {customerIntel?.found && (
+          <CustomerIntelligencePanel data={customerIntel} loading={intelLoading} />
+        )}
+
         {results && (
           <div className="space-y-6">
             {/* Orders */}
