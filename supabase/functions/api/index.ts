@@ -3109,9 +3109,135 @@ serve(async (req) => {
       return json(result);
     }
 
-    // ============================================================
-    // WAREHOUSE
-    // ============================================================
+    // GET /api/shifts/login-activity — login activity logs for admin/manager
+    if (req.method === "GET" && path === "shifts/login-activity") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const dateFrom = url.searchParams.get("from");
+      const dateTo = url.searchParams.get("to");
+      const agentFilter = url.searchParams.get("agent_id");
+      const statusFilter = url.searchParams.get("status");
+
+      // Fetch login logs
+      let logQuery = adminClient.from("shift_login_logs").select("*").order("login_time", { ascending: false });
+      if (dateFrom) logQuery = logQuery.gte("shift_date", dateFrom);
+      if (dateTo) logQuery = logQuery.lte("shift_date", dateTo);
+      if (agentFilter) logQuery = logQuery.eq("user_id", agentFilter);
+      const { data: loginLogs } = await logQuery;
+
+      // Fetch blocked attempts
+      let blockedQuery = adminClient.from("blocked_login_attempts").select("*").order("attempt_time", { ascending: false });
+      if (dateFrom) blockedQuery = blockedQuery.gte("attempt_time", `${dateFrom}T00:00:00`);
+      if (dateTo) blockedQuery = blockedQuery.lte("attempt_time", `${dateTo}T23:59:59`);
+      if (agentFilter) blockedQuery = blockedQuery.eq("user_id", agentFilter);
+      const { data: blockedAttempts } = await blockedQuery;
+
+      // Get user names & roles for login logs
+      const userIds = [...new Set((loginLogs || []).map((l: any) => l.user_id))];
+      let userMap: Record<string, { full_name: string; role: string }> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", userIds);
+        const { data: userRoles } = await adminClient.from("user_roles").select("user_id, role").in("user_id", userIds);
+        for (const p of profiles || []) {
+          const role = (userRoles || []).find((r: any) => r.user_id === p.user_id)?.role || "agent";
+          userMap[p.user_id] = { full_name: p.full_name, role };
+        }
+      }
+
+      // Build activity entries from login logs
+      const activities: any[] = [];
+      for (const log of loginLogs || []) {
+        const userInfo = userMap[log.user_id] || { full_name: "Unknown", role: "agent" };
+        const shiftStart = log.shift_start_time?.substring(0, 5) || "";
+        const shiftEnd = log.shift_end_time?.substring(0, 5) || "";
+        const loginTimeStr = log.login_time ? new Date(log.login_time).toTimeString().substring(0, 5) : "";
+        const logoutTimeStr = log.logout_time ? new Date(log.logout_time).toTimeString().substring(0, 5) : null;
+
+        // Calculate session duration
+        let sessionDuration: number | null = null;
+        if (log.login_time && log.logout_time) {
+          sessionDuration = (new Date(log.logout_time).getTime() - new Date(log.login_time).getTime()) / 60000; // minutes
+        }
+
+        // Determine status
+        let status = "On Time";
+        if (shiftStart && loginTimeStr > shiftStart) {
+          status = "Late Login";
+        }
+        if (log.logout_time && shiftEnd && logoutTimeStr && logoutTimeStr < shiftEnd) {
+          status = status === "Late Login" ? "Late Login" : "Early Logout";
+        }
+
+        activities.push({
+          id: log.id,
+          type: "login",
+          user_id: log.user_id,
+          user_name: userInfo.full_name,
+          role: userInfo.role,
+          shift_date: log.shift_date,
+          shift_start: shiftStart,
+          shift_end: shiftEnd,
+          login_time: log.login_time,
+          logout_time: log.logout_time,
+          session_duration: sessionDuration,
+          status,
+        });
+      }
+
+      // Add blocked attempts
+      for (const attempt of blockedAttempts || []) {
+        activities.push({
+          id: attempt.id,
+          type: "blocked",
+          user_id: attempt.user_id,
+          user_name: attempt.user_name,
+          role: attempt.role,
+          shift_date: attempt.attempt_time?.substring(0, 10) || "",
+          shift_start: null,
+          shift_end: null,
+          login_time: attempt.attempt_time,
+          logout_time: null,
+          session_duration: null,
+          status: "Outside Shift (Blocked)",
+          reason: attempt.reason,
+        });
+      }
+
+      // Filter by status if provided
+      let filtered = activities;
+      if (statusFilter && statusFilter !== "all") {
+        filtered = activities.filter(a => a.status === statusFilter);
+      }
+
+      // Sort by login_time descending
+      filtered.sort((a, b) => new Date(b.login_time).getTime() - new Date(a.login_time).getTime());
+
+      // Build per-agent summary
+      const agentSummary: Record<string, { total_shifts: number; attended: number; late: number; early: number; blocked: number }> = {};
+      for (const a of activities) {
+        if (!agentSummary[a.user_id]) {
+          agentSummary[a.user_id] = { total_shifts: 0, attended: 0, late: 0, early: 0, blocked: 0 };
+        }
+        const s = agentSummary[a.user_id];
+        if (a.type === "blocked") {
+          s.blocked++;
+        } else {
+          s.total_shifts++;
+          s.attended++;
+          if (a.status === "Late Login") s.late++;
+          if (a.status === "Early Logout") s.early++;
+        }
+      }
+
+      const summaryArray = Object.entries(agentSummary).map(([uid, s]) => ({
+        user_id: uid,
+        user_name: userMap[uid]?.full_name || activities.find(a => a.user_id === uid)?.user_name || "Unknown",
+        ...s,
+      }));
+
+      return json({ activities: filtered, summary: summaryArray });
+    }
+
 
     // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {
