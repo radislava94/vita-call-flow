@@ -3,11 +3,13 @@ import { AppLayout } from '@/layouts/AppLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -45,6 +47,14 @@ import {
   ArrowDownCircle,
   RotateCcw,
   Truck,
+  Search,
+  ClipboardList,
+  History,
+  Users,
+  Boxes,
+  TrendingDown,
+  DollarSign,
+  ShoppingCart,
 } from 'lucide-react';
 import { format, isToday, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
