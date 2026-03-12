@@ -382,6 +382,144 @@ export default function ShiftsManagementPage() {
               )}
             </div>
           </TabsContent>
+
+          <TabsContent value="login-activity">
+            <div className="space-y-4">
+              {/* Filters */}
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Agent</Label>
+                  <Select value={activityAgent} onValueChange={setActivityAgent}>
+                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Agents</SelectItem>
+                      {agents.map(a => <SelectItem key={a.user_id} value={a.user_id}>{a.full_name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input type="date" value={activityFrom} onChange={e => setActivityFrom(e.target.value)} className="w-40" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input type="date" value={activityTo} onChange={e => setActivityTo(e.target.value)} className="w-40" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Status</Label>
+                  <Select value={activityStatus} onValueChange={setActivityStatus}>
+                    <SelectTrigger className="w-48"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="On Time">On Time</SelectItem>
+                      <SelectItem value="Late Login">Late Login</SelectItem>
+                      <SelectItem value="Early Logout">Early Logout</SelectItem>
+                      <SelectItem value="Outside Shift (Blocked)">Outside Shift (Blocked)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setActivityFrom(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setActivityTo(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setActivityAgent('all');
+                  setActivityStatus('all');
+                }}>Reset</Button>
+              </div>
+
+              {/* Attendance Summary */}
+              {loginSummary.length > 0 && (
+                <div className="rounded-lg border bg-card">
+                  <div className="p-3 border-b">
+                    <h3 className="text-sm font-semibold text-foreground">Attendance Summary</h3>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agent</TableHead>
+                        <TableHead className="text-center">Total Shifts</TableHead>
+                        <TableHead className="text-center">Attended</TableHead>
+                        <TableHead className="text-center">Late Logins</TableHead>
+                        <TableHead className="text-center">Early Logouts</TableHead>
+                        <TableHead className="text-center">Blocked Attempts</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loginSummary.map((s: any) => (
+                        <TableRow key={s.user_id}>
+                          <TableCell className="font-medium">{s.user_name}</TableCell>
+                          <TableCell className="text-center">{s.total_shifts}</TableCell>
+                          <TableCell className="text-center">{s.attended}</TableCell>
+                          <TableCell className="text-center">
+                            {s.late > 0 ? <Badge variant="destructive" className="text-xs">{s.late}</Badge> : '0'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {s.early > 0 ? <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700">{s.early}</Badge> : '0'}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {s.blocked > 0 ? <Badge variant="destructive" className="text-xs">{s.blocked}</Badge> : '0'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+
+              {/* Activity Table */}
+              {activityLoading ? (
+                <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
+              ) : loginActivities.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">No login activity for this period</div>
+              ) : (
+                <div className="rounded-lg border bg-card">
+                  <div className="p-3 border-b">
+                    <h3 className="text-sm font-semibold text-foreground">Login Activity ({loginActivities.length} entries)</h3>
+                  </div>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>User</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Shift Start</TableHead>
+                        <TableHead>Shift End</TableHead>
+                        <TableHead>Login Time</TableHead>
+                        <TableHead>Logout Time</TableHead>
+                        <TableHead>Duration</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {loginActivities.map((a: any) => (
+                        <TableRow key={a.id}>
+                          <TableCell className="font-medium">{a.user_name}</TableCell>
+                          <TableCell><Badge variant="outline" className="text-xs capitalize">{a.role}</Badge></TableCell>
+                          <TableCell>{a.shift_date}</TableCell>
+                          <TableCell>{a.shift_start || '—'}</TableCell>
+                          <TableCell>{a.shift_end || '—'}</TableCell>
+                          <TableCell>{a.login_time ? format(new Date(a.login_time), 'HH:mm') : '—'}</TableCell>
+                          <TableCell>{a.logout_time ? format(new Date(a.logout_time), 'HH:mm') : <span className="text-muted-foreground text-xs">Active</span>}</TableCell>
+                          <TableCell>
+                            {a.session_duration != null
+                              ? `${Math.floor(a.session_duration / 60)}h ${Math.round(a.session_duration % 60)}m`
+                              : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={a.status === 'On Time' ? 'default' : a.status === 'Late Login' ? 'destructive' : a.status === 'Early Logout' ? 'secondary' : 'destructive'}
+                              className={`text-xs ${a.status === 'Early Logout' ? 'bg-orange-100 text-orange-700' : a.status === 'On Time' ? 'bg-green-100 text-green-700' : ''}`}
+                            >
+                              {a.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </TabsContent>
         </Tabs>
 
         {/* Create/Edit Dialog */}
