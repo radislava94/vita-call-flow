@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User, Plus, MoreVertical, History, Lock,
+  CalendarIcon, X, User, Plus, MoreVertical, History, Lock, Copy,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
@@ -203,6 +203,21 @@ export default function Orders() {
     return result;
   }, [orders, selectedStatuses]);
 
+  // Count duplicate phones in current results
+  const phoneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const o of filteredOrders) {
+      const p = o.customer_phone?.replace(/[^0-9+]/g, '');
+      if (p && p.length >= 6) counts[p] = (counts[p] || 0) + 1;
+    }
+    return counts;
+  }, [filteredOrders]);
+
+  const getPhoneDupCount = (phone: string) => {
+    const p = phone?.replace(/[^0-9+]/g, '');
+    return p ? (phoneCounts[p] || 0) : 0;
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const toggleStatus = (s: OrderStatus) => {
     setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
@@ -356,7 +371,14 @@ export default function Orders() {
                 <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => tryOpenOrder(order)}>
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
-                  <td className="px-4 py-3">{order.customer_name}</td>
+                  <td className="px-4 py-3">
+                    <span>{order.customer_name}</span>
+                    {getPhoneDupCount(order.customer_phone) > 1 && (
+                      <Badge variant="destructive" className="ml-1.5 text-[9px] px-1 py-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setSearch(order.customer_phone); }}>
+                        {getPhoneDupCount(order.customer_phone)}x
+                      </Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     {order.order_items && order.order_items.length > 0
                       ? order.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
@@ -388,6 +410,9 @@ export default function Orders() {
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={() => setHistoryOrder({ phone: order.customer_phone, name: order.customer_name })}>
                           <History className="h-3.5 w-3.5 mr-2" /> See History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setSearch(order.customer_phone); }}>
+                          <Copy className="h-3.5 w-3.5 mr-2" /> View Duplicates
                         </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => tryOpenOrder(order)}>
                           <Lock className="h-3.5 w-3.5 mr-2" /> Open Order
