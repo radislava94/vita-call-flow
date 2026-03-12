@@ -1267,6 +1267,16 @@ export default function WarehousePage() {
             <TabsTrigger value="user-warehouse" className="gap-1.5">
               <Users className="h-3.5 w-3.5" /> User Warehouse
             </TabsTrigger>
+            {canManage && (
+              <TabsTrigger value="delayed" className="gap-1.5">
+                <Clock className="h-3.5 w-3.5" /> Delayed Orders
+              </TabsTrigger>
+            )}
+            {canManage && (
+              <TabsTrigger value="calendar" className="gap-1.5">
+                <CalendarDays className="h-3.5 w-3.5" /> Shipment Calendar
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="inventory">
@@ -1290,6 +1300,18 @@ export default function WarehousePage() {
           <TabsContent value="user-warehouse">
             <UserWarehouseTab />
           </TabsContent>
+
+          {canManage && (
+            <TabsContent value="delayed">
+              <DelayedOrdersTab />
+            </TabsContent>
+          )}
+
+          {canManage && (
+            <TabsContent value="calendar">
+              <ShipmentCalendarTab />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </AppLayout>
