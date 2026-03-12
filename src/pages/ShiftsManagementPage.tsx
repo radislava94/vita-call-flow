@@ -82,6 +82,17 @@ export default function ShiftsManagementPage() {
     queryFn: () => apiGetShiftStatistics({ from: statsFrom, to: statsTo }),
   });
 
+  const { data: loginActivityData, isLoading: activityLoading } = useQuery<{ activities: any[]; summary: any[] }>({
+    queryKey: ['login-activity', activityFrom, activityTo, activityAgent, activityStatus],
+    queryFn: () => apiGetLoginActivity({
+      from: activityFrom, to: activityTo,
+      agent_id: activityAgent !== 'all' ? activityAgent : undefined,
+      status: activityStatus !== 'all' ? activityStatus : undefined,
+    }),
+  });
+  const loginActivities = loginActivityData?.activities || [];
+  const loginSummary = loginActivityData?.summary || [];
+
   const createMutation = useMutation({
     mutationFn: apiCreateShift,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); closeDialog(); toast({ title: 'Shift created' }); },
