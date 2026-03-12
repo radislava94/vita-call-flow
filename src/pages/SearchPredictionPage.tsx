@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Phone, User, ShoppingCart, FileSpreadsheet, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useCustomerIntelligence } from '@/hooks/useCustomerIntelligence';
+import { CustomerIntelligencePanel } from '@/components/CustomerIntelligencePanel';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
 
