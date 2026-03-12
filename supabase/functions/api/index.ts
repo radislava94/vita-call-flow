@@ -615,7 +615,10 @@ serve(async (req) => {
       if (source && source !== "all") query = query.eq("source_type", source);
       if (from) query = query.gte("created_at", from);
       if (to) query = query.lte("created_at", to);
-      if (search) query = query.or(`display_id.ilike.%${search}%,customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,product_name.ilike.%${search}%`);
+      if (search) {
+        const s = search.replace(/[%_\\,().]/g, '');
+        if (s) query = query.or(`display_id.ilike.%${s}%,customer_name.ilike.%${s}%,customer_phone.ilike.%${s}%,product_name.ilike.%${s}%`);
+      }
 
       const { data: orders, count, error } = await query;
       if (error) return json({ error: sanitizeDbError(error) }, 400);
