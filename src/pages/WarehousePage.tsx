@@ -1195,39 +1195,93 @@ export default function WarehousePage() {
   const isWarehouse = user?.isWarehouse;
   const canManage = isAdmin || isWarehouse;
 
+  const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
+  const [statsLoaded, setStatsLoaded] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      apiGetProducts().then(setProducts).catch(() => {}),
+      canManage ? apiGetIncomingOrders({}).then(setOrders).catch(() => {}) : Promise.resolve(),
+    ]).finally(() => setStatsLoaded(true));
+  }, []);
+
+  const totalProducts = products.length;
+  const lowStockCount = products.filter(p => p.stock_quantity < p.low_stock_threshold).length;
+  const totalStockValue = products.reduce((sum, p) => sum + (p.stock_quantity * Number(p.price || 0)), 0);
+  const pendingOrders = orders.filter(o => o.status === 'confirmed' || o.status === 'pending').length;
+
+  const kpiCards = [
+    { label: 'Total Products', value: totalProducts, icon: Boxes, color: 'bg-primary/10 text-primary' },
+    { label: 'Low Stock', value: lowStockCount, icon: TrendingDown, color: lowStockCount > 0 ? 'bg-destructive/10 text-destructive' : 'bg-muted text-muted-foreground' },
+    { label: 'Stock Value', value: `$${totalStockValue.toLocaleString()}`, icon: DollarSign, color: 'bg-emerald-500/10 text-emerald-600' },
+    ...(canManage ? [{ label: 'Pending Orders', value: pendingOrders, icon: ShoppingCart, color: pendingOrders > 0 ? 'bg-amber-500/10 text-amber-600' : 'bg-muted text-muted-foreground' }] : []),
+  ];
+
   return (
     <AppLayout title="Warehouse">
-      <Tabs defaultValue="inventory" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="inventory">Inventory</TabsTrigger>
-          <TabsTrigger value="movements">Stock Movements</TabsTrigger>
-          {canManage && <TabsTrigger value="incoming">Incoming Orders</TabsTrigger>}
-          <TabsTrigger value="suppliers">Suppliers</TabsTrigger>
-          <TabsTrigger value="user-warehouse">User Warehouse</TabsTrigger>
-        </TabsList>
+      <div className="space-y-6">
+        {/* KPI Cards */}
+        <div className={cn("grid gap-4", canManage ? "grid-cols-2 md:grid-cols-4" : "grid-cols-3")}>
+          {kpiCards.map(card => (
+            <Card key={card.label} className="border-none shadow-sm">
+              <CardContent className="flex items-center gap-3 p-4">
+                <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl", card.color)}>
+                  <card.icon className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">{card.label}</p>
+                  <p className="text-xl font-bold">{statsLoaded ? card.value : '—'}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-        <TabsContent value="inventory">
-          <InventoryTab />
-        </TabsContent>
+        <Tabs defaultValue="inventory" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="inventory" className="gap-1.5">
+              <Package className="h-3.5 w-3.5" /> Inventory
+            </TabsTrigger>
+            <TabsTrigger value="movements" className="gap-1.5">
+              <History className="h-3.5 w-3.5" /> Stock Movements
+            </TabsTrigger>
+            {canManage && (
+              <TabsTrigger value="incoming" className="gap-1.5">
+                <ClipboardList className="h-3.5 w-3.5" /> Incoming Orders
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="suppliers" className="gap-1.5">
+              <Truck className="h-3.5 w-3.5" /> Suppliers
+            </TabsTrigger>
+            <TabsTrigger value="user-warehouse" className="gap-1.5">
+              <Users className="h-3.5 w-3.5" /> User Warehouse
+            </TabsTrigger>
+          </TabsList>
 
-        <TabsContent value="movements">
-          <StockMovementsTab />
-        </TabsContent>
-
-        {canManage && (
-          <TabsContent value="incoming">
-            <IncomingOrdersTab />
+          <TabsContent value="inventory">
+            <InventoryTab />
           </TabsContent>
-        )}
 
-        <TabsContent value="suppliers">
-          <SuppliersTab />
-        </TabsContent>
+          <TabsContent value="movements">
+            <StockMovementsTab />
+          </TabsContent>
 
-        <TabsContent value="user-warehouse">
-          <UserWarehouseTab />
-        </TabsContent>
-      </Tabs>
+          {canManage && (
+            <TabsContent value="incoming">
+              <IncomingOrdersTab />
+            </TabsContent>
+          )}
+
+          <TabsContent value="suppliers">
+            <SuppliersTab />
+          </TabsContent>
+
+          <TabsContent value="user-warehouse">
+            <UserWarehouseTab />
+          </TabsContent>
+        </Tabs>
+      </div>
     </AppLayout>
   );
 }
