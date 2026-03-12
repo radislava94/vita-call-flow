@@ -48,6 +48,7 @@ const updateCustomerSchema = z.object({
   quantity: z.number().int().min(1).max(100000).optional(),
   product_id: z.string().uuid().nullable().optional(),
   product_name: z.string().max(200).optional(),
+  ship_after_date: z.string().nullable().optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -1041,6 +1042,7 @@ serve(async (req) => {
       if (body.quantity !== undefined) updates.quantity = body.quantity;
       if (body.product_id !== undefined) updates.product_id = body.product_id;
       if (body.product_name !== undefined) updates.product_name = body.product_name;
+      if (body.ship_after_date !== undefined) updates.ship_after_date = body.ship_after_date;
 
       const { data, error } = await supabase
         .from("orders")
@@ -3421,6 +3423,7 @@ serve(async (req) => {
             source: o.source_lead_id ? "prediction_lead" : "order",
             source_lead_id: o.source_lead_id,
             order_items: o.order_items || [],
+            ship_after_date: o.ship_after_date || null,
           });
         }
       }

@@ -3,6 +3,7 @@ import {
   Phone, FileText, Loader2, X, ChevronDown, ChevronUp, Save,
   Plus, Trash2, ShoppingCart, CalendarIcon
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useCustomerIntelligence } from '@/hooks/useCustomerIntelligence';
 import { CustomerIntelligencePanel } from '@/components/CustomerIntelligencePanel';
 import { ProductRecommendations } from '@/components/ProductRecommendations';
@@ -81,6 +82,7 @@ export interface OrderModalData {
   displayId?: string;
   items?: ItemLocal[];
   assigned_agent_id?: string | null;
+  ship_after_date?: string | null;
 }
 
 export type OrderModalContextType = 'prediction_lead' | 'order';
@@ -123,6 +125,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
   const [selectedOutcome, setSelectedOutcome] = useState<CallOutcome | null>(null);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>();
+  const [shipAfterDate, setShipAfterDate] = useState<Date | undefined>();
 
   // Products
   const [items, setItems] = useState<ItemLocal[]>([]);
@@ -149,6 +152,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
     setSelectedOutcome(null);
     setSelectedStatus(data.status || (isLead ? 'not_contacted' : 'pending'));
     setFollowUpDate(undefined);
+    setShipAfterDate(data.ship_after_date ? new Date(data.ship_after_date + 'T00:00:00') : undefined);
     setShowScript(false);
     setEditingScript(false);
     setAmountPaid(0);
@@ -340,6 +344,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
           customer_address: customerAddress.trim(),
           customer_city: customerCity.trim(),
           postal_code: postalCode.trim(),
+          ship_after_date: shipAfterDate ? format(shipAfterDate, 'yyyy-MM-dd') : null,
         });
         // Sync items only if order is NOT in a locked status AND not transitioning TO locked
         const isCurrentlyLocked = lockedStatuses.includes(data.status);
@@ -512,6 +517,45 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                 </SelectContent>
               </Select>
             </section>
+
+            {/* Ship After Date (only for orders, visible when confirmed) */}
+            {!isLead && ['confirmed', 'take', 'call_again', 'pending'].includes(selectedStatus) && (
+              <section>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Ship After Date (Optional)</h3>
+                <p className="text-xs text-muted-foreground mb-2">Set a delayed shipment date if the customer requests shipping later.</p>
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-8 gap-1.5 text-sm flex-1 justify-start font-normal", !shipAfterDate && "text-muted-foreground")} disabled={!isEditable}>
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        {shipAfterDate ? format(shipAfterDate, 'PPP') : 'No delayed shipment'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={shipAfterDate}
+                        onSelect={setShipAfterDate}
+                        disabled={(date) => date < new Date()}
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {shipAfterDate && isEditable && (
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => setShipAfterDate(undefined)}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                {shipAfterDate && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px]">
+                      ⏱ Delayed Shipment — Ship After: {format(shipAfterDate, 'MMM d, yyyy')}
+                    </Badge>
+                  </div>
+                )}
+              </section>
+            )}
 
             {/* D) Products */}
             <section>
