@@ -2891,6 +2891,11 @@ serve(async (req) => {
 
     // GET /api/shifts/check-login — check if current user has an active shift right now
     if (req.method === "GET" && path === "shifts/check-login") {
+      // Get user profile for logging
+      const { data: userProfile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      const userName = userProfile?.full_name || user.email || "Unknown";
+      const primaryRole = roles[0] || "agent";
+
       // Admins and managers bypass shift restrictions
       if (isAdminOrManager) {
         return json({ allowed: true, bypass: true });
@@ -2906,6 +2911,11 @@ serve(async (req) => {
         .eq("user_id", user.id);
       
       if (!myAssignments || myAssignments.length === 0) {
+        // Record blocked attempt
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "No active shift assignment",
+        });
         return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
       }
 
@@ -2917,6 +2927,10 @@ serve(async (req) => {
         .eq("date", today);
 
       if (!todayShifts || todayShifts.length === 0) {
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "No shift scheduled for today",
+        });
         return json({ allowed: false, message: "Login not allowed. You have no shift scheduled for today." });
       }
 
@@ -2932,13 +2946,17 @@ serve(async (req) => {
 
         // Check if current time is within shift window
         if (nowTime >= start && nowTime <= end) {
-          return json({ allowed: true, shift_id: shift.id, shift_date: shift.date, shift_start_time: start, shift_end_time: end });
+          return json({ allowed: true, shift_id: shift.id, shift_date: shift.date, shift_start_time: start, shift_end_time: end, user_name: userName, role: primaryRole });
         }
       }
 
       // Check if all shifts are 00:00-00:00
       const allZero = todayShifts.every((s: any) => s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00");
       if (allZero) {
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "Shift set to 00:00-00:00 (no active shift)",
+        });
         return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
       }
 
@@ -2947,6 +2965,10 @@ serve(async (req) => {
         .filter((s: any) => !(s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00"))
         .map((s: any) => `${s.start_time.substring(0, 5)} - ${s.end_time.substring(0, 5)}`)
         .join(", ");
+      await adminClient.from("blocked_login_attempts").insert({
+        user_id: user.id, user_name: userName, role: primaryRole,
+        reason: `Outside shift hours (${shiftTimes})`,
+      });
       return json({ allowed: false, message: `Login not allowed. Your shift hours are: ${shiftTimes}. Current time is outside this window.` });
     }
 
@@ -3087,9 +3109,135 @@ serve(async (req) => {
       return json(result);
     }
 
-    // ============================================================
-    // WAREHOUSE
-    // ============================================================
+    // GET /api/shifts/login-activity — login activity logs for admin/manager
+    if (req.method === "GET" && path === "shifts/login-activity") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const dateFrom = url.searchParams.get("from");
+      const dateTo = url.searchParams.get("to");
+      const agentFilter = url.searchParams.get("agent_id");
+      const statusFilter = url.searchParams.get("status");
+
+      // Fetch login logs
+      let logQuery = adminClient.from("shift_login_logs").select("*").order("login_time", { ascending: false });
+      if (dateFrom) logQuery = logQuery.gte("shift_date", dateFrom);
+      if (dateTo) logQuery = logQuery.lte("shift_date", dateTo);
+      if (agentFilter) logQuery = logQuery.eq("user_id", agentFilter);
+      const { data: loginLogs } = await logQuery;
+
+      // Fetch blocked attempts
+      let blockedQuery = adminClient.from("blocked_login_attempts").select("*").order("attempt_time", { ascending: false });
+      if (dateFrom) blockedQuery = blockedQuery.gte("attempt_time", `${dateFrom}T00:00:00`);
+      if (dateTo) blockedQuery = blockedQuery.lte("attempt_time", `${dateTo}T23:59:59`);
+      if (agentFilter) blockedQuery = blockedQuery.eq("user_id", agentFilter);
+      const { data: blockedAttempts } = await blockedQuery;
+
+      // Get user names & roles for login logs
+      const userIds = [...new Set((loginLogs || []).map((l: any) => l.user_id))];
+      let userMap: Record<string, { full_name: string; role: string }> = {};
+      if (userIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", userIds);
+        const { data: userRoles } = await adminClient.from("user_roles").select("user_id, role").in("user_id", userIds);
+        for (const p of profiles || []) {
+          const role = (userRoles || []).find((r: any) => r.user_id === p.user_id)?.role || "agent";
+          userMap[p.user_id] = { full_name: p.full_name, role };
+        }
+      }
+
+      // Build activity entries from login logs
+      const activities: any[] = [];
+      for (const log of loginLogs || []) {
+        const userInfo = userMap[log.user_id] || { full_name: "Unknown", role: "agent" };
+        const shiftStart = log.shift_start_time?.substring(0, 5) || "";
+        const shiftEnd = log.shift_end_time?.substring(0, 5) || "";
+        const loginTimeStr = log.login_time ? new Date(log.login_time).toTimeString().substring(0, 5) : "";
+        const logoutTimeStr = log.logout_time ? new Date(log.logout_time).toTimeString().substring(0, 5) : null;
+
+        // Calculate session duration
+        let sessionDuration: number | null = null;
+        if (log.login_time && log.logout_time) {
+          sessionDuration = (new Date(log.logout_time).getTime() - new Date(log.login_time).getTime()) / 60000; // minutes
+        }
+
+        // Determine status
+        let status = "On Time";
+        if (shiftStart && loginTimeStr > shiftStart) {
+          status = "Late Login";
+        }
+        if (log.logout_time && shiftEnd && logoutTimeStr && logoutTimeStr < shiftEnd) {
+          status = status === "Late Login" ? "Late Login" : "Early Logout";
+        }
+
+        activities.push({
+          id: log.id,
+          type: "login",
+          user_id: log.user_id,
+          user_name: userInfo.full_name,
+          role: userInfo.role,
+          shift_date: log.shift_date,
+          shift_start: shiftStart,
+          shift_end: shiftEnd,
+          login_time: log.login_time,
+          logout_time: log.logout_time,
+          session_duration: sessionDuration,
+          status,
+        });
+      }
+
+      // Add blocked attempts
+      for (const attempt of blockedAttempts || []) {
+        activities.push({
+          id: attempt.id,
+          type: "blocked",
+          user_id: attempt.user_id,
+          user_name: attempt.user_name,
+          role: attempt.role,
+          shift_date: attempt.attempt_time?.substring(0, 10) || "",
+          shift_start: null,
+          shift_end: null,
+          login_time: attempt.attempt_time,
+          logout_time: null,
+          session_duration: null,
+          status: "Outside Shift (Blocked)",
+          reason: attempt.reason,
+        });
+      }
+
+      // Filter by status if provided
+      let filtered = activities;
+      if (statusFilter && statusFilter !== "all") {
+        filtered = activities.filter(a => a.status === statusFilter);
+      }
+
+      // Sort by login_time descending
+      filtered.sort((a, b) => new Date(b.login_time).getTime() - new Date(a.login_time).getTime());
+
+      // Build per-agent summary
+      const agentSummary: Record<string, { total_shifts: number; attended: number; late: number; early: number; blocked: number }> = {};
+      for (const a of activities) {
+        if (!agentSummary[a.user_id]) {
+          agentSummary[a.user_id] = { total_shifts: 0, attended: 0, late: 0, early: 0, blocked: 0 };
+        }
+        const s = agentSummary[a.user_id];
+        if (a.type === "blocked") {
+          s.blocked++;
+        } else {
+          s.total_shifts++;
+          s.attended++;
+          if (a.status === "Late Login") s.late++;
+          if (a.status === "Early Logout") s.early++;
+        }
+      }
+
+      const summaryArray = Object.entries(agentSummary).map(([uid, s]) => ({
+        user_id: uid,
+        user_name: userMap[uid]?.full_name || activities.find(a => a.user_id === uid)?.user_name || "Unknown",
+        ...s,
+      }));
+
+      return json({ activities: filtered, summary: summaryArray });
+    }
+
 
     // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {

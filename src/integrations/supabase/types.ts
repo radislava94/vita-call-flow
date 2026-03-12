@@ -100,6 +100,36 @@ export type Database = {
         }
         Relationships: []
       }
+      blocked_login_attempts: {
+        Row: {
+          attempt_time: string
+          created_at: string
+          id: string
+          reason: string
+          role: string
+          user_id: string
+          user_name: string
+        }
+        Insert: {
+          attempt_time?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          role?: string
+          user_id: string
+          user_name?: string
+        }
+        Update: {
+          attempt_time?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          role?: string
+          user_id?: string
+          user_name?: string
+        }
+        Relationships: []
+      }
       call_logs: {
         Row: {
           agent_id: string

@@ -230,6 +230,14 @@ export const apiGetShiftStatistics = (params?: { from?: string; to?: string }) =
   if (params?.to) sp.set('to', params.to);
   return apiFetch(`shifts/statistics?${sp.toString()}`);
 };
+export const apiGetLoginActivity = (params?: { from?: string; to?: string; agent_id?: string; status?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  if (params?.agent_id) sp.set('agent_id', params.agent_id);
+  if (params?.status) sp.set('status', params.status);
+  return apiFetch(`shifts/login-activity?${sp.toString()}`);
+};
 
 // Recent Activity
 export const apiGetRecentActivity = (limit?: number) => {
