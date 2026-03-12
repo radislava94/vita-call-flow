@@ -2889,6 +2889,204 @@ serve(async (req) => {
       return json({ success: true });
     }
 
+    // GET /api/shifts/check-login — check if current user has an active shift right now
+    if (req.method === "GET" && path === "shifts/check-login") {
+      // Admins and managers bypass shift restrictions
+      if (isAdminOrManager) {
+        return json({ allowed: true, bypass: true });
+      }
+
+      const today = new Date().toISOString().substring(0, 10);
+      const nowTime = new Date().toTimeString().substring(0, 5); // HH:MM
+
+      // Get today's shift assignments for this user
+      const { data: myAssignments } = await adminClient
+        .from("shift_assignments")
+        .select("shift_id")
+        .eq("user_id", user.id);
+      
+      if (!myAssignments || myAssignments.length === 0) {
+        return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
+      }
+
+      const myShiftIds = myAssignments.map((a: any) => a.shift_id);
+      const { data: todayShifts } = await adminClient
+        .from("shifts")
+        .select("*")
+        .in("id", myShiftIds)
+        .eq("date", today);
+
+      if (!todayShifts || todayShifts.length === 0) {
+        return json({ allowed: false, message: "Login not allowed. You have no shift scheduled for today." });
+      }
+
+      // Check if any shift covers the current time
+      for (const shift of todayShifts) {
+        const start = shift.start_time.substring(0, 5);
+        const end = shift.end_time.substring(0, 5);
+
+        // Special rule: 00:00 → 00:00 means NO active shift
+        if (start === "00:00" && end === "00:00") {
+          continue;
+        }
+
+        // Check if current time is within shift window
+        if (nowTime >= start && nowTime <= end) {
+          return json({ allowed: true, shift_id: shift.id, shift_date: shift.date, shift_start_time: start, shift_end_time: end });
+        }
+      }
+
+      // Check if all shifts are 00:00-00:00
+      const allZero = todayShifts.every((s: any) => s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00");
+      if (allZero) {
+        return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
+      }
+
+      // Has shifts but outside time window
+      const shiftTimes = todayShifts
+        .filter((s: any) => !(s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00"))
+        .map((s: any) => `${s.start_time.substring(0, 5)} - ${s.end_time.substring(0, 5)}`)
+        .join(", ");
+      return json({ allowed: false, message: `Login not allowed. Your shift hours are: ${shiftTimes}. Current time is outside this window.` });
+    }
+
+    // POST /api/shifts/login-log — record login
+    if (req.method === "POST" && path === "shifts/login-log") {
+      const body = await req.json();
+      const { shift_id, shift_date, shift_start_time, shift_end_time } = body;
+      
+      const { data, error } = await adminClient.from("shift_login_logs").insert({
+        user_id: user.id,
+        shift_id,
+        shift_date,
+        shift_start_time,
+        shift_end_time,
+        login_time: new Date().toISOString(),
+      }).select().single();
+      
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/shifts/logout-log — record logout
+    if (req.method === "PATCH" && path === "shifts/logout-log") {
+      // Update the latest open login log for this user
+      const { data: openLog } = await adminClient
+        .from("shift_login_logs")
+        .select("id")
+        .eq("user_id", user.id)
+        .is("logout_time", null)
+        .order("login_time", { ascending: false })
+        .limit(1)
+        .single();
+      
+      if (openLog) {
+        await adminClient.from("shift_login_logs")
+          .update({ logout_time: new Date().toISOString() })
+          .eq("id", openLog.id);
+      }
+      return json({ success: true });
+    }
+
+    // GET /api/shifts/statistics — agent shift statistics for admin/manager
+    if (req.method === "GET" && path === "shifts/statistics") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const dateFrom = url.searchParams.get("from");
+      const dateTo = url.searchParams.get("to");
+
+      let query = adminClient.from("shifts").select("*").order("date", { ascending: true });
+      if (dateFrom) query = query.gte("date", dateFrom);
+      if (dateTo) query = query.lte("date", dateTo);
+
+      const { data: shifts } = await query;
+      if (!shifts) return json([]);
+
+      const shiftIds = shifts.map((s: any) => s.id);
+      let assignments: any[] = [];
+      if (shiftIds.length > 0) {
+        const { data: a } = await adminClient.from("shift_assignments").select("shift_id, user_id").in("shift_id", shiftIds);
+        assignments = a || [];
+      }
+
+      // Build per-agent statistics
+      const agentStats: Record<string, { total_days: Set<string>; weekend_days: Set<string>; total_hours: number; total_shifts: number; weekday_shifts: number; weekend_shifts: number }> = {};
+
+      for (const assignment of assignments) {
+        const shift = shifts.find((s: any) => s.id === assignment.shift_id);
+        if (!shift) continue;
+
+        if (!agentStats[assignment.user_id]) {
+          agentStats[assignment.user_id] = { total_days: new Set(), weekend_days: new Set(), total_hours: 0, total_shifts: 0, weekday_shifts: 0, weekend_shifts: 0 };
+        }
+
+        const stats = agentStats[assignment.user_id];
+        stats.total_days.add(shift.date);
+        stats.total_shifts++;
+
+        // Calculate hours
+        const startParts = shift.start_time.split(":").map(Number);
+        const endParts = shift.end_time.split(":").map(Number);
+        const startMins = startParts[0] * 60 + (startParts[1] || 0);
+        const endMins = endParts[0] * 60 + (endParts[1] || 0);
+        const hours = endMins > startMins ? (endMins - startMins) / 60 : 0;
+        stats.total_hours += hours;
+
+        // Weekend check (Saturday=6, Sunday=0)
+        const dayOfWeek = new Date(shift.date + "T12:00:00").getDay();
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+          stats.weekend_days.add(shift.date);
+          stats.weekend_shifts++;
+        } else {
+          stats.weekday_shifts++;
+        }
+      }
+
+      // Get agent names
+      const agentUserIds = Object.keys(agentStats);
+      let agentMap: Record<string, string> = {};
+      if (agentUserIds.length > 0) {
+        const { data: profiles } = await adminClient.from("profiles").select("user_id, full_name").in("user_id", agentUserIds);
+        for (const p of profiles || []) agentMap[p.user_id] = p.full_name;
+      }
+
+      // Get login logs for actual hours
+      let loginLogs: any[] = [];
+      if (agentUserIds.length > 0) {
+        let logQuery = adminClient.from("shift_login_logs").select("*").in("user_id", agentUserIds);
+        if (dateFrom) logQuery = logQuery.gte("shift_date", dateFrom);
+        if (dateTo) logQuery = logQuery.lte("shift_date", dateTo);
+        const { data: logs } = await logQuery;
+        loginLogs = logs || [];
+      }
+
+      const result = agentUserIds.map(uid => {
+        const s = agentStats[uid];
+        const agentLogs = loginLogs.filter((l: any) => l.user_id === uid);
+        let actualHours = 0;
+        for (const log of agentLogs) {
+          if (log.login_time && log.logout_time) {
+            actualHours += (new Date(log.logout_time).getTime() - new Date(log.login_time).getTime()) / 3600000;
+          }
+        }
+
+        return {
+          user_id: uid,
+          full_name: agentMap[uid] || "Unknown",
+          total_worked_days: s.total_days.size,
+          total_weekend_days: s.weekend_days.size,
+          total_hours_scheduled: Math.round(s.total_hours * 100) / 100,
+          total_hours_actual: Math.round(actualHours * 100) / 100,
+          total_shifts: s.total_shifts,
+          average_hours_per_shift: s.total_shifts > 0 ? Math.round((s.total_hours / s.total_shifts) * 100) / 100 : 0,
+          weekday_shifts: s.weekday_shifts,
+          weekend_shifts: s.weekend_shifts,
+        };
+      });
+
+      return json(result);
+    }
+
     // ============================================================
     // WAREHOUSE
     // ============================================================
