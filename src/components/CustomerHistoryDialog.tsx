@@ -5,6 +5,11 @@ import { Loader2, Phone, MapPin, Package } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatusBadge } from '@/components/StatusBadge';
 import { format } from 'date-fns';
+import { OrderStatus } from '@/types';
+import { Loader2, Phone, MapPin, Package } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { StatusBadge } from '@/components/StatusBadge';
+import { format } from 'date-fns';
 
 interface CustomerHistoryDialogProps {
   open: boolean;
