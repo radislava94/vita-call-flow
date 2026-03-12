@@ -58,7 +58,7 @@ const App = () => (
               <Route path="/call-history" element={<ProtectedRoute moduleKey="call_history"><CallHistoryPage /></ProtectedRoute>} />
               <Route path="/warehouse" element={<ProtectedRoute moduleKey="warehouse"><WarehousePage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute moduleKey="settings"><SettingsPage /></ProtectedRoute>} />
-              <Route path="/ads" element={<ProtectedRoute moduleKey="ads"><AdsPanelPage /></ProtectedRoute>} />
+              <Route path="/ads" element={<Navigate to="/webhooks" replace />} />
               <Route path="/inbound-leads" element={<ProtectedRoute moduleKey="inbound_leads"><InboundLeadsPage /></ProtectedRoute>} />
               <Route path="/webhooks" element={<ProtectedRoute moduleKey="webhooks"><WebhookManagementPage /></ProtectedRoute>} />
               <Route path="/search-prediction" element={<ProtectedRoute moduleKey="search_prediction"><SearchPredictionPage /></ProtectedRoute>} />

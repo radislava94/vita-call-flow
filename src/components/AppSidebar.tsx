@@ -65,8 +65,7 @@ const sections: NavSection[] = [
     label: 'Products & Ads',
     items: [
       { title: 'Products', path: '/products', icon: Package, moduleKey: 'products' },
-      { title: 'Webhooks', path: '/webhooks', icon: Webhook, moduleKey: 'webhooks' },
-      { title: 'Ads Panel', path: '/ads', icon: BarChart3, moduleKey: 'ads' },
+      { title: 'Webhooks & Ads', path: '/webhooks', icon: Webhook, moduleKey: 'webhooks' },
     ],
   },
   {
