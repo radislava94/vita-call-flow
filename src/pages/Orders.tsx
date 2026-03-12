@@ -132,7 +132,7 @@ export default function Orders() {
       const { error } = await supabase.from('order_locks').insert({
         order_id: order.id,
         locked_by: user?.id,
-        locked_by_name: user?.name || user?.email || '',
+        locked_by_name: user?.full_name || user?.email || '',
       });
       if (error && error.code === '23505') {
         // Race condition - someone else locked it
