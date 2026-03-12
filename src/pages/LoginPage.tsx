@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { apiCheckShiftLogin, apiLogShiftLogin } from '@/lib/api';
 import { Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,10 +20,38 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      // Support plain usernames: auto-append @vitacall.app if no @ present
       const loginEmail = email.includes('@') ? email : `${email}@vitacall.app`;
       await signIn(loginEmail, password);
-      // Navigate happens via ProtectedRoute - just go to root, it will redirect agents
+
+      // Check shift restrictions after successful auth
+      try {
+        const shiftCheck = await apiCheckShiftLogin();
+        if (!shiftCheck.allowed) {
+          // Sign the user out since they can't use the system
+          const { supabase } = await import('@/integrations/supabase/client');
+          await supabase.auth.signOut();
+          setError(shiftCheck.message || 'Login not allowed outside shift hours.');
+          setLoading(false);
+          return;
+        }
+
+        // Log the shift login if not a bypass (admin/manager)
+        if (!shiftCheck.bypass && shiftCheck.shift_id) {
+          try {
+            await apiLogShiftLogin({
+              shift_id: shiftCheck.shift_id,
+              shift_date: shiftCheck.shift_date,
+              shift_start_time: shiftCheck.shift_start_time,
+              shift_end_time: shiftCheck.shift_end_time,
+            });
+          } catch {
+            // Non-critical, don't block login
+          }
+        }
+      } catch {
+        // If shift check fails (e.g. network), allow login to proceed
+      }
+
       navigate('/', { replace: true });
     } catch (err: any) {
       setError(err.message || 'Invalid credentials');

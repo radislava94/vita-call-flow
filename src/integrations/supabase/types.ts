@@ -730,6 +730,50 @@ export type Database = {
           },
         ]
       }
+      shift_login_logs: {
+        Row: {
+          created_at: string
+          id: string
+          login_time: string
+          logout_time: string | null
+          shift_date: string
+          shift_end_time: string
+          shift_id: string
+          shift_start_time: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          login_time?: string
+          logout_time?: string | null
+          shift_date: string
+          shift_end_time: string
+          shift_id: string
+          shift_start_time: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          login_time?: string
+          logout_time?: string | null
+          shift_date?: string
+          shift_end_time?: string
+          shift_id?: string
+          shift_start_time?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shift_login_logs_shift_id_fkey"
+            columns: ["shift_id"]
+            isOneToOne: false
+            referencedRelation: "shifts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shifts: {
         Row: {
           created_at: string

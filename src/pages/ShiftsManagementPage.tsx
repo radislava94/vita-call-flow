@@ -1,25 +1,38 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents } from '@/lib/api';
+import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents, apiGetShiftStatistics } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Clock, BarChart3, Calendar as CalendarDays, Briefcase } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 
 interface ShiftAgent { user_id: string; full_name: string; }
 interface Shift {
   id: string; name: string; date: string; start_time: string; end_time: string;
   agents: ShiftAgent[]; created_at: string;
+}
+
+interface AgentShiftStats {
+  user_id: string;
+  full_name: string;
+  total_worked_days: number;
+  total_weekend_days: number;
+  total_hours_scheduled: number;
+  total_hours_actual: number;
+  total_shifts: number;
+  average_hours_per_shift: number;
+  weekday_shifts: number;
+  weekend_shifts: number;
 }
 
 export default function ShiftsManagementPage() {
@@ -31,6 +44,10 @@ export default function ShiftsManagementPage() {
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
   const [calMonth, setCalMonth] = useState(new Date());
+
+  // Statistics filters (separate from list filters)
+  const [statsFrom, setStatsFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [statsTo, setStatsTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
   // Form state
   const [formName, setFormName] = useState('');
@@ -52,6 +69,11 @@ export default function ShiftsManagementPage() {
   const { data: agents = [] } = useQuery<{ user_id: string; full_name: string; email: string }[]>({
     queryKey: ['agents'],
     queryFn: apiGetAgents,
+  });
+
+  const { data: shiftStats = [], isLoading: statsLoading } = useQuery<AgentShiftStats[]>({
+    queryKey: ['shift-statistics', statsFrom, statsTo],
+    queryFn: () => apiGetShiftStatistics({ from: statsFrom, to: statsTo }),
   });
 
   const createMutation = useMutation({
@@ -108,7 +130,13 @@ export default function ShiftsManagementPage() {
   const calendarDays = eachDayOfInterval({ start: startOfWeek(monthStart, { weekStartsOn: 1 }), end: endOfWeek(monthEnd, { weekStartsOn: 1 }) });
   const getShiftsForDay = (day: Date) => shifts.filter(s => isSameDay(new Date(s.date), day));
 
-  if (!user?.isAdmin) return <AppLayout title="Access Denied"><div className="p-6">Access denied</div></AppLayout>;
+  // Statistics summary totals
+  const totalScheduledHours = shiftStats.reduce((sum, s) => sum + s.total_hours_scheduled, 0);
+  const totalWeekendShifts = shiftStats.reduce((sum, s) => sum + s.weekend_shifts, 0);
+  const totalWeekdayShifts = shiftStats.reduce((sum, s) => sum + s.weekday_shifts, 0);
+  const totalActualHours = shiftStats.reduce((sum, s) => sum + s.total_hours_actual, 0);
+
+  if (!user?.isAdmin && !user?.isManager) return <AppLayout title="Access Denied"><div className="p-6">Access denied</div></AppLayout>;
 
   return (
     <AppLayout title="Shifts Management">
@@ -147,6 +175,7 @@ export default function ShiftsManagementPage() {
           <TabsList>
             <TabsTrigger value="list">List View</TabsTrigger>
             <TabsTrigger value="calendar">Calendar View</TabsTrigger>
+            <TabsTrigger value="statistics" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> Statistics</TabsTrigger>
           </TabsList>
 
           <TabsContent value="list">
@@ -226,6 +255,114 @@ export default function ShiftsManagementPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="statistics">
+            <div className="space-y-4">
+              {/* Stats date filters */}
+              <div className="flex flex-wrap gap-3 items-end">
+                <div>
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input type="date" value={statsFrom} onChange={e => setStatsFrom(e.target.value)} className="w-40" />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input type="date" value={statsTo} onChange={e => setStatsTo(e.target.value)} className="w-40" />
+                </div>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setStatsFrom(format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+                  setStatsTo(format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+                }}>This Month</Button>
+              </div>
+
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Briefcase className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Total Scheduled Hours</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">{totalScheduledHours.toFixed(1)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Total Actual Hours</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">{totalActualHours.toFixed(1)}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-xs text-muted-foreground">Weekday Shifts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-foreground">{totalWeekdayShifts}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CalendarDays className="h-4 w-4 text-primary" />
+                      <span className="text-xs text-muted-foreground">Weekend Shifts</span>
+                    </div>
+                    <p className="text-2xl font-bold text-primary">{totalWeekendShifts}</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Per-agent table */}
+              {statsLoading ? (
+                <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
+              ) : shiftStats.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">No shift data for this period</div>
+              ) : (
+                <div className="rounded-lg border bg-card">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Agent</TableHead>
+                        <TableHead className="text-center">Total Days</TableHead>
+                        <TableHead className="text-center">Weekend Days</TableHead>
+                        <TableHead className="text-center">Total Shifts</TableHead>
+                        <TableHead className="text-center">Weekday</TableHead>
+                        <TableHead className="text-center">Weekend</TableHead>
+                        <TableHead className="text-center">Scheduled Hours</TableHead>
+                        <TableHead className="text-center">Actual Hours</TableHead>
+                        <TableHead className="text-center">Avg Hours/Shift</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {shiftStats.map(stat => (
+                        <TableRow key={stat.user_id}>
+                          <TableCell className="font-medium">{stat.full_name}</TableCell>
+                          <TableCell className="text-center">{stat.total_worked_days}</TableCell>
+                          <TableCell className="text-center">
+                            {stat.total_weekend_days > 0 ? (
+                              <Badge variant="secondary" className="text-xs">{stat.total_weekend_days}</Badge>
+                            ) : '0'}
+                          </TableCell>
+                          <TableCell className="text-center">{stat.total_shifts}</TableCell>
+                          <TableCell className="text-center">{stat.weekday_shifts}</TableCell>
+                          <TableCell className="text-center">
+                            {stat.weekend_shifts > 0 ? (
+                              <span className="text-primary font-medium">{stat.weekend_shifts}</span>
+                            ) : '0'}
+                          </TableCell>
+                          <TableCell className="text-center">{stat.total_hours_scheduled}h</TableCell>
+                          <TableCell className="text-center">{stat.total_hours_actual}h</TableCell>
+                          <TableCell className="text-center">{stat.average_hours_per_shift}h</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
           </TabsContent>
         </Tabs>
 
