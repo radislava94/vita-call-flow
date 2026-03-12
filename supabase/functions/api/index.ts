@@ -2492,26 +2492,56 @@ serve(async (req) => {
       let leadMap: Record<string, any> = {};
 
       if (orderContextIds.length > 0) {
-        const { data: orders } = await adminClient.from("orders").select("id, display_id, customer_name, customer_phone, product_name").in("id", orderContextIds);
+        const { data: orders } = await adminClient.from("orders").select("id, display_id, customer_name, customer_phone, customer_city, customer_address, product_name, price, status, assigned_agent_name, source_type, created_at, order_items(id, product_name, quantity, price_per_unit, total_price)").in("id", orderContextIds);
         for (const o of orders || []) orderMap[o.id] = o;
       }
       if (leadContextIds.length > 0) {
-        const { data: leads } = await adminClient.from("prediction_leads").select("id, name, telephone, product").in("id", leadContextIds);
+        const { data: leads } = await adminClient.from("prediction_leads").select("id, name, telephone, product, city, address, status, assigned_agent_name, price, quantity, prediction_lead_items(id, product_name, quantity, price_per_unit, total_price), prediction_lists(name)").in("id", leadContextIds);
         for (const l of leads || []) leadMap[l.id] = l;
+      }
+
+      // Fetch order_history for order contexts
+      let orderHistoryMap: Record<string, any[]> = {};
+      if (orderContextIds.length > 0) {
+        const { data: history } = await adminClient
+          .from("order_history")
+          .select("*")
+          .in("order_id", orderContextIds)
+          .order("changed_at", { ascending: false });
+        for (const h of (history || [])) {
+          if (!orderHistoryMap[h.order_id]) orderHistoryMap[h.order_id] = [];
+          orderHistoryMap[h.order_id].push(h);
+        }
       }
 
       // Search filter (post-query on enriched data if search provided)
       let enriched = (logs || []).map((l: any) => {
         const isOrder = l.context_type === "order";
         const ctx = isOrder ? orderMap[l.context_id] : leadMap[l.context_id];
+        const items = isOrder ? (ctx?.order_items || []) : (ctx?.prediction_lead_items || []);
+        const productDisplay = items.length > 0
+          ? items.map((i: any) => `${i.product_name} x${i.quantity}`).join(", ")
+          : (isOrder ? ctx?.product_name : ctx?.product) || "";
+        const totalPrice = items.length > 0
+          ? items.reduce((s: number, i: any) => s + Number(i.total_price || 0), 0)
+          : Number(ctx?.price || 0);
         return {
           ...l,
           agent_name: agentMap[l.agent_id] || "Unknown",
           customer_name: isOrder ? ctx?.customer_name : ctx?.name || "Unknown",
           customer_phone: isOrder ? ctx?.customer_phone : ctx?.telephone || "",
-          product_name: isOrder ? ctx?.product_name : ctx?.product || "",
+          customer_city: isOrder ? ctx?.customer_city : ctx?.city || "",
+          customer_address: isOrder ? ctx?.customer_address : ctx?.address || "",
+          product_name: productDisplay,
+          product_items: items,
+          total_price: totalPrice,
+          order_status: isOrder ? ctx?.status : ctx?.status || "",
+          order_agent: isOrder ? ctx?.assigned_agent_name : ctx?.assigned_agent_name || "",
+          order_source: isOrder ? (ctx?.source_type || "manual") : "prediction_lead",
           display_id: isOrder ? ctx?.display_id : l.context_id.substring(0, 8),
           source: l.context_type,
+          status_history: isOrder ? (orderHistoryMap[l.context_id] || []) : [],
+          list_name: !isOrder ? (ctx?.prediction_lists?.name || "") : "",
         };
       });
 
