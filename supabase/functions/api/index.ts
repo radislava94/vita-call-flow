@@ -1442,33 +1442,43 @@ serve(async (req) => {
         toDate = now.toISOString();
       }
 
-      // Fetch orders with items for the period
-      let oq = adminClient.from("orders").select("id, status, price, quantity, created_at, assigned_agent_id, assigned_agent_name, order_items(price_per_unit, quantity, total_price, product_id), product_id").gte("created_at", fromDate).lte("created_at", toDate);
+      // Fetch ALL orders for financial KPIs (status counts, revenue, profit)
+      // These must reflect current reality regardless of creation date
+      let fq = adminClient.from("orders").select("id, status, price, quantity, created_at, updated_at, assigned_agent_id, assigned_agent_name, order_items(price_per_unit, quantity, total_price, product_id), product_id");
+      if (agentFilter) fq = fq.eq("assigned_agent_id", agentFilter);
+      // When custom dates are set, filter financial data by updated_at (when status last changed)
+      if (customFrom && customTo) {
+        fq = fq.gte("updated_at", fromDate).lte("updated_at", toDate);
+      }
+      const { data: allFinancialOrders } = await fq;
+      const financialOrders = allFinancialOrders || [];
+
+      // Fetch period orders by created_at for trend/funnel data
+      let oq = adminClient.from("orders").select("id, status, price, quantity, created_at, updated_at, assigned_agent_id, assigned_agent_name, product_id").gte("created_at", fromDate).lte("created_at", toDate);
       if (agentFilter) oq = oq.eq("assigned_agent_id", agentFilter);
-      const { data: allOrders } = await oq;
-      const orders = allOrders || [];
+      const { data: allPeriodOrders } = await oq;
+      const periodOrders = allPeriodOrders || [];
 
       // Fetch products for cost_price lookup
       const { data: allProducts } = await adminClient.from("products").select("id, cost_price");
       const costMap: Record<string, number> = {};
       for (const p of allProducts || []) costMap[p.id] = Number(p.cost_price || 0);
 
-      // === 1. FINANCIAL KPIs ===
-      // Status counts
-      const confirmedCount = orders.filter((o: any) => o.status === "confirmed").length;
-      const shippedCount = orders.filter((o: any) => o.status === "shipped").length;
-      const paidOrders = orders.filter((o: any) => o.status === "paid");
+      // === 1. FINANCIAL KPIs (from ALL orders, not date-filtered) ===
+      const confirmedCount = financialOrders.filter((o: any) => o.status === "confirmed").length;
+      const shippedCount = financialOrders.filter((o: any) => o.status === "shipped").length;
+      const paidOrders = financialOrders.filter((o: any) => o.status === "paid");
       const paidCount = paidOrders.length;
       const paidAmount = paidOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
-      const returnedCount = orders.filter((o: any) => o.status === "returned").length;
-      const returnedAmount = orders.filter((o: any) => o.status === "returned").reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+      const returnedCount = financialOrders.filter((o: any) => o.status === "returned").length;
+      const returnedAmount = financialOrders.filter((o: any) => o.status === "returned").reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // Gross Revenue: shipped + paid
-      const revenueOrders = orders.filter((o: any) => ["shipped", "paid"].includes(o.status));
+      const revenueOrders = financialOrders.filter((o: any) => ["shipped", "paid"].includes(o.status));
       const revenue = revenueOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // Outstanding: shipped only (not paid, not returned)
-      const outstandingOrders = orders.filter((o: any) => o.status === "shipped");
+      const outstandingOrders = financialOrders.filter((o: any) => o.status === "shipped");
       const outstanding = outstandingOrders.reduce((s: number, o: any) => s + Number(o.price || 0), 0);
 
       // Profit: paid orders only (revenue - cost)
@@ -1486,22 +1496,22 @@ serve(async (req) => {
       }
       const profit = paidAmount - totalCost;
 
-      // === 2. FUNNEL ===
-      const taken = orders.filter((o: any) => o.status === "take").length;
-      const allTaken = orders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
-      const confirmed = orders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
-      const paid = paidOrders.length;
-      const shipped = orders.filter((o: any) => ["shipped", "delivered", "returned", "paid"].includes(o.status)).length;
-      const returned = orders.filter((o: any) => o.status === "returned").length;
-      const pending = orders.filter((o: any) => o.status === "pending").length;
+      // === 2. FUNNEL (from period orders — created in this period) ===
+      const taken = periodOrders.filter((o: any) => o.status === "take").length;
+      const allTaken = periodOrders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const confirmed = periodOrders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const paid = periodOrders.filter((o: any) => o.status === "paid").length;
+      const shipped = periodOrders.filter((o: any) => ["shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const returned = periodOrders.filter((o: any) => o.status === "returned").length;
+      const pending = periodOrders.filter((o: any) => o.status === "pending").length;
 
       const conversionRate = allTaken > 0 ? Math.round((paid / allTaken) * 10000) / 100 : 0;
       const confirmationRate = allTaken > 0 ? Math.round((confirmed / allTaken) * 10000) / 100 : 0;
       const returnRate = shipped > 0 ? Math.round((returned / shipped) * 10000) / 100 : 0;
 
-      // === 3. DAILY REVENUE TREND (paid only) ===
+      // === 3. DAILY REVENUE TREND (paid only, by created_at) ===
       const dailyRevenue: Record<string, { revenue: number; orders: number; leads: number }> = {};
-      for (const o of orders) {
+      for (const o of periodOrders) {
         const day = o.created_at.substring(0, 10);
         if (!dailyRevenue[day]) dailyRevenue[day] = { revenue: 0, orders: 0, leads: 0 };
         dailyRevenue[day].orders++;
@@ -1517,9 +1527,9 @@ serve(async (req) => {
         dailyRevenue[day].leads++;
       }
 
-      // === 4. AGENT RANKINGS ===
+      // === 4. AGENT RANKINGS (from ALL financial orders) ===
       const agentMap: Record<string, { name: string; paidRevenue: number; paidCount: number; takenCount: number; shippedCount: number; returnedCount: number }> = {};
-      for (const o of orders) {
+      for (const o of financialOrders) {
         const agentName = o.assigned_agent_name || "Unassigned";
         const agentId = o.assigned_agent_id || "none";
         if (!agentMap[agentId]) agentMap[agentId] = { name: agentName, paidRevenue: 0, paidCount: 0, takenCount: 0, shippedCount: 0, returnedCount: 0 };
@@ -1541,14 +1551,20 @@ serve(async (req) => {
 
       // === 5. RISK ALERTS ===
       const alerts: { type: string; level: string; message: string }[] = [];
-      if (returnRate > 20) alerts.push({ type: "return_rate", level: "red", message: `Return rate is ${returnRate}% (above 20%)` });
-      if (conversionRate < 10 && allTaken > 5) alerts.push({ type: "conversion", level: "red", message: `Conversion rate is ${conversionRate}% (below 10%)` });
+      const totalShippedForAlerts = financialOrders.filter((o: any) => ["shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const totalReturnedForAlerts = financialOrders.filter((o: any) => o.status === "returned").length;
+      const totalTakenForAlerts = financialOrders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length;
+      const overallReturnRate = totalShippedForAlerts > 0 ? Math.round((totalReturnedForAlerts / totalShippedForAlerts) * 10000) / 100 : 0;
+      const overallConversionRate = totalTakenForAlerts > 0 ? Math.round((paidCount / totalTakenForAlerts) * 10000) / 100 : 0;
+      const totalPending = financialOrders.filter((o: any) => o.status === "pending").length;
+      if (overallReturnRate > 20) alerts.push({ type: "return_rate", level: "red", message: `Return rate is ${overallReturnRate}% (above 20%)` });
+      if (overallConversionRate < 10 && totalTakenForAlerts > 5) alerts.push({ type: "conversion", level: "red", message: `Conversion rate is ${overallConversionRate}% (below 10%)` });
       if (outstanding > revenue * 2 && outstanding > 0) alerts.push({ type: "outstanding", level: "yellow", message: `Outstanding balance (${outstanding.toFixed(2)}) is very high` });
-      if (pending > allTaken * 0.5 && pending > 10) alerts.push({ type: "pending", level: "yellow", message: `${pending} orders still pending` });
+      if (totalPending > totalTakenForAlerts * 0.5 && totalPending > 10) alerts.push({ type: "pending", level: "yellow", message: `${totalPending} orders still pending` });
 
-      // === 6. TODAY SNAPSHOT ===
+      // === 6. TODAY SNAPSHOT (orders updated today — status changed today) ===
       const todayStart = todayStr + "T00:00:00Z";
-      const todayOrders = orders.filter((o: any) => o.created_at >= todayStart);
+      const todayOrders = financialOrders.filter((o: any) => o.updated_at >= todayStart);
       const todaySnapshot = {
         taken: todayOrders.filter((o: any) => ["take", "call_again", "confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length,
         confirmed: todayOrders.filter((o: any) => ["confirmed", "shipped", "delivered", "returned", "paid"].includes(o.status)).length,
