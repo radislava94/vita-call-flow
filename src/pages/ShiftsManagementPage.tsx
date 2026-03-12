@@ -49,6 +49,12 @@ export default function ShiftsManagementPage() {
   const [statsFrom, setStatsFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [statsTo, setStatsTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
+  // Login Activity filters
+  const [activityFrom, setActivityFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [activityTo, setActivityTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
+  const [activityAgent, setActivityAgent] = useState('all');
+  const [activityStatus, setActivityStatus] = useState('all');
+
   // Form state
   const [formName, setFormName] = useState('');
   const [formDate, setFormDate] = useState('');
