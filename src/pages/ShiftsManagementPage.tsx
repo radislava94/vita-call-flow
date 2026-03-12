@@ -256,7 +256,7 @@ export default function ShiftsManagementPage() {
   });
   const assignWeekMutation = useMutation({
     mutationFn: apiAssignTemplateWeek,
-    onSuccess: (data: any) => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); setAssignDialogOpen(false); toast({ title: `Shifts assigned for ${data.days} days` }); },
+    onSuccess: (data: any) => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); toast({ title: `Shifts assigned for ${data.days} days` }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
