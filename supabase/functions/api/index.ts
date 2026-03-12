@@ -1145,6 +1145,49 @@ serve(async (req) => {
         }
       }
 
+      // Stock return on RETURNED — add products back to inventory
+      if (newStatus === "returned" && order.status !== "returned") {
+        const { data: orderItems } = await adminClient.from("order_items").select("*").eq("order_id", orderId);
+
+        if (orderItems && orderItems.length > 0) {
+          for (const item of orderItems) {
+            if (!item.product_id) continue;
+            const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+            if (product) {
+              const newQty = product.stock_quantity + item.quantity;
+              await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id);
+              await adminClient.from("inventory_logs").insert({
+                product_id: item.product_id,
+                change_amount: item.quantity,
+                previous_stock: product.stock_quantity,
+                new_stock: newQty,
+                reason: "order_return",
+                movement_type: "order_return",
+                user_id: user.id,
+                notes: `Order ${order.display_id} returned — ${item.product_name} x${item.quantity}`,
+              });
+            }
+          }
+        } else if (order.product_id) {
+          const orderQty = order.quantity || 1;
+          const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", order.product_id).single();
+          if (product) {
+            const newQty = product.stock_quantity + orderQty;
+            await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", order.product_id);
+            await adminClient.from("inventory_logs").insert({
+              product_id: order.product_id,
+              change_amount: orderQty,
+              previous_stock: product.stock_quantity,
+              new_stock: newQty,
+              reason: "order_return",
+              movement_type: "order_return",
+              user_id: user.id,
+              notes: `Order ${order.display_id} returned — ${order.product_name} x${orderQty}`,
+            });
+          }
+        }
+      }
+
       // Get profile name
       const { data: profile } = await adminClient
         .from("profiles")
