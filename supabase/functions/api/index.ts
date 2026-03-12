@@ -621,7 +621,10 @@ serve(async (req) => {
       }
 
       const { data: orders, count, error } = await query;
-      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      if (error) {
+        console.error('Orders query error:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }));
+        return json({ error: sanitizeDbError(error) }, 400);
+      }
 
       // Add is_owned flag for agents
       const enrichedOrders = (orders || []).map((o: any) => ({
