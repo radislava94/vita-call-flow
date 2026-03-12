@@ -490,6 +490,14 @@ export default function PredictionLeadsPage() {
         contextType="prediction_lead"
         readOnly={!!(modalLead && (modalLead as any).is_owned === false)}
       />
+
+      {/* Customer History Dialog */}
+      <CustomerHistoryDialog
+        open={!!historyLead}
+        onClose={() => setHistoryLead(null)}
+        customerPhone={historyLead?.phone || ''}
+        customerName={historyLead?.name || ''}
+      />
     </AppLayout>
   );
 }
