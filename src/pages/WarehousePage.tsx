@@ -1198,6 +1198,225 @@ function UserWarehouseTab() {
   );
 }
 
+// ─── Delayed Orders Tab ────────────────────────────────────────
+function DelayedOrdersTab() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    apiGetIncomingOrders({ status: 'confirmed' })
+      .then(data => {
+        const delayed = (data || []).filter((o: any) => o.ship_after_date && new Date(o.ship_after_date) > new Date());
+        setOrders(delayed);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Clock className="h-5 w-5 text-amber-600" />
+        <h3 className="font-semibold text-card-foreground">Scheduled / Delayed Orders</h3>
+        <Badge variant="secondary">{orders.length}</Badge>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        These orders are confirmed but have a future ship date. They will automatically become available for shipment when the date arrives.
+      </p>
+
+      {loading ? (
+        <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+      ) : orders.length === 0 ? (
+        <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground">No delayed orders</div>
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Order ID</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Customer</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Phone</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Products</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Agent</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Ship After Date</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground text-xs">Days Until</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o: any) => {
+                const shipDate = new Date(o.ship_after_date);
+                const daysUntil = Math.ceil((shipDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24));
+                return (
+                  <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-medium text-xs">
+                      {o.display_id}
+                      <Badge className="ml-1 bg-amber-500/15 text-amber-700 border-amber-500/30 text-[9px]">Scheduled</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-xs">{o.customer_name}</td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{o.customer_phone}</td>
+                    <td className="px-4 py-3 text-xs">
+                      {o.order_items?.length > 0
+                        ? o.order_items.map((i: any, idx: number) => (
+                          <span key={idx}>{idx > 0 && ', '}<span className="font-medium">{i.product_name}</span> x{i.quantity}</span>
+                        ))
+                        : o.product_name}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
+                    <td className="px-4 py-3 text-xs font-medium">{format(shipDate, 'MMM d, yyyy')}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant="secondary" className="text-xs">{daysUntil} day{daysUntil !== 1 ? 's' : ''}</Badge>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Shipment Calendar Tab ─────────────────────────────────────
+function ShipmentCalendarTab() {
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    apiGetIncomingOrders({ status: 'confirmed' })
+      .then(data => {
+        const withDate = (data || []).filter((o: any) => o.ship_after_date);
+        setOrders(withDate);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const monthStart = startOfMonth(currentMonth);
+  const monthEnd = endOfMonth(currentMonth);
+  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+  const ordersByDate = useMemo(() => {
+    const map: Record<string, any[]> = {};
+    for (const o of orders) {
+      const dateKey = o.ship_after_date;
+      if (!map[dateKey]) map[dateKey] = [];
+      map[dateKey].push(o);
+    }
+    return map;
+  }, [orders]);
+
+  const selectedOrders = selectedDate ? (ordersByDate[selectedDate] || []) : [];
+  const firstDayOffset = monthStart.getDay();
+
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <CalendarDays className="h-5 w-5 text-primary" />
+        <h3 className="font-semibold text-card-foreground">Shipment Scheduler Calendar</h3>
+      </div>
+      <p className="text-sm text-muted-foreground">View scheduled shipments by date. Click a date to see order details.</p>
+
+      <div className="flex items-center justify-between">
+        <Button variant="outline" size="sm" onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}>← Previous</Button>
+        <h4 className="font-semibold text-lg">{format(currentMonth, 'MMMM yyyy')}</h4>
+        <Button variant="outline" size="sm" onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}>Next →</Button>
+      </div>
+
+      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <div className="grid grid-cols-7 border-b bg-muted/50">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} className="px-2 py-2 text-center text-xs font-medium text-muted-foreground">{d}</div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7">
+          {Array.from({ length: firstDayOffset }).map((_, i) => (
+            <div key={`empty-${i}`} className="min-h-[80px] border-b border-r bg-muted/10" />
+          ))}
+          {days.map(day => {
+            const dateKey = format(day, 'yyyy-MM-dd');
+            const dayOrders = ordersByDate[dateKey] || [];
+            const isSelected = selectedDate === dateKey;
+            const isTodayDate = isToday(day);
+            const isPast = day < new Date() && !isTodayDate;
+            return (
+              <button
+                key={dateKey}
+                onClick={() => setSelectedDate(isSelected ? null : dateKey)}
+                className={cn(
+                  "min-h-[80px] border-b border-r p-2 text-left transition-colors hover:bg-muted/30",
+                  isSelected && "bg-primary/5 ring-2 ring-primary/30 ring-inset",
+                  isTodayDate && "bg-primary/5",
+                )}
+              >
+                <div className={cn("text-xs font-medium mb-1", isTodayDate ? "text-primary font-bold" : isPast ? "text-muted-foreground" : "text-foreground")}>
+                  {format(day, 'd')}
+                </div>
+                {dayOrders.length > 0 && (
+                  <Badge className={cn("text-[10px]", isPast ? "bg-muted text-muted-foreground" : "bg-amber-500/15 text-amber-700 border-amber-500/30")}>
+                    {dayOrders.length} order{dayOrders.length !== 1 ? 's' : ''}
+                  </Badge>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {selectedDate && (
+        <div className="rounded-xl border bg-card shadow-sm p-4 space-y-3">
+          <h4 className="font-semibold text-card-foreground">
+            Orders scheduled for {format(parseISO(selectedDate), 'MMMM d, yyyy')}
+            <Badge variant="secondary" className="ml-2">{selectedOrders.length}</Badge>
+          </h4>
+          {selectedOrders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No orders scheduled for this date.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Order ID</th>
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Customer</th>
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Products</th>
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Agent</th>
+                    <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedOrders.map((o: any) => (
+                    <tr key={o.id} className="border-b last:border-0 hover:bg-muted/30">
+                      <td className="px-4 py-2 font-medium text-xs">{o.display_id}</td>
+                      <td className="px-4 py-2 text-xs">{o.customer_name}</td>
+                      <td className="px-4 py-2 text-xs">
+                        {o.order_items?.length > 0
+                          ? o.order_items.map((i: any, idx: number) => (
+                            <span key={idx}>{idx > 0 && ', '}{i.product_name} x{i.quantity}</span>
+                          ))
+                          : o.product_name}
+                      </td>
+                      <td className="px-4 py-2 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
+                      <td className="px-4 py-2">
+                        <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px]">Scheduled</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Warehouse Page ───────────────────────────────────────
 export default function WarehousePage() {
   const { user } = useAuth();
