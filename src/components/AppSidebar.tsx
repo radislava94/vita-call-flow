@@ -24,6 +24,7 @@ import {
   Webhook,
   UserPlus,
   SearchIcon,
+  TrendingUp,
 } from 'lucide-react';
 import {
   Tooltip,
