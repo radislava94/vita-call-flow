@@ -66,6 +66,8 @@ const App = () => (
               <Route path="/webhooks" element={<ProtectedRoute moduleKey="webhooks"><WebhookManagementPage /></ProtectedRoute>} />
               <Route path="/search-prediction" element={<ProtectedRoute moduleKey="search_prediction"><SearchPredictionPage /></ProtectedRoute>} />
               <Route path="/insights" element={<ProtectedRoute moduleKey="insights"><ManagementInsightsPage /></ProtectedRoute>} />
+              <Route path="/operations" element={<ProtectedRoute moduleKey="operations"><OperationsPage /></ProtectedRoute>} />
+              <Route path="/lead-distribution" element={<ProtectedRoute moduleKey="lead_distribution"><LeadDistributionPage /></ProtectedRoute>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </PermissionsProvider>
