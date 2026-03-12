@@ -93,10 +93,25 @@ export default function SettingsPage() {
   return (
     <AppLayout title="Settings">
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="h-11 rounded-xl bg-muted/60 p-1 gap-1 flex-wrap">
+        <TabsList className="h-auto rounded-xl bg-muted/60 p-1 gap-1 flex-wrap">
           <TabsTrigger value="users" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Users className="h-4 w-4" /> Users & Roles
           </TabsTrigger>
+          {isAdmin && (
+            <TabsTrigger value="modules" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
+              <Blocks className="h-4 w-4" /> Module Manager
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="permissions" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
+              <KeyRound className="h-4 w-4" /> Role Permissions
+            </TabsTrigger>
+          )}
+          {isAdmin && (
+            <TabsTrigger value="financial" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
+              <DollarSign className="h-4 w-4" /> Financial Visibility
+            </TabsTrigger>
+          )}
           <TabsTrigger value="system" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Settings2 className="h-4 w-4" /> System Rules
           </TabsTrigger>
@@ -109,6 +124,9 @@ export default function SettingsPage() {
         </TabsList>
 
         <TabsContent value="users"><UsersTab /></TabsContent>
+        {isAdmin && <TabsContent value="modules"><ModuleManagerTab /></TabsContent>}
+        {isAdmin && <TabsContent value="permissions"><RolePermissionsTab /></TabsContent>}
+        {isAdmin && <TabsContent value="financial"><FinancialVisibilityTab /></TabsContent>}
         <TabsContent value="system"><SystemRulesTab /></TabsContent>
         <TabsContent value="warehouse"><WarehouseTab /></TabsContent>
         <TabsContent value="appearance"><AppearanceTab /></TabsContent>
