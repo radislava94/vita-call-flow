@@ -151,6 +151,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
     setSelectedOutcome(null);
     setSelectedStatus(data.status || (isLead ? 'not_contacted' : 'pending'));
     setFollowUpDate(undefined);
+    setShipAfterDate(data.ship_after_date ? new Date(data.ship_after_date + 'T00:00:00') : undefined);
     setShowScript(false);
     setEditingScript(false);
     setAmountPaid(0);
