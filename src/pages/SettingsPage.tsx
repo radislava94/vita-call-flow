@@ -11,6 +11,7 @@ import {
   Search, UserPlus, ToggleLeft, ToggleRight, Trash2, Loader2,
   Sun, Moon, Eye, EyeOff, Bell, BellOff, ChevronDown, ChevronRight,
   AlertTriangle, Save, RotateCcw, Mail, Lock, User as UserIcon,
+  Crown, Clock, TrendingUp, Megaphone, UserCheck, ArrowUpDown,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
@@ -24,12 +25,16 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 
 // ────── Constants ──────
-const AVAILABLE_ROLES = ['admin', 'agent', 'warehouse'] as const;
-const ROLE_ICONS: Record<string, any> = { admin: Shield, agent: Headphones, warehouse: Package };
-const ROLE_COLORS: Record<string, string> = {
-  admin: 'bg-primary/10 text-primary border-primary/30',
-  agent: 'bg-info/10 text-info border-info/30',
-  warehouse: 'bg-warning/10 text-warning border-warning/30',
+const ALL_ROLES = ['admin', 'manager', 'agent', 'pending_agent', 'prediction_agent', 'warehouse', 'ads_admin'] as const;
+
+const ROLE_META: Record<string, { icon: any; label: string; color: string; description: string }> = {
+  admin:            { icon: Crown,       label: 'Admin',            color: 'bg-destructive/10 text-destructive border-destructive/30',   description: 'Full system access' },
+  manager:          { icon: Shield,      label: 'Manager',          color: 'bg-primary/10 text-primary border-primary/30',               description: 'Team & order management' },
+  agent:            { icon: Headphones,  label: 'Agent',            color: 'bg-info/10 text-info border-info/30',                        description: 'Handle orders & calls' },
+  pending_agent:    { icon: Clock,       label: 'Pending Agent',    color: 'bg-warning/10 text-warning border-warning/30',               description: 'Awaiting activation' },
+  prediction_agent: { icon: TrendingUp,  label: 'Prediction Agent', color: 'bg-accent/10 text-accent-foreground border-accent/30',       description: 'Work prediction leads' },
+  warehouse:        { icon: Package,     label: 'Warehouse',        color: 'bg-success/10 text-success border-success/30',               description: 'Inventory & shipping' },
+  ads_admin:        { icon: Megaphone,   label: 'Ads Admin',        color: 'bg-secondary/60 text-secondary-foreground border-secondary', description: 'Manage ad campaigns' },
 };
 
 const ORDER_STATUSES = [
@@ -38,6 +43,7 @@ const ORDER_STATUSES = [
   { key: 'call_again', label: 'Call Again', color: 'bg-purple-500' },
   { key: 'confirmed', label: 'Confirmed', color: 'bg-green-500' },
   { key: 'shipped', label: 'Shipped', color: 'bg-cyan-500' },
+  { key: 'delivered', label: 'Delivered', color: 'bg-emerald-600' },
   { key: 'returned', label: 'Returned', color: 'bg-red-500' },
   { key: 'paid', label: 'Paid', color: 'bg-emerald-500' },
   { key: 'trashed', label: 'Trashed', color: 'bg-gray-500' },
@@ -67,8 +73,9 @@ interface UserRow {
 export default function SettingsPage() {
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.isAdmin ?? false;
+  const isManager = currentUser?.isManager ?? false;
 
-  if (!isAdmin) {
+  if (!isAdmin && !isManager) {
     return (
       <AppLayout title="Settings">
         <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -83,7 +90,7 @@ export default function SettingsPage() {
   return (
     <AppLayout title="Settings">
       <Tabs defaultValue="users" className="space-y-6">
-        <TabsList className="h-11 rounded-xl bg-muted/60 p-1 gap-1">
+        <TabsList className="h-11 rounded-xl bg-muted/60 p-1 gap-1 flex-wrap">
           <TabsTrigger value="users" className="rounded-lg gap-2 text-sm data-[state=active]:bg-card data-[state=active]:shadow-sm">
             <Users className="h-4 w-4" /> Users & Roles
           </TabsTrigger>
@@ -116,6 +123,8 @@ function UsersTab() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [sortField, setSortField] = useState<'full_name' | 'created_at' | 'orders_processed'>('full_name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [showModal, setShowModal] = useState(false);
   const [formName, setFormName] = useState('');
   const [formEmail, setFormEmail] = useState('');
@@ -145,8 +154,16 @@ function UsersTab() {
     }
     if (roleFilter !== 'all') result = result.filter(u => u.roles.includes(roleFilter));
     if (statusFilter !== 'all') result = result.filter(u => statusFilter === 'active' ? u.is_active : !u.is_active);
+    // Sort
+    result = [...result].sort((a, b) => {
+      let cmp = 0;
+      if (sortField === 'full_name') cmp = a.full_name.localeCompare(b.full_name);
+      else if (sortField === 'created_at') cmp = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      else if (sortField === 'orders_processed') cmp = a.orders_processed - b.orders_processed;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
     return result;
-  }, [users, search, roleFilter, statusFilter]);
+  }, [users, search, roleFilter, statusFilter, sortField, sortDir]);
 
   const toggleFormRole = (role: string) => {
     setFormRoles(prev => {
@@ -154,6 +171,11 @@ function UsersTab() {
       next.has(role) && next.size > 1 ? next.delete(role) : next.add(role);
       return next;
     });
+  };
+
+  const toggleSort = (field: typeof sortField) => {
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortField(field); setSortDir('asc'); }
   };
 
   const handleCreate = async () => {
@@ -209,10 +231,18 @@ function UsersTab() {
 
   const isSelf = (userId: string) => currentUser?.id === userId;
 
+  // Role stats
+  const roleStats = useMemo(() => {
+    const stats: Record<string, number> = {};
+    ALL_ROLES.forEach(r => { stats[r] = 0; });
+    users.forEach(u => u.roles.forEach(r => { stats[r] = (stats[r] || 0) + 1; }));
+    return stats;
+  }, [users]);
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Header with role summary */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">Users & Roles</h2>
           <p className="text-sm text-muted-foreground">{users.length} total users · {users.filter(u => u.is_active).length} active</p>
@@ -222,21 +252,44 @@ function UsersTab() {
         </button>
       </div>
 
+      {/* Role summary chips */}
+      <div className="flex flex-wrap gap-2">
+        {ALL_ROLES.map(role => {
+          const meta = ROLE_META[role];
+          const Icon = meta.icon;
+          const isActive = roleFilter === role;
+          return (
+            <button
+              key={role}
+              onClick={() => setRoleFilter(isActive ? 'all' : role)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-all ${
+                isActive ? 'bg-primary text-primary-foreground border-primary' : `${meta.color} hover:opacity-80`
+              }`}
+            >
+              <Icon className="h-3 w-3" />
+              {meta.label}
+              <span className="ml-1 font-bold">{roleStats[role]}</span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3">
         <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search users..." className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or email..." className="h-9 w-full rounded-lg border bg-background pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
         </div>
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
-          <option value="all">All Roles</option>
-          {AVAILABLE_ROLES.map(r => <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>)}
-        </select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="h-9 rounded-lg border bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring">
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="inactive">Suspended</option>
         </select>
+        {(search || roleFilter !== 'all' || statusFilter !== 'all') && (
+          <button onClick={() => { setSearch(''); setRoleFilter('all'); setStatusFilter('all'); }} className="h-9 px-3 rounded-lg border text-xs font-medium text-muted-foreground hover:bg-muted transition-colors">
+            Clear filters
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -252,11 +305,24 @@ function UsersTab() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/50">
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  <button onClick={() => toggleSort('full_name')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                    User <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Roles</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Orders</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  <button onClick={() => toggleSort('orders_processed')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                    Orders <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Leads</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  <button onClick={() => toggleSort('created_at')} className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+                    Joined <ArrowUpDown className="h-3 w-3" />
+                  </button>
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
@@ -265,51 +331,54 @@ function UsersTab() {
                 <tr key={u.user_id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold ${u.is_active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
                         {u.full_name.charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="font-medium truncate">{u.full_name}</p>
+                        <p className="font-medium truncate">{u.full_name} {isSelf(u.user_id) && <span className="text-xs text-muted-foreground">(you)</span>}</p>
                         <p className="text-xs text-muted-foreground truncate">{u.email}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    {isSelf(u.user_id) ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {u.roles.map(r => {
-                          const Icon = ROLE_ICONS[r] || Shield;
+                    <div className="flex flex-wrap gap-1">
+                      {isSelf(u.user_id) ? (
+                        u.roles.map(r => {
+                          const meta = ROLE_META[r] || ROLE_META.agent;
+                          const Icon = meta.icon;
                           return (
-                            <span key={r} className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold ${ROLE_COLORS[r]}`}>
-                              <Icon className="h-3 w-3" /> {r.charAt(0).toUpperCase() + r.slice(1)}
+                            <span key={r} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.color}`}>
+                              <Icon className="h-3 w-3" /> {meta.label}
                             </span>
                           );
-                        })}
-                        <Tooltip><TooltipTrigger><span className="text-xs text-muted-foreground ml-1">(you)</span></TooltipTrigger><TooltipContent>You can't change your own roles</TooltipContent></Tooltip>
-                      </div>
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {AVAILABLE_ROLES.map(role => {
+                        })
+                      ) : (
+                        ALL_ROLES.map(role => {
                           const hasRole = u.roles.includes(role);
-                          const Icon = ROLE_ICONS[role];
+                          const meta = ROLE_META[role];
+                          const Icon = meta.icon;
                           return (
                             <Tooltip key={role}>
                               <TooltipTrigger asChild>
                                 <button
                                   onClick={() => handleToggleRole(u.user_id, role, u.roles)}
-                                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium transition-all ${
-                                    hasRole ? ROLE_COLORS[role] : 'border-border text-muted-foreground/50 hover:bg-muted'
+                                  className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium transition-all ${
+                                    hasRole ? meta.color : 'border-transparent text-muted-foreground/30 hover:border-border hover:text-muted-foreground/60'
                                   }`}
                                 >
-                                  <Icon className="h-3 w-3" /> {role.charAt(0).toUpperCase() + role.slice(1)}
+                                  <Icon className="h-2.5 w-2.5" />
+                                  {hasRole ? meta.label : ''}
                                 </button>
                               </TooltipTrigger>
-                              <TooltipContent>{hasRole ? `Remove ${role} role` : `Add ${role} role`}</TooltipContent>
+                              <TooltipContent>
+                                <p className="font-medium">{hasRole ? `Remove ${meta.label}` : `Add ${meta.label}`}</p>
+                                <p className="text-xs text-muted-foreground">{meta.description}</p>
+                              </TooltipContent>
                             </Tooltip>
                           );
-                        })}
-                      </div>
-                    )}
+                        })
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-3">
                     <button
@@ -325,6 +394,7 @@ function UsersTab() {
                   </td>
                   <td className="px-4 py-3 font-semibold tabular-nums">{u.orders_processed}</td>
                   <td className="px-4 py-3 font-semibold tabular-nums">{u.leads_processed}</td>
+                  <td className="px-4 py-3 text-xs text-muted-foreground">{new Date(u.created_at).toLocaleDateString()}</td>
                   <td className="px-4 py-3">
                     {!isSelf(u.user_id) && (
                       <Tooltip>
@@ -347,7 +417,7 @@ function UsersTab() {
       {/* Create User Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/30 backdrop-blur-sm" onClick={() => setShowModal(false)}>
-          <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-lg rounded-xl border bg-card p-6 shadow-xl" onClick={e => e.stopPropagation()}>
             <h2 className="text-lg font-semibold flex items-center gap-2"><UserPlus className="h-5 w-5 text-primary" /> Create New User</h2>
             <div className="mt-5 space-y-4">
               <div>
@@ -366,16 +436,20 @@ function UsersTab() {
               </div>
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1.5">Roles</label>
-                <div className="flex gap-2">
-                  {AVAILABLE_ROLES.map(role => {
+                <div className="grid grid-cols-2 gap-2">
+                  {ALL_ROLES.map(role => {
                     const isSelected = formRoles.has(role);
-                    const Icon = ROLE_ICONS[role];
+                    const meta = ROLE_META[role];
+                    const Icon = meta.icon;
                     return (
                       <button key={role} type="button" onClick={() => toggleFormRole(role)}
-                        className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2.5 text-sm font-medium transition-all border ${
+                        className={`inline-flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium transition-all border ${
                           isSelected ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'border-border text-muted-foreground hover:bg-muted'
                         }`}>
-                        <Icon className="h-4 w-4" /> {role.charAt(0).toUpperCase() + role.slice(1)}
+                        <Icon className="h-4 w-4" />
+                        <div className="text-left">
+                          <p className="text-sm font-medium">{meta.label}</p>
+                        </div>
                       </button>
                     );
                   })}
@@ -385,7 +459,7 @@ function UsersTab() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1.5">Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <input value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="Minimum 6 characters" type="password" className="w-full rounded-lg border bg-background pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
+                  <input value={formPassword} onChange={e => setFormPassword(e.target.value)} placeholder="Minimum 8 characters" type="password" className="w-full rounded-lg border bg-background pl-9 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
                 </div>
               </div>
             </div>
@@ -440,30 +514,77 @@ function SystemRulesTab() {
         <p className="text-sm text-muted-foreground">Configure order statuses, lead workflows, and automation rules.</p>
       </div>
 
-      {/* Order Statuses */}
-      <CollapsibleCard title="Order Statuses" subtitle={`${ORDER_STATUSES.length} statuses`} expanded={expandedSection === 'statuses'} onToggle={() => toggleSection('statuses')}>
+      {/* Order Status Flow */}
+      <CollapsibleCard title="Order Status Flow" subtitle={`${ORDER_STATUSES.length} statuses · defines the order lifecycle`} expanded={expandedSection === 'statuses'} onToggle={() => toggleSection('statuses')}>
         <div className="space-y-2">
-          {ORDER_STATUSES.map((s, i) => (
-            <div key={s.key} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5 hover:bg-muted/30 transition-colors">
-              <div className={`h-3 w-3 rounded-full ${s.color}`} />
-              <span className="text-sm font-medium flex-1">{s.label}</span>
-              <Badge variant="outline" className="text-xs font-mono">{s.key}</Badge>
-              <span className="text-xs text-muted-foreground">#{i + 1}</span>
-            </div>
-          ))}
+          <p className="text-xs text-muted-foreground mb-3">Orders progress through these statuses. The flow determines which transitions are valid.</p>
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {ORDER_STATUSES.map((s, i) => (
+              <div key={s.key} className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
+                  <div className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
+                  {s.label}
+                </span>
+                {i < ORDER_STATUSES.length - 1 && <ChevronRight className="h-3 w-3 text-muted-foreground/50" />}
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            {ORDER_STATUSES.map((s, i) => (
+              <div key={s.key} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2 hover:bg-muted/30 transition-colors">
+                <span className="text-xs text-muted-foreground font-mono w-6">#{i + 1}</span>
+                <div className={`h-3 w-3 rounded-full shrink-0 ${s.color}`} />
+                <span className="text-sm font-medium flex-1">{s.label}</span>
+                <Badge variant="outline" className="text-[10px] font-mono">{s.key}</Badge>
+              </div>
+            ))}
+          </div>
         </div>
       </CollapsibleCard>
 
       {/* Lead Statuses */}
-      <CollapsibleCard title="Lead Statuses" subtitle={`${LEAD_STATUSES.length} statuses`} expanded={expandedSection === 'leads'} onToggle={() => toggleSection('leads')}>
+      <CollapsibleCard title="Lead Status Flow" subtitle={`${LEAD_STATUSES.length} statuses · prediction lead lifecycle`} expanded={expandedSection === 'leads'} onToggle={() => toggleSection('leads')}>
         <div className="space-y-2">
-          {LEAD_STATUSES.map((s, i) => (
-            <div key={s.key} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5 hover:bg-muted/30 transition-colors">
-              <div className={`h-3 w-3 rounded-full ${s.color}`} />
-              <span className="text-sm font-medium flex-1">{s.label}</span>
-              <Badge variant="outline" className="text-xs font-mono">{s.key}</Badge>
-            </div>
-          ))}
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {LEAD_STATUSES.map((s, i) => (
+              <div key={s.key} className="flex items-center gap-1">
+                <span className="inline-flex items-center gap-1.5 rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
+                  <div className={`h-2.5 w-2.5 rounded-full ${s.color}`} />
+                  {s.label}
+                </span>
+                {i < LEAD_STATUSES.length - 1 && <ChevronRight className="h-3 w-3 text-muted-foreground/50" />}
+              </div>
+            ))}
+          </div>
+          <div className="space-y-1.5">
+            {LEAD_STATUSES.map((s, i) => (
+              <div key={s.key} className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2 hover:bg-muted/30 transition-colors">
+                <div className={`h-3 w-3 rounded-full ${s.color}`} />
+                <span className="text-sm font-medium flex-1">{s.label}</span>
+                <Badge variant="outline" className="text-[10px] font-mono">{s.key}</Badge>
+              </div>
+            ))}
+          </div>
+        </div>
+      </CollapsibleCard>
+
+      {/* Role Permissions */}
+      <CollapsibleCard title="Role Permissions" subtitle={`${ALL_ROLES.length} roles configured`} expanded={expandedSection === 'permissions'} onToggle={() => toggleSection('permissions')}>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground mb-2">Each role determines what a user can access and do in the system.</p>
+          {ALL_ROLES.map(role => {
+            const meta = ROLE_META[role];
+            const Icon = meta.icon;
+            return (
+              <div key={role} className={`flex items-start gap-3 rounded-lg border p-3 ${meta.color}`}>
+                <Icon className="h-5 w-5 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold">{meta.label}</p>
+                  <p className="text-xs opacity-80">{meta.description}</p>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </CollapsibleCard>
 
@@ -577,11 +698,9 @@ function WarehouseTab() {
                       <p className="text-xs text-muted-foreground">Threshold: {p.low_stock_threshold}</p>
                     </div>
                   </div>
-                  {/* Stock bar */}
                   <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden mb-3">
                     <div className={`h-full rounded-full transition-all ${isLow ? 'bg-destructive' : stockPercent < 50 ? 'bg-warning' : 'bg-success'}`} style={{ width: `${Math.min(stockPercent, 100)}%` }} />
                   </div>
-                  {/* Threshold slider */}
                   <div className="flex items-center gap-4">
                     <label className="text-xs text-muted-foreground shrink-0">Low stock at:</label>
                     <Slider value={[p.low_stock_threshold]} onValueChange={(v) => handleThresholdChange(p.id, v)} min={1} max={500} step={5} className="flex-1" />
@@ -620,7 +739,6 @@ function AppearanceTab() {
     }
   };
 
-  // Load theme on mount
   useEffect(() => {
     const saved = localStorage.getItem('theme');
     if (saved === 'dark') {
