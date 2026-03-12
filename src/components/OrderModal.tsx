@@ -517,6 +517,45 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
               </Select>
             </section>
 
+            {/* Ship After Date (only for orders, visible when confirmed) */}
+            {!isLead && ['confirmed', 'take', 'call_again', 'pending'].includes(selectedStatus) && (
+              <section>
+                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Ship After Date (Optional)</h3>
+                <p className="text-xs text-muted-foreground mb-2">Set a delayed shipment date if the customer requests shipping later.</p>
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className={cn("h-8 gap-1.5 text-sm flex-1 justify-start font-normal", !shipAfterDate && "text-muted-foreground")} disabled={!isEditable}>
+                        <CalendarIcon className="h-3.5 w-3.5" />
+                        {shipAfterDate ? format(shipAfterDate, 'PPP') : 'No delayed shipment'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={shipAfterDate}
+                        onSelect={setShipAfterDate}
+                        disabled={(date) => date < new Date()}
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {shipAfterDate && isEditable && (
+                    <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground" onClick={() => setShipAfterDate(undefined)}>
+                      Clear
+                    </Button>
+                  )}
+                </div>
+                {shipAfterDate && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Badge className="bg-amber-500/15 text-amber-700 border-amber-500/30 text-[10px]">
+                      ⏱ Delayed Shipment — Ship After: {format(shipAfterDate, 'MMM d, yyyy')}
+                    </Badge>
+                  </div>
+                )}
+              </section>
+            )}
+
             {/* D) Products */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2 flex items-center gap-1.5">
