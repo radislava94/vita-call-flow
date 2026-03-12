@@ -314,3 +314,13 @@ export const apiGetManagementInsights = (params?: { from?: string; to?: string }
   if (params?.to) sp.set('to', params.to);
   return apiFetch(`management-insights?${sp.toString()}`);
 };
+
+// Lead Distribution
+export const apiGetLeadDistributionConfig = () => apiFetch('lead-distribution-config');
+export const apiUpdateLeadDistributionConfig = (body: { strategy?: string; is_active?: boolean; max_leads_per_agent?: number; priority_threshold?: number }) =>
+  apiFetch('lead-distribution-config', { method: 'PATCH', body: JSON.stringify(body) });
+export const apiAutoAssignLeads = () =>
+  apiFetch('lead-distribution/auto-assign', { method: 'POST' });
+
+// Operations Center
+export const apiGetOperationsCenter = () => apiFetch('operations-center');
