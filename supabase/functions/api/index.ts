@@ -1042,6 +1042,7 @@ serve(async (req) => {
       if (body.quantity !== undefined) updates.quantity = body.quantity;
       if (body.product_id !== undefined) updates.product_id = body.product_id;
       if (body.product_name !== undefined) updates.product_name = body.product_name;
+      if (body.ship_after_date !== undefined) updates.ship_after_date = body.ship_after_date;
 
       const { data, error } = await supabase
         .from("orders")
