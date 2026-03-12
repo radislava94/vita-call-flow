@@ -203,6 +203,21 @@ export default function Orders() {
     return result;
   }, [orders, selectedStatuses]);
 
+  // Count duplicate phones in current results
+  const phoneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const o of filteredOrders) {
+      const p = o.customer_phone?.replace(/[^0-9+]/g, '');
+      if (p && p.length >= 6) counts[p] = (counts[p] || 0) + 1;
+    }
+    return counts;
+  }, [filteredOrders]);
+
+  const getPhoneDupCount = (phone: string) => {
+    const p = phone?.replace(/[^0-9+]/g, '');
+    return p ? (phoneCounts[p] || 0) : 0;
+  };
+
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const toggleStatus = (s: OrderStatus) => {
     setSelectedStatuses(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
