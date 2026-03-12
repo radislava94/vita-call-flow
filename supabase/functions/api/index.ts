@@ -888,6 +888,56 @@ serve(async (req) => {
           }
         }
 
+        // Stock return when bulk-setting to "returned"
+        if (new_status === "returned") {
+          for (const oid of toUpdate) {
+            const prev = (currentOrders || []).find((o: any) => o.id === oid);
+            if (prev?.status === "returned") continue; // already returned
+
+            const { data: orderItems } = await adminClient.from("order_items").select("*").eq("order_id", oid);
+            if (orderItems && orderItems.length > 0) {
+              for (const item of orderItems) {
+                if (!item.product_id) continue;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+                if (product) {
+                  const newQty = product.stock_quantity + item.quantity;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: item.product_id,
+                    change_amount: item.quantity,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_return",
+                    movement_type: "order_return",
+                    user_id: user.id,
+                    notes: `Bulk returned — ${item.product_name} x${item.quantity}`,
+                  });
+                }
+              }
+            } else {
+              const { data: fullOrder } = await adminClient.from("orders").select("product_id, quantity, display_id, product_name").eq("id", oid).single();
+              if (fullOrder?.product_id) {
+                const orderQty = fullOrder.quantity || 1;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", fullOrder.product_id).single();
+                if (product) {
+                  const newQty = product.stock_quantity + orderQty;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", fullOrder.product_id);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: fullOrder.product_id,
+                    change_amount: orderQty,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_return",
+                    movement_type: "order_return",
+                    user_id: user.id,
+                    notes: `Bulk returned — ${fullOrder.display_id}`,
+                  });
+                }
+              }
+            }
+          }
+        }
+
         if (toUpdate.length > 0) {
           const { error: updateErr } = await adminClient
             .from("orders")
