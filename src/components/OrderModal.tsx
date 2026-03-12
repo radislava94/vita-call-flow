@@ -300,7 +300,8 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
         notes: callNotes.trim(),
       });
 
-      // 2. Update entity fields
+      // 2. Update entity fields + sync products
+      const lockedStatuses = ['shipped', 'delivered', 'paid'];
       if (isLead) {
         await apiUpdateLead(data.id, {
           status: selectedStatus,
@@ -309,22 +310,6 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
           city: customerCity,
           telephone: customerPhone,
         });
-      } else {
-        // Order: update customer info + status
-        await apiUpdateCustomer(data.id, {
-          customer_name: customerName.trim(),
-          customer_phone: customerPhone.trim(),
-          customer_address: customerAddress.trim(),
-          customer_city: customerCity.trim(),
-          postal_code: postalCode.trim(),
-        });
-        if (selectedStatus !== data.status) {
-          await apiUpdateOrderStatus(data.id, selectedStatus);
-        }
-      }
-
-      // 3. Sync products
-      if (isLead) {
         // Lead: individual item operations
         for (const item of items) {
           const isLegacy = item.id === '__legacy__';
@@ -348,13 +333,27 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
           }
         }
       } else {
-        // Order: atomic sync – overwrite all items, backend recalculates totals
-        await apiSyncOrderItems(data.id, activeItems.map(i => ({
-          product_id: i.product_id,
-          product_name: i.product_name,
-          quantity: i.quantity,
-          price_per_unit: i.price_per_unit,
-        })));
+        // Order: update customer info first
+        await apiUpdateCustomer(data.id, {
+          customer_name: customerName.trim(),
+          customer_phone: customerPhone.trim(),
+          customer_address: customerAddress.trim(),
+          customer_city: customerCity.trim(),
+          postal_code: postalCode.trim(),
+        });
+        // Sync items only if order is NOT in a locked status
+        if (!lockedStatuses.includes(data.status)) {
+          await apiSyncOrderItems(data.id, activeItems.map(i => ({
+            product_id: i.product_id,
+            product_name: i.product_name,
+            quantity: i.quantity,
+            price_per_unit: i.price_per_unit,
+          })));
+        }
+        // Change status last (after customer fields are saved)
+        if (selectedStatus !== data.status) {
+          await apiUpdateOrderStatus(data.id, selectedStatus);
+        }
       }
 
       toast({ title: 'Saved successfully' });
