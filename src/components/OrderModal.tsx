@@ -135,6 +135,8 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
   // Saving
   const [saving, setSaving] = useState(false);
 
+  // Customer Intelligence
+  const { data: customerIntel, loading: intelLoading } = useCustomerIntelligence(customerPhone);
   useEffect(() => {
     if (!open || !data) return;
 
