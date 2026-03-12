@@ -389,6 +389,9 @@ export default function Orders() {
                         <DropdownMenuItem onClick={() => setHistoryOrder({ phone: order.customer_phone, name: order.customer_name })}>
                           <History className="h-3.5 w-3.5 mr-2" /> See History
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setSearch(order.customer_phone); }}>
+                          <Copy className="h-3.5 w-3.5 mr-2" /> View Duplicates
+                        </DropdownMenuItem>
                         <DropdownMenuItem onClick={() => tryOpenOrder(order)}>
                           <Lock className="h-3.5 w-3.5 mr-2" /> Open Order
                         </DropdownMenuItem>
