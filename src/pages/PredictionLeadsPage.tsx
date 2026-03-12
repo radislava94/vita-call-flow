@@ -12,12 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal } from 'lucide-react';
+import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal, MoreVertical, History, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { PhoneQualityBadge } from '@/components/PhoneQualityBadge';
+import { CustomerHistoryDialog } from '@/components/CustomerHistoryDialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface LeadItem {
   id: string;
