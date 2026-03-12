@@ -212,6 +212,7 @@ function IncomingOrdersTab() {
       quantity: order.quantity,
       price: order.price,
       assigned_agent_id: order.assigned_agent_id,
+      ship_after_date: order.ship_after_date || null,
       items: (order.order_items || []).map((i: any) => ({
         id: i.id, product_id: i.product_id, product_name: i.product_name,
         quantity: i.quantity, price_per_unit: i.price_per_unit, total_price: i.total_price,
