@@ -3,6 +3,7 @@ import {
   Phone, FileText, Loader2, X, ChevronDown, ChevronUp, Save,
   Plus, Trash2, ShoppingCart, CalendarIcon
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { useCustomerIntelligence } from '@/hooks/useCustomerIntelligence';
 import { CustomerIntelligencePanel } from '@/components/CustomerIntelligencePanel';
 import { ProductRecommendations } from '@/components/ProductRecommendations';
