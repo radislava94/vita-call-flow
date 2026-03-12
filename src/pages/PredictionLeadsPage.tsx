@@ -161,6 +161,21 @@ export default function PredictionLeadsPage() {
 
   const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || selectedProduct !== 'all' || dateFrom || dateTo;
 
+  // Duplicate phone detection
+  const phoneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const l of filteredLeads) {
+      const p = l.telephone?.replace(/[^0-9+]/g, '');
+      if (p && p.length >= 6) counts[p] = (counts[p] || 0) + 1;
+    }
+    return counts;
+  }, [filteredLeads]);
+
+  const getPhoneDupCount = (phone: string) => {
+    const p = phone?.replace(/[^0-9+]/g, '');
+    return p ? (phoneCounts[p] || 0) : 0;
+  };
+
   const clearAllFilters = () => {
     setSearch('');
     setSelectedStatuses([]);
