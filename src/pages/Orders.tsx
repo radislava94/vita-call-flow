@@ -348,6 +348,7 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
+                <th className="px-4 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
