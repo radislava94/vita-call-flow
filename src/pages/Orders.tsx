@@ -353,7 +353,7 @@ export default function Orders() {
             </thead>
             <tbody>
               {filteredOrders.map(order => (
-                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setModalOrder(order)}>
+                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => tryOpenOrder(order)}>
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
@@ -378,10 +378,27 @@ export default function Orders() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setHistoryOrder({ phone: order.customer_phone, name: order.customer_name })}>
+                          <History className="h-3.5 w-3.5 mr-2" /> See History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => tryOpenOrder(order)}>
+                          <Lock className="h-3.5 w-3.5 mr-2" /> Open Order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
                 </tr>
               ))}
               {filteredOrders.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
               )}
             </tbody>
           </table>
