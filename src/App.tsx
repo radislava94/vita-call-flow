@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { PermissionsProvider } from "@/contexts/PermissionsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
@@ -22,7 +22,7 @@ import CallScriptsPage from "./pages/CallScriptsPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import WarehousePage from "./pages/WarehousePage";
 import SettingsPage from "./pages/SettingsPage";
-import AdsPanelPage from "./pages/AdsPanelPage";
+
 import InboundLeadsPage from "./pages/InboundLeadsPage";
 import WebhookManagementPage from "./pages/WebhookManagementPage";
 import SearchPredictionPage from "./pages/SearchPredictionPage";
@@ -58,7 +58,7 @@ const App = () => (
               <Route path="/call-history" element={<ProtectedRoute moduleKey="call_history"><CallHistoryPage /></ProtectedRoute>} />
               <Route path="/warehouse" element={<ProtectedRoute moduleKey="warehouse"><WarehousePage /></ProtectedRoute>} />
               <Route path="/settings" element={<ProtectedRoute moduleKey="settings"><SettingsPage /></ProtectedRoute>} />
-              <Route path="/ads" element={<ProtectedRoute moduleKey="ads"><AdsPanelPage /></ProtectedRoute>} />
+              <Route path="/ads" element={<Navigate to="/webhooks" replace />} />
               <Route path="/inbound-leads" element={<ProtectedRoute moduleKey="inbound_leads"><InboundLeadsPage /></ProtectedRoute>} />
               <Route path="/webhooks" element={<ProtectedRoute moduleKey="webhooks"><WebhookManagementPage /></ProtectedRoute>} />
               <Route path="/search-prediction" element={<ProtectedRoute moduleKey="search_prediction"><SearchPredictionPage /></ProtectedRoute>} />
