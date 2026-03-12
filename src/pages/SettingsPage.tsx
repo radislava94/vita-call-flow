@@ -844,9 +844,367 @@ function AppearanceTab() {
   );
 }
 
+
 // ════════════════════════════════════════════════════
-// Shared Components
+// TAB: Module Manager (Admin only)
 // ════════════════════════════════════════════════════
+const PROTECTED_MODULES = ['dashboard', 'users', 'settings'];
+
+function ModuleManagerTab() {
+  const { modules, refresh } = usePermissions();
+  const [saving, setSaving] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const handleToggle = async (moduleKey: string, currentEnabled: boolean) => {
+    if (PROTECTED_MODULES.includes(moduleKey)) {
+      toast({ title: 'Protected Module', description: 'This module cannot be disabled — it is required for system operation.', variant: 'destructive' });
+      return;
+    }
+    setSaving(moduleKey);
+    try {
+      const { error } = await supabase
+        .from('module_settings')
+        .update({ is_enabled: !currentEnabled, updated_at: new Date().toISOString() } as any)
+        .eq('module_key', moduleKey);
+      if (error) throw error;
+      await refresh();
+      toast({ title: `${!currentEnabled ? 'Enabled' : 'Disabled'} module` });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally { setSaving(null); }
+  };
+
+  return (
+    <div className="space-y-4 max-w-3xl">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2"><Blocks className="h-5 w-5 text-primary" /> Module Manager</h2>
+        <p className="text-sm text-muted-foreground">Enable or disable modules globally. Disabled modules are hidden from the sidebar and inaccessible via URL.</p>
+      </div>
+
+      <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Module</th>
+              <th className="px-4 py-3 text-center font-medium text-muted-foreground">Status</th>
+              <th className="px-4 py-3 text-center font-medium text-muted-foreground">Protected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {modules.map(mod => {
+              const isProtected = PROTECTED_MODULES.includes(mod.module_key);
+              return (
+                <tr key={mod.module_key} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{mod.module_label}</span>
+                      <Badge variant="outline" className="text-[10px] font-mono">{mod.module_key}</Badge>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex justify-center">
+                      {saving === mod.module_key ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      ) : (
+                        <Switch
+                          checked={mod.is_enabled}
+                          onCheckedChange={() => handleToggle(mod.module_key, mod.is_enabled)}
+                          disabled={isProtected}
+                        />
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {isProtected && (
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <LockKeyhole className="h-4 w-4 text-warning mx-auto" />
+                        </TooltipTrigger>
+                        <TooltipContent>Required for system operation — cannot be disabled</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
+// TAB: Role Permissions (Admin only)
+// ════════════════════════════════════════════════════
+const PERMISSION_ROLES = ['admin', 'manager', 'agent', 'pending_agent', 'prediction_agent', 'warehouse', 'ads_admin'] as const;
+const ACTIONS = ['can_view', 'can_create', 'can_edit', 'can_delete', 'can_export'] as const;
+const ACTION_LABELS: Record<string, string> = {
+  can_view: 'View', can_create: 'Create', can_edit: 'Edit', can_delete: 'Delete', can_export: 'Export',
+};
+
+function RolePermissionsTab() {
+  const { modules, rolePermissions, refresh } = usePermissions();
+  const [selectedRole, setSelectedRole] = useState<string>('agent');
+  const [saving, setSaving] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const permsForRole = useMemo(() => {
+    return rolePermissions.filter(p => p.role === selectedRole);
+  }, [rolePermissions, selectedRole]);
+
+  const getPermValue = (moduleKey: string, action: string): boolean => {
+    const perm = permsForRole.find(p => p.module_key === moduleKey);
+    return perm ? (perm as any)[action] : false;
+  };
+
+  const handleToggle = async (moduleKey: string, action: string, currentValue: boolean) => {
+    // Don't allow editing admin permissions
+    if (selectedRole === 'admin') {
+      toast({ title: 'Info', description: 'Admin permissions cannot be modified — admin always has full access.' });
+      return;
+    }
+    setSaving(`${moduleKey}-${action}`);
+    try {
+      const { error } = await supabase
+        .from('role_permissions')
+        .update({ [action]: !currentValue, updated_at: new Date().toISOString() } as any)
+        .eq('role', selectedRole)
+        .eq('module_key', moduleKey);
+      if (error) throw error;
+      await refresh();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally { setSaving(null); }
+  };
+
+  const handleBulkToggleModule = async (moduleKey: string, enable: boolean) => {
+    if (selectedRole === 'admin') return;
+    setSaving(moduleKey);
+    try {
+      const update: any = { updated_at: new Date().toISOString() };
+      ACTIONS.forEach(a => { update[a] = enable; });
+      const { error } = await supabase
+        .from('role_permissions')
+        .update(update)
+        .eq('role', selectedRole)
+        .eq('module_key', moduleKey);
+      if (error) throw error;
+      await refresh();
+      toast({ title: `${enable ? 'Enabled' : 'Disabled'} all actions for ${moduleKey}` });
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally { setSaving(null); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2"><KeyRound className="h-5 w-5 text-primary" /> Role Permissions</h2>
+        <p className="text-sm text-muted-foreground">Control which actions each role can perform in each module. Changes apply immediately.</p>
+      </div>
+
+      {/* Role selector */}
+      <div className="flex flex-wrap gap-2">
+        {PERMISSION_ROLES.map(role => {
+          const meta = ROLE_META[role];
+          const Icon = meta?.icon || Shield;
+          return (
+            <button
+              key={role}
+              onClick={() => setSelectedRole(role)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-all ${
+                selectedRole === role ? 'bg-primary text-primary-foreground border-primary' : 'border-border text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {meta?.label || role}
+            </button>
+          );
+        })}
+      </div>
+
+      {selectedRole === 'admin' && (
+        <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning flex items-center gap-2">
+          <LockKeyhole className="h-4 w-4 shrink-0" />
+          Admin always has full access to all modules and actions. Permissions cannot be modified.
+        </div>
+      )}
+
+      {/* Permissions grid */}
+      <div className="rounded-xl border bg-card shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground min-w-[180px]">Module</th>
+              {ACTIONS.map(a => (
+                <th key={a} className="px-3 py-3 text-center font-medium text-muted-foreground text-xs">{ACTION_LABELS[a]}</th>
+              ))}
+              <th className="px-3 py-3 text-center font-medium text-muted-foreground text-xs">All</th>
+            </tr>
+          </thead>
+          <tbody>
+            {modules.map(mod => {
+              const allEnabled = ACTIONS.every(a => getPermValue(mod.module_key, a));
+              return (
+                <tr key={mod.module_key} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-2.5 font-medium text-sm">{mod.module_label}</td>
+                  {ACTIONS.map(action => {
+                    const val = getPermValue(mod.module_key, action);
+                    const key = `${mod.module_key}-${action}`;
+                    return (
+                      <td key={action} className="px-3 py-2.5 text-center">
+                        {saving === key ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary mx-auto" />
+                        ) : (
+                          <button
+                            onClick={() => handleToggle(mod.module_key, action, val)}
+                            disabled={selectedRole === 'admin'}
+                            className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md transition-all ${
+                              val
+                                ? 'bg-success/15 text-success hover:bg-success/25'
+                                : 'bg-muted text-muted-foreground/40 hover:bg-muted/80'
+                            } ${selectedRole === 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {val ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="px-3 py-2.5 text-center">
+                    {saving === mod.module_key ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin text-primary mx-auto" />
+                    ) : (
+                      <button
+                        onClick={() => handleBulkToggleModule(mod.module_key, !allEnabled)}
+                        disabled={selectedRole === 'admin'}
+                        className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md border transition-all ${
+                          allEnabled
+                            ? 'border-success/30 bg-success/10 text-success hover:bg-success/20'
+                            : 'border-border bg-background text-muted-foreground/40 hover:bg-muted'
+                        } ${selectedRole === 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      >
+                        {allEnabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════
+// TAB: Financial Visibility (Admin only)
+// ════════════════════════════════════════════════════
+const FINANCIAL_METRICS = [
+  { key: 'show_profit', label: 'Profit', description: 'Total profit calculations' },
+  { key: 'show_net_contribution', label: 'Net Contribution', description: 'Revenue minus costs' },
+  { key: 'show_cost', label: 'Cost', description: 'Product cost data' },
+  { key: 'show_returned_value', label: 'Returned Value', description: 'Value of returned orders' },
+  { key: 'show_financial_insights', label: 'Financial Insights', description: 'Advanced financial analytics' },
+] as const;
+
+function FinancialVisibilityTab() {
+  const { financialVisibility, refresh } = usePermissions();
+  const [saving, setSaving] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  const getFinValue = (role: string, metric: string): boolean => {
+    const vis = financialVisibility.find(v => v.role === role);
+    return vis ? (vis as any)[metric] : false;
+  };
+
+  const handleToggle = async (role: string, metric: string, currentValue: boolean) => {
+    if (role === 'admin') {
+      toast({ title: 'Info', description: 'Admin always has full financial visibility.' });
+      return;
+    }
+    setSaving(`${role}-${metric}`);
+    try {
+      const { error } = await supabase
+        .from('financial_visibility')
+        .update({ [metric]: !currentValue, updated_at: new Date().toISOString() } as any)
+        .eq('role', role);
+      if (error) throw error;
+      await refresh();
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally { setSaving(null); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" /> Financial Data Visibility</h2>
+        <p className="text-sm text-muted-foreground">Control which roles can see sensitive financial metrics. Changes apply immediately.</p>
+      </div>
+
+      <div className="rounded-xl border bg-card shadow-sm overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground min-w-[140px]">Role</th>
+              {FINANCIAL_METRICS.map(m => (
+                <th key={m.key} className="px-3 py-3 text-center font-medium text-muted-foreground text-xs">
+                  <Tooltip>
+                    <TooltipTrigger className="cursor-help">{m.label}</TooltipTrigger>
+                    <TooltipContent>{m.description}</TooltipContent>
+                  </Tooltip>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PERMISSION_ROLES.map(role => {
+              const meta = ROLE_META[role];
+              const Icon = meta?.icon || Shield;
+              return (
+                <tr key={role} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                  <td className="px-4 py-2.5">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-semibold ${meta?.color || ''}`}>
+                      <Icon className="h-3 w-3" /> {meta?.label || role}
+                    </span>
+                  </td>
+                  {FINANCIAL_METRICS.map(metric => {
+                    const val = getFinValue(role, metric.key);
+                    const key = `${role}-${metric.key}`;
+                    return (
+                      <td key={metric.key} className="px-3 py-2.5 text-center">
+                        {saving === key ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary mx-auto" />
+                        ) : (
+                          <button
+                            onClick={() => handleToggle(role, metric.key, val)}
+                            disabled={role === 'admin'}
+                            className={`mx-auto flex h-6 w-6 items-center justify-center rounded-md transition-all ${
+                              val
+                                ? 'bg-success/15 text-success hover:bg-success/25'
+                                : 'bg-muted text-muted-foreground/40 hover:bg-muted/80'
+                            } ${role === 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {val ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
 function CollapsibleCard({ title, subtitle, expanded, onToggle, children }: {
   title: string; subtitle?: string; expanded: boolean; onToggle: () => void; children: React.ReactNode;
 }) {
