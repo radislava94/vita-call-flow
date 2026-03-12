@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents, apiGetShiftStatistics, apiGetLoginActivity } from '@/lib/api';
+import { apiGetShifts, apiCreateShift, apiUpdateShift, apiDeleteShift, apiGetAgents, apiGetShiftStatistics, apiGetLoginActivity, apiGetShiftTemplates, apiCreateShiftTemplate, apiUpdateShiftTemplate, apiDeleteShiftTemplate, apiAssignTemplateWeek } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { AppLayout } from '@/layouts/AppLayout';
 import { Button } from '@/components/ui/button';
@@ -12,14 +12,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from '@/hooks/use-toast';
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Clock, BarChart3, Calendar as CalendarDays, Briefcase, LogIn } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Clock, BarChart3, Calendar as CalendarDays, Briefcase, LogIn, MoreVertical, LayoutTemplate, Users } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek, isSameMonth, isSameDay, addMonths, subMonths, addDays } from 'date-fns';
 
 interface ShiftAgent { user_id: string; full_name: string; }
 interface Shift {
   id: string; name: string; date: string; start_time: string; end_time: string;
   agents: ShiftAgent[]; created_at: string;
+}
+interface ShiftTemplate {
+  id: string; name: string; start_time: string; end_time: string; created_at: string; updated_at: string;
 }
 
 interface AgentShiftStats {
@@ -45,7 +49,7 @@ export default function ShiftsManagementPage() {
   const [filterTo, setFilterTo] = useState('');
   const [calMonth, setCalMonth] = useState(new Date());
 
-  // Statistics filters (separate from list filters)
+  // Statistics filters
   const [statsFrom, setStatsFrom] = useState(() => format(startOfMonth(new Date()), 'yyyy-MM-dd'));
   const [statsTo, setStatsTo] = useState(() => format(endOfMonth(new Date()), 'yyyy-MM-dd'));
 
@@ -55,13 +59,33 @@ export default function ShiftsManagementPage() {
   const [activityAgent, setActivityAgent] = useState('all');
   const [activityStatus, setActivityStatus] = useState('all');
 
-  // Form state
+  // Shift form state
   const [formName, setFormName] = useState('');
   const [formDate, setFormDate] = useState('');
   const [formDateEnd, setFormDateEnd] = useState('');
   const [formStart, setFormStart] = useState('09:00');
   const [formEnd, setFormEnd] = useState('17:00');
   const [formAgents, setFormAgents] = useState<string[]>([]);
+
+  // Template state
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | null>(null);
+  const [tplName, setTplName] = useState('');
+  const [tplStart, setTplStart] = useState('09:00');
+  const [tplEnd, setTplEnd] = useState('17:00');
+
+  // Weekly assignment state
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignTemplateId, setAssignTemplateId] = useState('');
+  const [assignAgents, setAssignAgents] = useState<string[]>([]);
+  const [assignWeekStart, setAssignWeekStart] = useState(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
+    const nextMon = addDays(now, diff);
+    return format(nextMon, 'yyyy-MM-dd');
+  });
+  const [assignDays, setAssignDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
 
   const { data: shifts = [], isLoading } = useQuery<Shift[]>({
     queryKey: ['shifts', filterAgent, filterFrom, filterTo],
@@ -93,21 +117,47 @@ export default function ShiftsManagementPage() {
   const loginActivities = loginActivityData?.activities || [];
   const loginSummary = loginActivityData?.summary || [];
 
+  const { data: templates = [] } = useQuery<ShiftTemplate[]>({
+    queryKey: ['shift-templates'],
+    queryFn: apiGetShiftTemplates,
+  });
+
+  // Shift mutations
   const createMutation = useMutation({
     mutationFn: apiCreateShift,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); closeDialog(); toast({ title: 'Shift created' }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
-
   const updateMutation = useMutation({
     mutationFn: ({ id, body }: { id: string; body: any }) => apiUpdateShift(id, body),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); closeDialog(); toast({ title: 'Shift updated' }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
-
   const deleteMutation = useMutation({
     mutationFn: apiDeleteShift,
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); toast({ title: 'Shift deleted' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  // Template mutations
+  const createTemplateMutation = useMutation({
+    mutationFn: apiCreateShiftTemplate,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shift-templates'] }); closeTemplateDialog(); toast({ title: 'Template created' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const updateTemplateMutation = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: any }) => apiUpdateShiftTemplate(id, body),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shift-templates'] }); queryClient.invalidateQueries({ queryKey: ['shifts'] }); closeTemplateDialog(); toast({ title: 'Template updated. Future shifts have been updated.' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const deleteTemplateMutation = useMutation({
+    mutationFn: apiDeleteShiftTemplate,
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['shift-templates'] }); toast({ title: 'Template deleted' }); },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+  const assignWeekMutation = useMutation({
+    mutationFn: apiAssignTemplateWeek,
+    onSuccess: (data: any) => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); setAssignDialogOpen(false); toast({ title: `Shifts assigned for ${data.days} days` }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
@@ -141,6 +191,54 @@ export default function ShiftsManagementPage() {
     setFormAgents(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
   };
 
+  // Template helpers
+  const closeTemplateDialog = () => { setTemplateDialogOpen(false); setEditingTemplate(null); setTplName(''); setTplStart('09:00'); setTplEnd('17:00'); };
+  const openCreateTemplate = () => { setEditingTemplate(null); setTplName(''); setTplStart('09:00'); setTplEnd('17:00'); setTemplateDialogOpen(true); };
+  const openEditTemplate = (tpl: ShiftTemplate) => {
+    setEditingTemplate(tpl);
+    setTplName(tpl.name);
+    setTplStart(tpl.start_time.substring(0, 5));
+    setTplEnd(tpl.end_time.substring(0, 5));
+    setTemplateDialogOpen(true);
+  };
+  const handleTemplateSubmit = () => {
+    if (!tplName.trim() || !tplStart || !tplEnd) {
+      toast({ title: 'Please fill all fields', variant: 'destructive' }); return;
+    }
+    if (editingTemplate) {
+      updateTemplateMutation.mutate({ id: editingTemplate.id, body: { name: tplName.trim(), start_time: tplStart, end_time: tplEnd } });
+    } else {
+      createTemplateMutation.mutate({ name: tplName.trim(), start_time: tplStart, end_time: tplEnd });
+    }
+  };
+
+  const openAssignWeek = () => {
+    setAssignTemplateId(templates.length > 0 ? templates[0].id : '');
+    setAssignAgents([]);
+    setAssignDays([true, true, true, true, true, false, false]);
+    setAssignDialogOpen(true);
+  };
+
+  const handleAssignWeek = () => {
+    if (!assignTemplateId || assignAgents.length === 0) {
+      toast({ title: 'Select a template and at least one agent', variant: 'destructive' }); return;
+    }
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const selectedDays: string[] = [];
+    const weekStartDate = new Date(assignWeekStart + 'T12:00:00');
+    assignDays.forEach((checked, i) => {
+      if (checked) {
+        const d = new Date(weekStartDate);
+        d.setDate(d.getDate() + i);
+        selectedDays.push(d.toISOString().substring(0, 10));
+      }
+    });
+    if (selectedDays.length === 0) {
+      toast({ title: 'Select at least one day', variant: 'destructive' }); return;
+    }
+    assignWeekMutation.mutate({ template_id: assignTemplateId, agent_ids: assignAgents, week_start: assignWeekStart, days: selectedDays });
+  };
+
   // Calendar helpers
   const monthStart = startOfMonth(calMonth);
   const monthEnd = endOfMonth(calMonth);
@@ -160,7 +258,12 @@ export default function ShiftsManagementPage() {
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Shifts Management</h1>
-          <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Create Shift</Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={openAssignWeek} disabled={templates.length === 0}>
+              <Users className="h-4 w-4 mr-1" /> Assign Week
+            </Button>
+            <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Create Shift</Button>
+          </div>
         </div>
 
         {/* Filters */}
@@ -188,14 +291,80 @@ export default function ShiftsManagementPage() {
           )}
         </div>
 
-        <Tabs defaultValue="list">
+        <Tabs defaultValue="templates">
           <TabsList>
+            <TabsTrigger value="templates" className="gap-1"><LayoutTemplate className="h-3.5 w-3.5" /> Templates</TabsTrigger>
             <TabsTrigger value="list">List View</TabsTrigger>
             <TabsTrigger value="calendar">Calendar View</TabsTrigger>
             <TabsTrigger value="statistics" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> Statistics</TabsTrigger>
             <TabsTrigger value="login-activity" className="gap-1"><LogIn className="h-3.5 w-3.5" /> Login Activity</TabsTrigger>
           </TabsList>
 
+          {/* ═══════════ TEMPLATES TAB ═══════════ */}
+          <TabsContent value="templates">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-foreground">Shift Templates</h2>
+                <Button size="sm" onClick={openCreateTemplate}><Plus className="h-4 w-4 mr-1" /> New Template</Button>
+              </div>
+
+              {templates.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    <LayoutTemplate className="h-10 w-10 mx-auto mb-3 opacity-40" />
+                    <p>No shift templates yet. Create one to get started.</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="rounded-lg border bg-card divide-y">
+                  {templates.map(tpl => (
+                    <div key={tpl.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center">
+                          <Clock className="h-4 w-4 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">{tpl.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {tpl.start_time.substring(0, 5)} → {tpl.end_time.substring(0, 5)}
+                          </p>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEditTemplate(tpl)}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" /> Edit Shift
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => { if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplateMutation.mutate(tpl.id); }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Quick help */}
+              <Card className="bg-muted/30 border-dashed">
+                <CardContent className="py-4">
+                  <p className="text-sm text-muted-foreground">
+                    <strong>How it works:</strong> Create templates (e.g. Morning, Evening, Night), then use <strong>Assign Week</strong> to quickly assign a template to agents for the entire week. Editing a template automatically updates all future shifts using it.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* ═══════════ LIST TAB ═══════════ */}
           <TabsContent value="list">
             {isLoading ? (
               <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
@@ -242,6 +411,7 @@ export default function ShiftsManagementPage() {
             )}
           </TabsContent>
 
+          {/* ═══════════ CALENDAR TAB ═══════════ */}
           <TabsContent value="calendar">
             <Card>
               <CardContent className="p-4">
@@ -275,9 +445,9 @@ export default function ShiftsManagementPage() {
             </Card>
           </TabsContent>
 
+          {/* ═══════════ STATISTICS TAB ═══════════ */}
           <TabsContent value="statistics">
             <div className="space-y-4">
-              {/* Stats date filters */}
               <div className="flex flex-wrap gap-3 items-end">
                 <div>
                   <Label className="text-xs text-muted-foreground">From</Label>
@@ -293,47 +463,13 @@ export default function ShiftsManagementPage() {
                 }}>This Month</Button>
               </div>
 
-              {/* Summary cards */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Briefcase className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">Total Scheduled Hours</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">{totalScheduledHours.toFixed(1)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Clock className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">Total Actual Hours</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">{totalActualHours.toFixed(1)}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs text-muted-foreground">Weekday Shifts</span>
-                    </div>
-                    <p className="text-2xl font-bold text-foreground">{totalWeekdayShifts}</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <CalendarDays className="h-4 w-4 text-primary" />
-                      <span className="text-xs text-muted-foreground">Weekend Shifts</span>
-                    </div>
-                    <p className="text-2xl font-bold text-primary">{totalWeekendShifts}</p>
-                  </CardContent>
-                </Card>
+                <Card><CardContent className="p-4"><div className="flex items-center gap-2 mb-1"><Briefcase className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Total Scheduled Hours</span></div><p className="text-2xl font-bold text-foreground">{totalScheduledHours.toFixed(1)}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="flex items-center gap-2 mb-1"><Clock className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Total Actual Hours</span></div><p className="text-2xl font-bold text-foreground">{totalActualHours.toFixed(1)}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="flex items-center gap-2 mb-1"><CalendarDays className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Weekday Shifts</span></div><p className="text-2xl font-bold text-foreground">{totalWeekdayShifts}</p></CardContent></Card>
+                <Card><CardContent className="p-4"><div className="flex items-center gap-2 mb-1"><CalendarDays className="h-4 w-4 text-primary" /><span className="text-xs text-muted-foreground">Weekend Shifts</span></div><p className="text-2xl font-bold text-primary">{totalWeekendShifts}</p></CardContent></Card>
               </div>
 
-              {/* Per-agent table */}
               {statsLoading ? (
                 <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
               ) : shiftStats.length === 0 ? (
@@ -359,18 +495,10 @@ export default function ShiftsManagementPage() {
                         <TableRow key={stat.user_id}>
                           <TableCell className="font-medium">{stat.full_name}</TableCell>
                           <TableCell className="text-center">{stat.total_worked_days}</TableCell>
-                          <TableCell className="text-center">
-                            {stat.total_weekend_days > 0 ? (
-                              <Badge variant="secondary" className="text-xs">{stat.total_weekend_days}</Badge>
-                            ) : '0'}
-                          </TableCell>
+                          <TableCell className="text-center">{stat.total_weekend_days > 0 ? <Badge variant="secondary" className="text-xs">{stat.total_weekend_days}</Badge> : '0'}</TableCell>
                           <TableCell className="text-center">{stat.total_shifts}</TableCell>
                           <TableCell className="text-center">{stat.weekday_shifts}</TableCell>
-                          <TableCell className="text-center">
-                            {stat.weekend_shifts > 0 ? (
-                              <span className="text-primary font-medium">{stat.weekend_shifts}</span>
-                            ) : '0'}
-                          </TableCell>
+                          <TableCell className="text-center">{stat.weekend_shifts > 0 ? <span className="text-primary font-medium">{stat.weekend_shifts}</span> : '0'}</TableCell>
                           <TableCell className="text-center">{stat.total_hours_scheduled}h</TableCell>
                           <TableCell className="text-center">{stat.total_hours_actual}h</TableCell>
                           <TableCell className="text-center">{stat.average_hours_per_shift}h</TableCell>
@@ -383,9 +511,9 @@ export default function ShiftsManagementPage() {
             </div>
           </TabsContent>
 
+          {/* ═══════════ LOGIN ACTIVITY TAB ═══════════ */}
           <TabsContent value="login-activity">
             <div className="space-y-4">
-              {/* Filters */}
               <div className="flex flex-wrap gap-3 items-end">
                 <div>
                   <Label className="text-xs text-muted-foreground">Agent</Label>
@@ -426,12 +554,9 @@ export default function ShiftsManagementPage() {
                 }}>Reset</Button>
               </div>
 
-              {/* Attendance Summary */}
               {loginSummary.length > 0 && (
                 <div className="rounded-lg border bg-card">
-                  <div className="p-3 border-b">
-                    <h3 className="text-sm font-semibold text-foreground">Attendance Summary</h3>
-                  </div>
+                  <div className="p-3 border-b"><h3 className="text-sm font-semibold text-foreground">Attendance Summary</h3></div>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -449,15 +574,9 @@ export default function ShiftsManagementPage() {
                           <TableCell className="font-medium">{s.user_name}</TableCell>
                           <TableCell className="text-center">{s.total_shifts}</TableCell>
                           <TableCell className="text-center">{s.attended}</TableCell>
-                          <TableCell className="text-center">
-                            {s.late > 0 ? <Badge variant="destructive" className="text-xs">{s.late}</Badge> : '0'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {s.early > 0 ? <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700">{s.early}</Badge> : '0'}
-                          </TableCell>
-                          <TableCell className="text-center">
-                            {s.blocked > 0 ? <Badge variant="destructive" className="text-xs">{s.blocked}</Badge> : '0'}
-                          </TableCell>
+                          <TableCell className="text-center">{s.late > 0 ? <Badge variant="destructive" className="text-xs">{s.late}</Badge> : '0'}</TableCell>
+                          <TableCell className="text-center">{s.early > 0 ? <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-700">{s.early}</Badge> : '0'}</TableCell>
+                          <TableCell className="text-center">{s.blocked > 0 ? <Badge variant="destructive" className="text-xs">{s.blocked}</Badge> : '0'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -465,16 +584,13 @@ export default function ShiftsManagementPage() {
                 </div>
               )}
 
-              {/* Activity Table */}
               {activityLoading ? (
                 <div className="flex justify-center py-12"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>
               ) : loginActivities.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground">No login activity for this period</div>
               ) : (
                 <div className="rounded-lg border bg-card">
-                  <div className="p-3 border-b">
-                    <h3 className="text-sm font-semibold text-foreground">Login Activity ({loginActivities.length} entries)</h3>
-                  </div>
+                  <div className="p-3 border-b"><h3 className="text-sm font-semibold text-foreground">Login Activity ({loginActivities.length} entries)</h3></div>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -499,11 +615,7 @@ export default function ShiftsManagementPage() {
                           <TableCell>{a.shift_end || '—'}</TableCell>
                           <TableCell>{a.login_time ? format(new Date(a.login_time), 'HH:mm') : '—'}</TableCell>
                           <TableCell>{a.logout_time ? format(new Date(a.logout_time), 'HH:mm') : <span className="text-muted-foreground text-xs">Active</span>}</TableCell>
-                          <TableCell>
-                            {a.session_duration != null
-                              ? `${Math.floor(a.session_duration / 60)}h ${Math.round(a.session_duration % 60)}m`
-                              : '—'}
-                          </TableCell>
+                          <TableCell>{a.session_duration != null ? `${Math.floor(a.session_duration / 60)}h ${Math.round(a.session_duration % 60)}m` : '—'}</TableCell>
                           <TableCell>
                             <Badge
                               variant={a.status === 'On Time' ? 'default' : a.status === 'Late Login' ? 'destructive' : a.status === 'Early Logout' ? 'secondary' : 'destructive'}
@@ -522,7 +634,7 @@ export default function ShiftsManagementPage() {
           </TabsContent>
         </Tabs>
 
-        {/* Create/Edit Dialog */}
+        {/* Create/Edit Shift Dialog */}
         <Dialog open={dialogOpen} onOpenChange={v => { if (!v) closeDialog(); else setDialogOpen(true); }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
@@ -572,6 +684,102 @@ export default function ShiftsManagementPage() {
                 <Button variant="outline" onClick={closeDialog}>Cancel</Button>
                 <Button onClick={handleSubmit} disabled={createMutation.isPending || updateMutation.isPending}>
                   {editingShift ? 'Update' : 'Create'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Create/Edit Template Dialog */}
+        <Dialog open={templateDialogOpen} onOpenChange={v => { if (!v) closeTemplateDialog(); else setTemplateDialogOpen(true); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{editingTemplate ? 'Edit Shift Template' : 'Create Shift Template'}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Template Name *</Label>
+                <Input value={tplName} onChange={e => setTplName(e.target.value)} placeholder="e.g. Morning Shift" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Start Time *</Label>
+                  <Input type="time" value={tplStart} onChange={e => setTplStart(e.target.value)} />
+                </div>
+                <div>
+                  <Label>End Time *</Label>
+                  <Input type="time" value={tplEnd} onChange={e => setTplEnd(e.target.value)} />
+                </div>
+              </div>
+              {editingTemplate && (
+                <p className="text-xs text-muted-foreground">Editing this template will automatically update all future shifts using it.</p>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={closeTemplateDialog}>Cancel</Button>
+                <Button onClick={handleTemplateSubmit} disabled={createTemplateMutation.isPending || updateTemplateMutation.isPending}>
+                  {editingTemplate ? 'Update' : 'Create'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Assign Week Dialog */}
+        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Assign Weekly Shifts</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Shift Template *</Label>
+                <Select value={assignTemplateId} onValueChange={setAssignTemplateId}>
+                  <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
+                  <SelectContent>
+                    {templates.map(t => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name} ({t.start_time.substring(0, 5)} → {t.end_time.substring(0, 5)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Week Starting (Monday) *</Label>
+                <Input type="date" value={assignWeekStart} onChange={e => setAssignWeekStart(e.target.value)} />
+              </div>
+              <div>
+                <Label>Days</Label>
+                <div className="flex gap-2 mt-1">
+                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
+                    <label key={day} className={`flex flex-col items-center gap-1 cursor-pointer px-2 py-1.5 rounded-md border text-xs transition-colors ${assignDays[i] ? 'bg-primary/10 border-primary text-primary' : 'bg-card border-border text-muted-foreground'}`}>
+                      <input type="checkbox" checked={assignDays[i]} onChange={() => {
+                        const next = [...assignDays];
+                        next[i] = !next[i];
+                        setAssignDays(next);
+                      }} className="sr-only" />
+                      {day}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label>Assign Agents *</Label>
+                <div className="mt-1 border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
+                  {agents.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No agents available</p>
+                  ) : agents.map(a => (
+                    <label key={a.user_id} className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-2 py-1">
+                      <input type="checkbox" checked={assignAgents.includes(a.user_id)} onChange={() => setAssignAgents(prev => prev.includes(a.user_id) ? prev.filter(x => x !== a.user_id) : [...prev, a.user_id])} className="rounded" />
+                      <span className="text-sm">{a.full_name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleAssignWeek} disabled={assignWeekMutation.isPending}>
+                  {assignWeekMutation.isPending ? 'Assigning...' : 'Assign Shifts'}
                 </Button>
               </div>
             </div>
