@@ -39,6 +39,118 @@ interface AgentShiftStats {
   weekend_shifts: number;
 }
 
+// ── Inline Template Card with date/agent assignment ──
+function TemplateCard({ template, agents, onEdit, onDelete, onAssign, isAssigning }: {
+  template: ShiftTemplate;
+  agents: { user_id: string; full_name: string; email: string }[];
+  onEdit: () => void;
+  onDelete: () => void;
+  onAssign: (data: { template_id: string; agent_ids: string[]; week_start: string; days: string[] }) => void;
+  isAssigning: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [weekStart, setWeekStart] = useState(() => {
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
+    const nextMon = addDays(now, diff);
+    return format(nextMon, 'yyyy-MM-dd');
+  });
+  const [days, setDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
+
+  const handleAssign = () => {
+    if (selectedAgents.length === 0) return;
+    const weekStartDate = new Date(weekStart + 'T12:00:00');
+    const selectedDays: string[] = [];
+    days.forEach((checked, i) => {
+      if (checked) {
+        const d = new Date(weekStartDate);
+        d.setDate(d.getDate() + i);
+        selectedDays.push(d.toISOString().substring(0, 10));
+      }
+    });
+    if (selectedDays.length === 0) return;
+    onAssign({ template_id: template.id, agent_ids: selectedAgents, week_start: weekStart, days: selectedDays });
+  };
+
+  const toggleAgent = (id: string) => setSelectedAgents(prev => prev.includes(id) ? prev.filter(a => a !== id) : [...prev, id]);
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3">
+        <button className="flex items-center gap-3 text-left flex-1 min-w-0" onClick={() => setExpanded(!expanded)}>
+          <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center shrink-0">
+            <Clock className="h-4 w-4 text-primary" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-medium text-foreground truncate">{template.name}</p>
+            <p className="text-sm text-muted-foreground">{template.start_time.substring(0, 5)} → {template.end_time.substring(0, 5)}</p>
+          </div>
+        </button>
+        <div className="flex items-center gap-1 shrink-0">
+          <Button variant="ghost" size="sm" className="text-xs" onClick={() => setExpanded(!expanded)}>
+            {expanded ? 'Close' : 'Assign'}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8"><MoreVertical className="h-4 w-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={onEdit}><Pencil className="h-3.5 w-3.5 mr-2" /> Edit Template</DropdownMenuItem>
+              <DropdownMenuItem className="text-destructive" onClick={onDelete}><Trash2 className="h-3.5 w-3.5 mr-2" /> Delete</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {expanded && (
+        <div className="border-t px-4 py-3 space-y-3 bg-muted/20">
+          {/* Week start + days */}
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-xs text-muted-foreground">Week Start (Monday)</Label>
+              <Input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)} className="w-40 h-8 text-sm" />
+            </div>
+            <div className="flex gap-1">
+              {dayLabels.map((label, i) => (
+                <button
+                  key={label}
+                  onClick={() => { const next = [...days]; next[i] = !next[i]; setDays(next); }}
+                  className={`px-2 py-1 rounded text-xs font-medium transition-colors ${days[i] ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Agents */}
+          <div>
+            <Label className="text-xs text-muted-foreground">Agents</Label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {agents.map(a => (
+                <button
+                  key={a.user_id}
+                  onClick={() => toggleAgent(a.user_id)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${selectedAgents.includes(a.user_id) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:bg-muted/80'}`}
+                >
+                  {a.full_name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Button size="sm" onClick={handleAssign} disabled={isAssigning || selectedAgents.length === 0} className="w-full">
+            {isAssigning ? 'Assigning...' : `Assign to ${selectedAgents.length} agent${selectedAgents.length !== 1 ? 's' : ''}`}
+          </Button>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function ShiftsManagementPage() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -73,19 +185,6 @@ export default function ShiftsManagementPage() {
   const [tplName, setTplName] = useState('');
   const [tplStart, setTplStart] = useState('09:00');
   const [tplEnd, setTplEnd] = useState('17:00');
-
-  // Weekly assignment state
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [assignTemplateId, setAssignTemplateId] = useState('');
-  const [assignAgents, setAssignAgents] = useState<string[]>([]);
-  const [assignWeekStart, setAssignWeekStart] = useState(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
-    const nextMon = addDays(now, diff);
-    return format(nextMon, 'yyyy-MM-dd');
-  });
-  const [assignDays, setAssignDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
 
   const { data: shifts = [], isLoading } = useQuery<Shift[]>({
     queryKey: ['shifts', filterAgent, filterFrom, filterTo],
@@ -157,7 +256,7 @@ export default function ShiftsManagementPage() {
   });
   const assignWeekMutation = useMutation({
     mutationFn: apiAssignTemplateWeek,
-    onSuccess: (data: any) => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); setAssignDialogOpen(false); toast({ title: `Shifts assigned for ${data.days} days` }); },
+    onSuccess: (data: any) => { queryClient.invalidateQueries({ queryKey: ['shifts'] }); toast({ title: `Shifts assigned for ${data.days} days` }); },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
@@ -212,32 +311,6 @@ export default function ShiftsManagementPage() {
     }
   };
 
-  const openAssignWeek = () => {
-    setAssignTemplateId(templates.length > 0 ? templates[0].id : '');
-    setAssignAgents([]);
-    setAssignDays([true, true, true, true, true, false, false]);
-    setAssignDialogOpen(true);
-  };
-
-  const handleAssignWeek = () => {
-    if (!assignTemplateId || assignAgents.length === 0) {
-      toast({ title: 'Select a template and at least one agent', variant: 'destructive' }); return;
-    }
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const selectedDays: string[] = [];
-    const weekStartDate = new Date(assignWeekStart + 'T12:00:00');
-    assignDays.forEach((checked, i) => {
-      if (checked) {
-        const d = new Date(weekStartDate);
-        d.setDate(d.getDate() + i);
-        selectedDays.push(d.toISOString().substring(0, 10));
-      }
-    });
-    if (selectedDays.length === 0) {
-      toast({ title: 'Select at least one day', variant: 'destructive' }); return;
-    }
-    assignWeekMutation.mutate({ template_id: assignTemplateId, agent_ids: assignAgents, week_start: assignWeekStart, days: selectedDays });
-  };
 
   // Calendar helpers
   const monthStart = startOfMonth(calMonth);
@@ -256,15 +329,10 @@ export default function ShiftsManagementPage() {
   return (
     <AppLayout title="Shifts Management">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Shifts Management</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={openAssignWeek} disabled={templates.length === 0}>
-              <Users className="h-4 w-4 mr-1" /> Assign Week
-            </Button>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Shifts Management</h1>
             <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Create Shift</Button>
           </div>
-        </div>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-end">
@@ -316,51 +384,20 @@ export default function ShiftsManagementPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="rounded-lg border bg-card divide-y">
+                <div className="space-y-3">
                   {templates.map(tpl => (
-                    <div key={tpl.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center">
-                          <Clock className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">{tpl.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {tpl.start_time.substring(0, 5)} → {tpl.end_time.substring(0, 5)}
-                          </p>
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditTemplate(tpl)}>
-                            <Pencil className="h-3.5 w-3.5 mr-2" /> Edit Shift
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => { if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplateMutation.mutate(tpl.id); }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <TemplateCard
+                      key={tpl.id}
+                      template={tpl}
+                      agents={agents}
+                      onEdit={() => openEditTemplate(tpl)}
+                      onDelete={() => { if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplateMutation.mutate(tpl.id); }}
+                      onAssign={(data) => assignWeekMutation.mutate(data)}
+                      isAssigning={assignWeekMutation.isPending}
+                    />
                   ))}
                 </div>
               )}
-
-              {/* Quick help */}
-              <Card className="bg-muted/30 border-dashed">
-                <CardContent className="py-4">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>How it works:</strong> Create templates (e.g. Morning, Evening, Night), then use <strong>Assign Week</strong> to quickly assign a template to agents for the entire week. Editing a template automatically updates all future shifts using it.
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
@@ -725,67 +762,6 @@ export default function ShiftsManagementPage() {
           </DialogContent>
         </Dialog>
 
-        {/* Assign Week Dialog */}
-        <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Assign Weekly Shifts</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <Label>Shift Template *</Label>
-                <Select value={assignTemplateId} onValueChange={setAssignTemplateId}>
-                  <SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger>
-                  <SelectContent>
-                    {templates.map(t => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} ({t.start_time.substring(0, 5)} → {t.end_time.substring(0, 5)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Week Starting (Monday) *</Label>
-                <Input type="date" value={assignWeekStart} onChange={e => setAssignWeekStart(e.target.value)} />
-              </div>
-              <div>
-                <Label>Days</Label>
-                <div className="flex gap-2 mt-1">
-                  {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, i) => (
-                    <label key={day} className={`flex flex-col items-center gap-1 cursor-pointer px-2 py-1.5 rounded-md border text-xs transition-colors ${assignDays[i] ? 'bg-primary/10 border-primary text-primary' : 'bg-card border-border text-muted-foreground'}`}>
-                      <input type="checkbox" checked={assignDays[i]} onChange={() => {
-                        const next = [...assignDays];
-                        next[i] = !next[i];
-                        setAssignDays(next);
-                      }} className="sr-only" />
-                      {day}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <Label>Assign Agents *</Label>
-                <div className="mt-1 border rounded-md p-2 max-h-40 overflow-y-auto space-y-1">
-                  {agents.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No agents available</p>
-                  ) : agents.map(a => (
-                    <label key={a.user_id} className="flex items-center gap-2 cursor-pointer hover:bg-muted rounded px-2 py-1">
-                      <input type="checkbox" checked={assignAgents.includes(a.user_id)} onChange={() => setAssignAgents(prev => prev.includes(a.user_id) ? prev.filter(x => x !== a.user_id) : [...prev, a.user_id])} className="rounded" />
-                      <span className="text-sm">{a.full_name}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
-                <Button onClick={handleAssignWeek} disabled={assignWeekMutation.isPending}>
-                  {assignWeekMutation.isPending ? 'Assigning...' : 'Assign Shifts'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
       </div>
     </AppLayout>
   );
