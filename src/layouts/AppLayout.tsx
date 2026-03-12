@@ -1,6 +1,7 @@
 import { AppSidebar } from '@/components/AppSidebar';
-import { Bell, Search, LogOut } from 'lucide-react';
+import { Search, LogOut } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { NotificationsDropdown } from '@/components/NotificationsDropdown';
 import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
