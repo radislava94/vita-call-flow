@@ -341,8 +341,10 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
           customer_city: customerCity.trim(),
           postal_code: postalCode.trim(),
         });
-        // Sync items only if order is NOT in a locked status
-        if (!lockedStatuses.includes(data.status)) {
+        // Sync items only if order is NOT in a locked status AND not transitioning TO locked
+        const isCurrentlyLocked = lockedStatuses.includes(data.status);
+        const isTransitioningToLocked = lockedStatuses.includes(selectedStatus);
+        if (!isCurrentlyLocked && !isTransitioningToLocked) {
           await apiSyncOrderItems(data.id, activeItems.map(i => ({
             product_id: i.product_id,
             product_name: i.product_name,
