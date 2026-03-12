@@ -3423,6 +3423,7 @@ serve(async (req) => {
             source: o.source_lead_id ? "prediction_lead" : "order",
             source_lead_id: o.source_lead_id,
             order_items: o.order_items || [],
+            ship_after_date: o.ship_after_date || null,
           });
         }
       }
