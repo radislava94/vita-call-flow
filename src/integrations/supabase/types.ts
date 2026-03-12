@@ -804,6 +804,36 @@ export type Database = {
           },
         ]
       }
+      shift_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          end_time: string
+          id: string
+          name: string
+          start_time: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          end_time: string
+          id?: string
+          name: string
+          start_time: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          end_time?: string
+          id?: string
+          name?: string
+          start_time?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       shifts: {
         Row: {
           created_at: string
