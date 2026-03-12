@@ -813,30 +813,107 @@ serve(async (req) => {
       }
 
       if (toUpdate.length > 0) {
-        const { error: updateErr } = await adminClient
-          .from("orders")
-          .update({ status: new_status, updated_at: new Date().toISOString() })
-          .in("id", toUpdate);
-        if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
+        // Stock deduction when bulk-setting to "shipped"
+        if (new_status === "shipped") {
+          for (const oid of toUpdate) {
+            const prev = (currentOrders || []).find((o: any) => o.id === oid);
+            if (prev?.status === "shipped") continue; // already shipped
+            
+            const { data: orderItems } = await adminClient.from("order_items").select("*").eq("order_id", oid);
+            if (orderItems && orderItems.length > 0) {
+              // Multi-product stock check
+              let stockOk = true;
+              for (const item of orderItems) {
+                if (!item.product_id) continue;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+                if (product && product.stock_quantity < item.quantity) {
+                  skipped.push(prev?.display_id || oid);
+                  stockOk = false;
+                  break;
+                }
+              }
+              if (!stockOk) {
+                // Remove from toUpdate
+                const idx = toUpdate.indexOf(oid);
+                if (idx > -1) toUpdate.splice(idx, 1);
+                continue;
+              }
+              // Deduct stock
+              for (const item of orderItems) {
+                if (!item.product_id) continue;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+                if (product) {
+                  const newQty = product.stock_quantity - item.quantity;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: item.product_id,
+                    change_amount: -item.quantity,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_deduction",
+                    movement_type: "order_deduction",
+                    user_id: user.id,
+                    notes: `Bulk shipped — ${item.product_name}`,
+                  });
+                }
+              }
+            } else {
+              // Legacy single-product: check order's product_id
+              const { data: fullOrder } = await adminClient.from("orders").select("product_id, quantity, display_id").eq("id", oid).single();
+              if (fullOrder?.product_id) {
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", fullOrder.product_id).single();
+                const orderQty = fullOrder.quantity || 1;
+                if (product && product.stock_quantity < orderQty) {
+                  skipped.push(prev?.display_id || oid);
+                  const idx = toUpdate.indexOf(oid);
+                  if (idx > -1) toUpdate.splice(idx, 1);
+                  continue;
+                }
+                if (product) {
+                  const newQty = product.stock_quantity - orderQty;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", fullOrder.product_id);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: fullOrder.product_id,
+                    change_amount: -orderQty,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_deduction",
+                    movement_type: "order_deduction",
+                    user_id: user.id,
+                    notes: `Bulk shipped — ${fullOrder.display_id}`,
+                  });
+                }
+              }
+            }
+          }
+        }
 
-        // Log in order_history
-        const { data: adminProfile } = await adminClient
-          .from("profiles")
-          .select("full_name")
-          .eq("user_id", user.id)
-          .single();
+        if (toUpdate.length > 0) {
+          const { error: updateErr } = await adminClient
+            .from("orders")
+            .update({ status: new_status, updated_at: new Date().toISOString() })
+            .in("id", toUpdate);
+          if (updateErr) return json({ error: sanitizeDbError(updateErr) }, 400);
 
-        const historyRows = toUpdate.map(oid => {
-          const prev = (currentOrders || []).find((o: any) => o.id === oid);
-          return {
-            order_id: oid,
-            from_status: prev?.status || null,
-            to_status: new_status,
-            changed_by: user.id,
-            changed_by_name: adminProfile?.full_name || "System",
-          };
-        });
-        await adminClient.from("order_history").insert(historyRows);
+          // Log in order_history
+          const { data: adminProfile } = await adminClient
+            .from("profiles")
+            .select("full_name")
+            .eq("user_id", user.id)
+            .single();
+
+          const historyRows = toUpdate.map(oid => {
+            const prev = (currentOrders || []).find((o: any) => o.id === oid);
+            return {
+              order_id: oid,
+              from_status: prev?.status || null,
+              to_status: new_status,
+              changed_by: user.id,
+              changed_by_name: adminProfile?.full_name || "System",
+            };
+          });
+          await adminClient.from("order_history").insert(historyRows);
+        }
       }
 
       return json({ success: true, updated: toUpdate.length, skipped: skipped.length, skipped_ids: skipped });
