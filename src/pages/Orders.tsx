@@ -422,10 +422,7 @@ export default function Orders() {
       {/* Order Modal */}
       <OrderModal
         open={!!modalOrder}
-        onClose={(saved) => {
-          setModalOrder(null);
-          if (saved) fetchOrders();
-        }}
+        onClose={handleCloseModal}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
         readOnly={!!(modalOrder && !(modalOrder as any).is_owned)}
@@ -438,6 +435,14 @@ export default function Orders() {
           setShowCreateModal(false);
           if (created) fetchOrders();
         }}
+      />
+
+      {/* Customer History Dialog */}
+      <CustomerHistoryDialog
+        open={!!historyOrder}
+        onClose={() => setHistoryOrder(null)}
+        customerPhone={historyOrder?.phone || ''}
+        customerName={historyOrder?.name || ''}
       />
     </AppLayout>
   );
