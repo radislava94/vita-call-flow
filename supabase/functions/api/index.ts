@@ -48,6 +48,7 @@ const updateCustomerSchema = z.object({
   quantity: z.number().int().min(1).max(100000).optional(),
   product_id: z.string().uuid().nullable().optional(),
   product_name: z.string().max(200).optional(),
+  ship_after_date: z.string().nullable().optional(),
 });
 
 const updateStatusSchema = z.object({
