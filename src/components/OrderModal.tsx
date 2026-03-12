@@ -599,6 +599,27 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                   </Button>
                 )}
               </div>
+
+              {/* Product Recommendations */}
+              {isEditable && customerIntel?.recommendations && (
+                <ProductRecommendations
+                  recommendations={customerIntel.recommendations}
+                  currentProductNames={activeItems.map(i => i.product_name)}
+                  onAdd={(productId, productName) => {
+                    const product = productsList.find(p => p.id === productId);
+                    setItems(prev => [...prev, {
+                      id: `_new_${Date.now()}`,
+                      product_id: productId,
+                      product_name: productName,
+                      quantity: 1,
+                      price_per_unit: product ? Number(product.price) || 0 : 0,
+                      total_price: product ? Number(product.price) || 0 : 0,
+                      _isNew: true,
+                    }]);
+                  }}
+                  disabled={loadingProducts}
+                />
+              )}
             </section>
 
             {/* E) Payment Summary */}
