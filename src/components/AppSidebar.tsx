@@ -2,149 +2,106 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { usePermissions, MODULE_ROUTE_MAP } from '@/contexts/PermissionsContext';
 import type { AppRole } from '@/contexts/AuthContext';
 import {
-  LayoutDashboard,
-  ShoppingCart,
-  ClipboardList,
-  FileSpreadsheet,
-  Package,
-  BarChart3,
-  Users,
-  CalendarDays,
-  FileText,
-  History,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  Phone,
-  Warehouse,
-  Settings,
-  Inbox,
-  Webhook,
-  UserPlus,
-  SearchIcon,
-  TrendingUp,
+  LayoutDashboard, ShoppingCart, ClipboardList, FileSpreadsheet, Package,
+  BarChart3, Users, CalendarDays, FileText, History, ChevronLeft,
+  ChevronRight, ChevronDown, Phone, Warehouse, Settings, Inbox,
+  Webhook, UserPlus, SearchIcon, TrendingUp,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface NavItem {
   title: string;
   path: string;
   icon: React.ElementType;
-  /** Which roles can see this specific item (empty/undefined = inherit from section) */
-  allowedRoles?: AppRole[];
+  moduleKey: string;
 }
 
 interface NavSection {
   label: string;
   items: NavItem[];
-  /** Which roles can see this section */
-  allowedRoles?: AppRole[];
 }
 
 const sections: NavSection[] = [
   {
     label: '',
-    allowedRoles: ['admin', 'manager'],
     items: [
-      { title: 'Dashboard', path: '/', icon: LayoutDashboard },
-      { title: 'Insights', path: '/insights', icon: TrendingUp },
+      { title: 'Dashboard', path: '/', icon: LayoutDashboard, moduleKey: 'dashboard' },
+      { title: 'Insights', path: '/insights', icon: TrendingUp, moduleKey: 'insights' },
     ],
   },
   {
     label: 'Sales',
-    allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'],
     items: [
-      { title: 'Orders', path: '/orders', icon: ShoppingCart, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
-      { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, allowedRoles: ['admin', 'manager'] },
-      { title: 'Assigner', path: '/assigner', icon: UserPlus, allowedRoles: ['admin', 'manager'] },
-      { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
-      { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager', 'prediction_agent'] },
-      { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, allowedRoles: ['admin', 'manager'] },
-      { title: 'Search Prediction', path: '/search-prediction', icon: SearchIcon, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Orders', path: '/orders', icon: ShoppingCart, moduleKey: 'orders' },
+      { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, moduleKey: 'inbound_leads' },
+      { title: 'Assigner', path: '/assigner', icon: UserPlus, moduleKey: 'assigner' },
+      { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, moduleKey: 'assigned' },
+      { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, moduleKey: 'prediction_leads' },
+      { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, moduleKey: 'prediction_lists' },
+      { title: 'Search Prediction', path: '/search-prediction', icon: SearchIcon, moduleKey: 'search_prediction' },
     ],
   },
   {
     label: 'Warehouse',
-    allowedRoles: ['admin', 'manager', 'warehouse'],
     items: [
-      { title: 'Warehouse', path: '/warehouse', icon: Warehouse },
+      { title: 'Warehouse', path: '/warehouse', icon: Warehouse, moduleKey: 'warehouse' },
     ],
   },
   {
     label: 'Team',
-    allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'],
     items: [
-      { title: 'Users', path: '/users', icon: Users, allowedRoles: ['admin', 'manager'] },
-      { title: 'Performance', path: '/performance', icon: BarChart3, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
-      { title: 'Shifts Management', path: '/shifts', icon: CalendarDays, allowedRoles: ['admin', 'manager'] },
-      { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
-      { title: 'Call Scripts', path: '/call-scripts', icon: FileText, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
-      { title: 'Call History', path: '/call-history', icon: History, allowedRoles: ['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent'] },
+      { title: 'Users', path: '/users', icon: Users, moduleKey: 'users' },
+      { title: 'Performance', path: '/performance', icon: BarChart3, moduleKey: 'performance' },
+      { title: 'Shifts Management', path: '/shifts', icon: CalendarDays, moduleKey: 'shifts' },
+      { title: 'My Shifts', path: '/my-shifts', icon: CalendarDays, moduleKey: 'my_shifts' },
+      { title: 'Call Scripts', path: '/call-scripts', icon: FileText, moduleKey: 'call_scripts' },
+      { title: 'Call History', path: '/call-history', icon: History, moduleKey: 'call_history' },
     ],
   },
   {
     label: 'Products',
-    allowedRoles: ['admin', 'manager'],
     items: [
-      { title: 'Products', path: '/products', icon: Package },
-      { title: 'Webhooks', path: '/webhooks', icon: Webhook },
+      { title: 'Products', path: '/products', icon: Package, moduleKey: 'products' },
+      { title: 'Webhooks', path: '/webhooks', icon: Webhook, moduleKey: 'webhooks' },
     ],
   },
   {
     label: 'Ads',
-    allowedRoles: ['admin', 'ads_admin'],
     items: [
-      { title: 'Ads Panel', path: '/ads', icon: BarChart3 },
+      { title: 'Ads Panel', path: '/ads', icon: BarChart3, moduleKey: 'ads' },
     ],
   },
   {
     label: '',
-    allowedRoles: ['admin'],
     items: [
-      { title: 'Settings', path: '/settings', icon: Settings },
+      { title: 'Settings', path: '/settings', icon: Settings, moduleKey: 'settings' },
     ],
   },
 ];
 
-function getVisibleSections(userRoles: AppRole[]): NavSection[] {
-  return sections
-    .map((section) => {
-      if (!section.allowedRoles) return section;
-
-      const sectionVisible = section.allowedRoles.some(r => userRoles.includes(r));
-      if (!sectionVisible) return null;
-
-      // Filter items by their individual allowedRoles
-      const items = section.items.filter(item => {
-        if (!item.allowedRoles) return true;
-        return item.allowedRoles.some(r => userRoles.includes(r));
-      });
-
-      if (items.length === 0) return null;
-      return { ...section, items };
-    })
-    .filter(Boolean) as NavSection[];
-}
-
 export function AppSidebar() {
   const location = useLocation();
   const { user } = useAuth();
-  const userRoles: AppRole[] = user?.roles ?? [];
+  const { canAccessModule } = usePermissions();
 
   const [collapsed, setCollapsed] = useState(false);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const visibleSections = getVisibleSections(userRoles);
+  // Filter sections based on module enabled + role permissions
+  const visibleSections = sections
+    .map(section => {
+      const items = section.items.filter(item => canAccessModule(item.moduleKey));
+      if (items.length === 0) return null;
+      return { ...section, items };
+    })
+    .filter(Boolean) as NavSection[];
 
   useEffect(() => {
     const initial: Record<string, boolean> = {};
-    visibleSections.forEach((s) => {
+    visibleSections.forEach(s => {
       if (s.label) initial[s.label] = true;
     });
     setOpenSections(initial);
@@ -152,7 +109,7 @@ export function AppSidebar() {
 
   const toggleSection = (label: string) => {
     if (collapsed) return;
-    setOpenSections((prev) => ({ ...prev, [label]: !prev[label] }));
+    setOpenSections(prev => ({ ...prev, [label]: !prev[label] }));
   };
 
   return (
@@ -186,7 +143,6 @@ export function AppSidebar() {
                 onClick={() => toggleSection(section.label)}
                 className="group flex w-full items-center justify-between rounded-lg px-3 py-2 mt-4 mb-0.5 text-[11px] font-semibold uppercase tracking-widest text-sidebar-foreground/50 hover:text-sidebar-foreground/70 transition-colors"
                 aria-expanded={openSections[section.label]}
-                aria-label={`Toggle ${section.label} section`}
               >
                 <span>{section.label}</span>
                 <ChevronDown
@@ -210,7 +166,7 @@ export function AppSidebar() {
                   : 'max-h-[500px] opacity-100',
               )}
             >
-              {section.items.map((item) => {
+              {section.items.map(item => {
                 const isActive = location.pathname === item.path;
                 const linkContent = (
                   <Link
@@ -231,9 +187,7 @@ export function AppSidebar() {
                       )}
                       strokeWidth={isActive ? 2.2 : 1.8}
                     />
-                    {!collapsed && (
-                      <span className="truncate">{item.title}</span>
-                    )}
+                    {!collapsed && <span className="truncate">{item.title}</span>}
                     {isActive && !collapsed && (
                       <div className="ml-auto h-1.5 w-1.5 rounded-full bg-primary" />
                     )}
@@ -262,10 +216,7 @@ export function AppSidebar() {
       <div className="shrink-0 border-t border-sidebar-border p-3">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={cn(
-            'flex w-full items-center justify-center gap-2 rounded-xl py-2 text-xs font-medium text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-150',
-          )}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          className="flex w-full items-center justify-center gap-2 rounded-xl py-2 text-xs font-medium text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-150"
         >
           {collapsed ? (
             <ChevronRight className="h-4 w-4" />

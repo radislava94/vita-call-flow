@@ -184,6 +184,39 @@ export type Database = {
         }
         Relationships: []
       }
+      financial_visibility: {
+        Row: {
+          id: string
+          role: string
+          show_cost: boolean
+          show_financial_insights: boolean
+          show_net_contribution: boolean
+          show_profit: boolean
+          show_returned_value: boolean
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          role: string
+          show_cost?: boolean
+          show_financial_insights?: boolean
+          show_net_contribution?: boolean
+          show_profit?: boolean
+          show_returned_value?: boolean
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          role?: string
+          show_cost?: boolean
+          show_financial_insights?: boolean
+          show_net_contribution?: boolean
+          show_profit?: boolean
+          show_returned_value?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       inbound_leads: {
         Row: {
           created_at: string
@@ -280,6 +313,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      module_settings: {
+        Row: {
+          id: string
+          is_enabled: boolean
+          is_protected: boolean
+          module_key: string
+          module_label: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          is_enabled?: boolean
+          is_protected?: boolean
+          module_key: string
+          module_label: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          is_enabled?: boolean
+          is_protected?: boolean
+          module_key?: string
+          module_label?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       order_history: {
         Row: {
@@ -752,6 +812,42 @@ export type Database = {
           is_active?: boolean
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      role_permissions: {
+        Row: {
+          can_create: boolean
+          can_delete: boolean
+          can_edit: boolean
+          can_export: boolean
+          can_view: boolean
+          id: string
+          module_key: string
+          role: string
+          updated_at: string
+        }
+        Insert: {
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_view?: boolean
+          id?: string
+          module_key: string
+          role: string
+          updated_at?: string
+        }
+        Update: {
+          can_create?: boolean
+          can_delete?: boolean
+          can_edit?: boolean
+          can_export?: boolean
+          can_view?: boolean
+          id?: string
+          module_key?: string
+          role?: string
+          updated_at?: string
         }
         Relationships: []
       }
