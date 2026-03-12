@@ -370,6 +370,30 @@ export type Database = {
           },
         ]
       }
+      order_locks: {
+        Row: {
+          id: string
+          locked_at: string
+          locked_by: string
+          locked_by_name: string
+          order_id: string
+        }
+        Insert: {
+          id?: string
+          locked_at?: string
+          locked_by: string
+          locked_by_name?: string
+          order_id: string
+        }
+        Update: {
+          id?: string
+          locked_at?: string
+          locked_by?: string
+          locked_by_name?: string
+          order_id?: string
+        }
+        Relationships: []
+      }
       order_notes: {
         Row: {
           author_id: string | null
@@ -1011,6 +1035,7 @@ export type Database = {
           source_name: string
         }[]
       }
+      cleanup_expired_order_locks: { Args: never; Returns: undefined }
       get_my_role: {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]

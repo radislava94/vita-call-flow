@@ -7,11 +7,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
   Download, ChevronLeft, ChevronRight, Filter, Search, Loader2,
-  CalendarIcon, X, User, Plus,
+  CalendarIcon, X, User, Plus, MoreVertical, History, Lock,
 } from 'lucide-react';
 import { Check } from 'lucide-react';
 import { apiGetOrders, apiGetAgents } from '@/lib/api';
@@ -19,6 +20,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { CreateOrderModal } from '@/components/CreateOrderModal';
+import { CustomerHistoryDialog } from '@/components/CustomerHistoryDialog';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from '@/hooks/use-toast';
 
 const PAGE_SIZE = 20;
 
@@ -100,6 +104,54 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [modalOrder, setModalOrder] = useState<ApiOrder | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [historyOrder, setHistoryOrder] = useState<{ phone: string; name: string } | null>(null);
+
+  // Order locking
+  const tryOpenOrder = async (order: ApiOrder) => {
+    // Clean up expired locks first
+    await supabase.rpc('cleanup_expired_order_locks');
+    
+    // Check if already locked by someone else
+    const { data: existingLock } = await supabase
+      .from('order_locks')
+      .select('locked_by, locked_by_name, locked_at')
+      .eq('order_id', order.id)
+      .maybeSingle();
+
+    if (existingLock && existingLock.locked_by !== user?.id) {
+      toast({
+        title: 'Order is locked',
+        description: `This order is currently being edited by ${existingLock.locked_by_name || 'another user'}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Lock the order
+    if (!existingLock) {
+      const { error } = await supabase.from('order_locks').insert({
+        order_id: order.id,
+        locked_by: user?.id,
+        locked_by_name: user?.full_name || user?.email || '',
+      });
+      if (error && error.code === '23505') {
+        // Race condition - someone else locked it
+        toast({ title: 'Order was just taken by another user', variant: 'destructive' });
+        return;
+      }
+    }
+
+    setModalOrder(order);
+  };
+
+  const handleCloseModal = async (saved?: boolean) => {
+    // Release lock
+    if (modalOrder && user?.id) {
+      await supabase.from('order_locks').delete().eq('order_id', modalOrder.id).eq('locked_by', user.id);
+    }
+    setModalOrder(null);
+    if (saved) fetchOrders();
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -296,11 +348,12 @@ export default function Orders() {
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Assignee</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Source</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
+                <th className="px-4 py-3 w-10"></th>
               </tr>
             </thead>
             <tbody>
               {filteredOrders.map(order => (
-                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => setModalOrder(order)}>
+                <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => tryOpenOrder(order)}>
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
                   <td className="px-4 py-3">{order.customer_name}</td>
@@ -325,10 +378,27 @@ export default function Orders() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(order.created_at).toLocaleDateString()}</td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setHistoryOrder({ phone: order.customer_phone, name: order.customer_name })}>
+                          <History className="h-3.5 w-3.5 mr-2" /> See History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => tryOpenOrder(order)}>
+                          <Lock className="h-3.5 w-3.5 mr-2" /> Open Order
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
                 </tr>
               ))}
               {filteredOrders.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-muted-foreground">No orders found.{hasActiveFilters && <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>}</td></tr>
               )}
             </tbody>
           </table>
@@ -352,10 +422,7 @@ export default function Orders() {
       {/* Order Modal */}
       <OrderModal
         open={!!modalOrder}
-        onClose={(saved) => {
-          setModalOrder(null);
-          if (saved) fetchOrders();
-        }}
+        onClose={handleCloseModal}
         data={modalOrder ? orderToModalData(modalOrder) : null}
         contextType="order"
         readOnly={!!(modalOrder && !(modalOrder as any).is_owned)}
@@ -368,6 +435,14 @@ export default function Orders() {
           setShowCreateModal(false);
           if (created) fetchOrders();
         }}
+      />
+
+      {/* Customer History Dialog */}
+      <CustomerHistoryDialog
+        open={!!historyOrder}
+        onClose={() => setHistoryOrder(null)}
+        customerPhone={historyOrder?.phone || ''}
+        customerName={historyOrder?.name || ''}
       />
     </AppLayout>
   );
