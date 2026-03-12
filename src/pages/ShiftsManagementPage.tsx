@@ -368,15 +368,10 @@ export default function ShiftsManagementPage() {
   return (
     <AppLayout title="Shifts Management">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-foreground">Shifts Management</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={openAssignWeek} disabled={templates.length === 0}>
-              <Users className="h-4 w-4 mr-1" /> Assign Week
-            </Button>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-foreground">Shifts Management</h1>
             <Button onClick={openCreate}><Plus className="h-4 w-4 mr-1" /> Create Shift</Button>
           </div>
-        </div>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3 items-end">
