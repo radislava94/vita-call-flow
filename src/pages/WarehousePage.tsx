@@ -520,6 +520,8 @@ function InventoryTab() {
   const isAdmin = user?.isAdmin || user?.isManager;
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [showRestock, setShowRestock] = useState(false);
   const [restockProduct, setRestockProduct] = useState<any>(null);
   const [restockQty, setRestockQty] = useState('');
@@ -535,6 +537,19 @@ function InventoryTab() {
   };
 
   useEffect(() => { fetchProducts(); }, []);
+
+  const categories = useMemo(() => {
+    const cats = new Set(products.map(p => p.category).filter(Boolean));
+    return Array.from(cats).sort();
+  }, [products]);
+
+  const filtered = useMemo(() => {
+    return products.filter(p => {
+      if (search && !p.name.toLowerCase().includes(search.toLowerCase()) && !(p.sku || '').toLowerCase().includes(search.toLowerCase())) return false;
+      if (categoryFilter && categoryFilter !== 'all' && p.category !== categoryFilter) return false;
+      return true;
+    });
+  }, [products, search, categoryFilter]);
 
   const lowStockProducts = products.filter(p => p.stock_quantity < p.low_stock_threshold);
 
@@ -586,6 +601,24 @@ function InventoryTab() {
         </div>
       )}
 
+      {/* Search & filter bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input placeholder="Search products or SKU..." value={search} onChange={e => setSearch(e.target.value)} className="pl-9" />
+        </div>
+        {categories.length > 0 && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="w-44"><SelectValue placeholder="All Categories" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        <span className="text-sm text-muted-foreground ml-auto">{filtered.length} of {products.length} products</span>
+      </div>
+
       <div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
@@ -596,15 +629,15 @@ function InventoryTab() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Supplier</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Cost</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Price</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Stock</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Min Qty</th>
+              <th className="px-4 py-3 text-left font-medium text-muted-foreground min-w-[160px]">Stock Level</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
               {isAdmin && <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>}
             </tr>
           </thead>
           <tbody>
-            {products.map((p: any) => {
+            {filtered.map((p: any) => {
               const isLowStock = p.stock_quantity < p.low_stock_threshold;
+              const stockPercent = p.low_stock_threshold > 0 ? Math.min((p.stock_quantity / (p.low_stock_threshold * 3)) * 100, 100) : (p.stock_quantity > 0 ? 100 : 0);
               return (
                 <tr key={p.id} className={cn("border-b last:border-0 hover:bg-muted/30 transition-colors", isLowStock && "bg-destructive/5")}>
                   <td className="px-4 py-3">
@@ -623,16 +656,20 @@ function InventoryTab() {
                   <td className="px-4 py-3 text-muted-foreground">{p.suppliers?.name || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground">{Number(p.cost_price || 0).toFixed(2)}</td>
                   <td className="px-4 py-3 font-semibold text-primary">{Number(p.price).toFixed(2)}</td>
-                  <td className="px-4 py-3">
-                    {p.stock_quantity <= 0 ? (
-                      <Badge variant="destructive">Out of Stock</Badge>
-                    ) : isLowStock ? (
-                      <Badge variant="destructive">{p.stock_quantity}</Badge>
-                    ) : (
-                      <Badge className="bg-primary text-primary-foreground">{p.stock_quantity}</Badge>
-                    )}
+                  <td className="px-4 py-3 min-w-[160px]">
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className={cn("font-semibold", p.stock_quantity <= 0 ? "text-destructive" : isLowStock ? "text-destructive" : "text-foreground")}>{p.stock_quantity}</span>
+                        <span className="text-muted-foreground">min: {p.low_stock_threshold}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div
+                          className={cn("h-full rounded-full transition-all", p.stock_quantity <= 0 ? "bg-destructive" : isLowStock ? "bg-destructive" : "bg-primary")}
+                          style={{ width: `${stockPercent}%` }}
+                        />
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{p.low_stock_threshold}</td>
                   <td className="px-4 py-3">
                     <Badge variant={p.is_active ? 'default' : 'secondary'}>{p.is_active ? 'Active' : 'Disabled'}</Badge>
                   </td>
@@ -646,8 +683,8 @@ function InventoryTab() {
                 </tr>
               );
             })}
-            {products.length === 0 && (
-              <tr><td colSpan={isAdmin ? 10 : 9} className="px-4 py-8 text-center text-muted-foreground">No products</td></tr>
+            {filtered.length === 0 && (
+              <tr><td colSpan={isAdmin ? 9 : 8} className="px-4 py-8 text-center text-muted-foreground">{search || categoryFilter ? 'No products match your filters' : 'No products'}</td></tr>
             )}
           </tbody>
         </table>
