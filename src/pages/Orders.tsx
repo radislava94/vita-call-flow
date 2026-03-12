@@ -104,6 +104,54 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [modalOrder, setModalOrder] = useState<ApiOrder | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [historyOrder, setHistoryOrder] = useState<{ phone: string; name: string } | null>(null);
+
+  // Order locking
+  const tryOpenOrder = async (order: ApiOrder) => {
+    // Clean up expired locks first
+    await supabase.rpc('cleanup_expired_order_locks');
+    
+    // Check if already locked by someone else
+    const { data: existingLock } = await supabase
+      .from('order_locks')
+      .select('locked_by, locked_by_name, locked_at')
+      .eq('order_id', order.id)
+      .maybeSingle();
+
+    if (existingLock && existingLock.locked_by !== user?.id) {
+      toast({
+        title: 'Order is locked',
+        description: `This order is currently being edited by ${existingLock.locked_by_name || 'another user'}`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Lock the order
+    if (!existingLock) {
+      const { error } = await supabase.from('order_locks').insert({
+        order_id: order.id,
+        locked_by: user?.id,
+        locked_by_name: user?.name || user?.email || '',
+      });
+      if (error && error.code === '23505') {
+        // Race condition - someone else locked it
+        toast({ title: 'Order was just taken by another user', variant: 'destructive' });
+        return;
+      }
+    }
+
+    setModalOrder(order);
+  };
+
+  const handleCloseModal = async (saved?: boolean) => {
+    // Release lock
+    if (modalOrder && user?.id) {
+      await supabase.from('order_locks').delete().eq('order_id', modalOrder.id).eq('locked_by', user.id);
+    }
+    setModalOrder(null);
+    if (saved) fetchOrders();
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
