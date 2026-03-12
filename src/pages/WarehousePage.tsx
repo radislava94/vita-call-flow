@@ -347,7 +347,7 @@ function IncomingOrdersTab() {
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">ID</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Customer</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Phone</th>
-                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Product</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs min-w-[220px]">Product</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Total Price</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Agent</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Source</th>
