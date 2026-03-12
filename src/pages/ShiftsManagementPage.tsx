@@ -311,32 +311,6 @@ export default function ShiftsManagementPage() {
     }
   };
 
-  const openAssignWeek = () => {
-    setAssignTemplateId(templates.length > 0 ? templates[0].id : '');
-    setAssignAgents([]);
-    setAssignDays([true, true, true, true, true, false, false]);
-    setAssignDialogOpen(true);
-  };
-
-  const handleAssignWeek = () => {
-    if (!assignTemplateId || assignAgents.length === 0) {
-      toast({ title: 'Select a template and at least one agent', variant: 'destructive' }); return;
-    }
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const selectedDays: string[] = [];
-    const weekStartDate = new Date(assignWeekStart + 'T12:00:00');
-    assignDays.forEach((checked, i) => {
-      if (checked) {
-        const d = new Date(weekStartDate);
-        d.setDate(d.getDate() + i);
-        selectedDays.push(d.toISOString().substring(0, 10));
-      }
-    });
-    if (selectedDays.length === 0) {
-      toast({ title: 'Select at least one day', variant: 'destructive' }); return;
-    }
-    assignWeekMutation.mutate({ template_id: assignTemplateId, agent_ids: assignAgents, week_start: assignWeekStart, days: selectedDays });
-  };
 
   // Calendar helpers
   const monthStart = startOfMonth(calMonth);
