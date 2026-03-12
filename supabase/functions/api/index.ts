@@ -2891,6 +2891,11 @@ serve(async (req) => {
 
     // GET /api/shifts/check-login — check if current user has an active shift right now
     if (req.method === "GET" && path === "shifts/check-login") {
+      // Get user profile for logging
+      const { data: userProfile } = await adminClient.from("profiles").select("full_name").eq("user_id", user.id).single();
+      const userName = userProfile?.full_name || user.email || "Unknown";
+      const primaryRole = roles[0] || "agent";
+
       // Admins and managers bypass shift restrictions
       if (isAdminOrManager) {
         return json({ allowed: true, bypass: true });
@@ -2906,6 +2911,11 @@ serve(async (req) => {
         .eq("user_id", user.id);
       
       if (!myAssignments || myAssignments.length === 0) {
+        // Record blocked attempt
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "No active shift assignment",
+        });
         return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
       }
 
@@ -2917,6 +2927,10 @@ serve(async (req) => {
         .eq("date", today);
 
       if (!todayShifts || todayShifts.length === 0) {
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "No shift scheduled for today",
+        });
         return json({ allowed: false, message: "Login not allowed. You have no shift scheduled for today." });
       }
 
@@ -2932,13 +2946,17 @@ serve(async (req) => {
 
         // Check if current time is within shift window
         if (nowTime >= start && nowTime <= end) {
-          return json({ allowed: true, shift_id: shift.id, shift_date: shift.date, shift_start_time: start, shift_end_time: end });
+          return json({ allowed: true, shift_id: shift.id, shift_date: shift.date, shift_start_time: start, shift_end_time: end, user_name: userName, role: primaryRole });
         }
       }
 
       // Check if all shifts are 00:00-00:00
       const allZero = todayShifts.every((s: any) => s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00");
       if (allZero) {
+        await adminClient.from("blocked_login_attempts").insert({
+          user_id: user.id, user_name: userName, role: primaryRole,
+          reason: "Shift set to 00:00-00:00 (no active shift)",
+        });
         return json({ allowed: false, message: "Login not allowed. You currently have no active shift." });
       }
 
@@ -2947,6 +2965,10 @@ serve(async (req) => {
         .filter((s: any) => !(s.start_time.substring(0, 5) === "00:00" && s.end_time.substring(0, 5) === "00:00"))
         .map((s: any) => `${s.start_time.substring(0, 5)} - ${s.end_time.substring(0, 5)}`)
         .join(", ");
+      await adminClient.from("blocked_login_attempts").insert({
+        user_id: user.id, user_name: userName, role: primaryRole,
+        reason: `Outside shift hours (${shiftTimes})`,
+      });
       return json({ allowed: false, message: `Login not allowed. Your shift hours are: ${shiftTimes}. Current time is outside this window.` });
     }
 
