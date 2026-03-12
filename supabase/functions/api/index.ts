@@ -2691,8 +2691,9 @@ serve(async (req) => {
       // Filter by status (default: confirmed + shipped)
       const statusFilter = url.searchParams.get("status"); // "confirmed" | "shipped" | null (both)
 
-      // 1. Orders (source = "order")
-      if (!sourceFilter || sourceFilter === "order") {
+      // 1. Orders — always fetch orders (both standard and converted from prediction leads)
+      // When source filter is "prediction_lead", only show orders that originated from prediction leads
+      {
         let oQuery = adminClient.from("orders").select("*, order_items(id, product_id, product_name, quantity, price_per_unit, total_price)").order("created_at", { ascending: false });
         if (statusFilter) {
           oQuery = oQuery.eq("status", statusFilter);
@@ -2703,6 +2704,12 @@ serve(async (req) => {
         if (from) oQuery = oQuery.gte("created_at", from);
         if (to) oQuery = oQuery.lte("created_at", to);
         if (productFilter) oQuery = oQuery.ilike("product_name", `%${productFilter}%`);
+        // Apply source filter
+        if (sourceFilter === "order") {
+          oQuery = oQuery.is("source_lead_id", null);
+        } else if (sourceFilter === "prediction_lead") {
+          oQuery = oQuery.not("source_lead_id", "is", null);
+        }
         const { data: orders } = await oQuery;
         for (const o of orders || []) {
           results.push({
@@ -2722,29 +2729,41 @@ serve(async (req) => {
             assigned_agent_id: o.assigned_agent_id,
             created_at: o.created_at,
             status: o.status,
-            source: "order",
+            source: o.source_lead_id ? "prediction_lead" : "order",
             source_lead_id: o.source_lead_id,
             order_items: o.order_items || [],
           });
         }
       }
 
-      // 2. Prediction leads (source = "prediction_lead") - only confirmed, excluding those that already have a linked order
+      // 2. Unconverted prediction leads (confirmed but no linked order yet)
       if ((!sourceFilter || sourceFilter === "prediction_lead") && (!statusFilter || statusFilter === "confirmed")) {
-        // Get lead IDs that already have a linked order to avoid duplicates
+        // Collect lead IDs that already have a linked order to avoid duplicates
         const linkedLeadIds = new Set(
           results.filter((r: any) => r.source_lead_id).map((r: any) => r.source_lead_id)
         );
 
-        let lQuery = adminClient.from("prediction_leads").select("*, prediction_lists(name)").eq("status", "confirmed").order("created_at", { ascending: false });
+        let lQuery = adminClient.from("prediction_leads").select("*, prediction_lists(name), prediction_lead_items(id, product_id, product_name, quantity, price_per_unit, total_price)").eq("status", "confirmed").order("created_at", { ascending: false });
         if (agentFilter && agentFilter !== "all") lQuery = lQuery.eq("assigned_agent_id", agentFilter);
         if (from) lQuery = lQuery.gte("created_at", from);
         if (to) lQuery = lQuery.lte("created_at", to);
         if (productFilter) lQuery = lQuery.ilike("product", `%${productFilter}%`);
         const { data: leads } = await lQuery;
         for (const l of leads || []) {
-          // Skip leads that already have a linked order in the results
+          // Skip leads that already have a linked order
           if (linkedLeadIds.has(l.id)) continue;
+
+          // Use prediction_lead_items if available for correct product display
+          const items = l.prediction_lead_items || [];
+          const productDisplay = items.length > 0
+            ? items.map((i: any) => i.product_name).join(", ")
+            : (l.product || "—");
+          const totalPrice = items.length > 0
+            ? items.reduce((s: number, i: any) => s + Number(i.total_price || 0), 0)
+            : (l.price || 0);
+          const totalQty = items.length > 0
+            ? items.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+            : (l.quantity || 1);
 
           results.push({
             id: l.id,
@@ -2755,10 +2774,10 @@ serve(async (req) => {
             customer_city: l.city || "",
             postal_code: "",
             birthday: null,
-            product_name: l.product || "—",
+            product_name: productDisplay,
             product_id: null,
-            price: l.price || 0,
-            quantity: l.quantity || 1,
+            price: totalPrice,
+            quantity: totalQty,
             assigned_agent_name: l.assigned_agent_name,
             assigned_agent_id: l.assigned_agent_id,
             created_at: l.created_at,
@@ -2766,6 +2785,7 @@ serve(async (req) => {
             source: "prediction_lead",
             list_name: l.prediction_lists?.name || "",
             notes: l.notes || "",
+            order_items: items.length > 0 ? items : [],
           });
         }
       }
