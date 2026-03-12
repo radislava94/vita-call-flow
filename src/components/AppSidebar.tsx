@@ -30,6 +30,7 @@ const sections: NavSection[] = [
     items: [
       { title: 'Dashboard', path: '/', icon: LayoutDashboard, moduleKey: 'dashboard' },
       { title: 'Insights', path: '/insights', icon: TrendingUp, moduleKey: 'insights' },
+      { title: 'Operations', path: '/operations', icon: Activity, moduleKey: 'operations' },
     ],
   },
   {
