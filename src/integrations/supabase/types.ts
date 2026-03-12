@@ -539,6 +539,7 @@ export type Database = {
           product_id: string | null
           product_name: string
           quantity: number
+          ship_after_date: string | null
           source_lead_id: string | null
           source_type: string | null
           status: Database["public"]["Enums"]["order_status"]
@@ -563,6 +564,7 @@ export type Database = {
           product_id?: string | null
           product_name: string
           quantity?: number
+          ship_after_date?: string | null
           source_lead_id?: string | null
           source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
@@ -587,6 +589,7 @@ export type Database = {
           product_id?: string | null
           product_name?: string
           quantity?: number
+          ship_after_date?: string | null
           source_lead_id?: string | null
           source_type?: string | null
           status?: Database["public"]["Enums"]["order_status"]
