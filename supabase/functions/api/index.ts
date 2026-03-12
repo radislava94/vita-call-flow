@@ -4636,6 +4636,294 @@ serve(async (req) => {
       });
     }
 
+    // ── Lead Distribution Config ─────────────────────────────
+    // GET /api/lead-distribution-config
+    if (req.method === "GET" && path === "lead-distribution-config") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const { data, error } = await adminClient
+        .from("lead_distribution_config")
+        .select("*")
+        .limit(1)
+        .single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/lead-distribution-config
+    if (req.method === "PATCH" && path === "lead-distribution-config") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { strategy, is_active, max_leads_per_agent, priority_threshold } = body;
+      const updates: any = { updated_at: new Date().toISOString(), updated_by: userId };
+      if (strategy !== undefined) updates.strategy = strategy;
+      if (is_active !== undefined) updates.is_active = is_active;
+      if (max_leads_per_agent !== undefined) updates.max_leads_per_agent = max_leads_per_agent;
+      if (priority_threshold !== undefined) updates.priority_threshold = priority_threshold;
+
+      const { data: configs } = await adminClient.from("lead_distribution_config").select("id").limit(1);
+      if (!configs?.length) return json({ error: "No config found" }, 404);
+
+      const { error } = await adminClient
+        .from("lead_distribution_config")
+        .update(updates)
+        .eq("id", configs[0].id);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // POST /api/lead-distribution/auto-assign
+    if (req.method === "POST" && path === "lead-distribution/auto-assign") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      // Get config
+      const { data: config } = await adminClient
+        .from("lead_distribution_config")
+        .select("*")
+        .limit(1)
+        .single();
+      if (!config) return json({ error: "No distribution config" }, 400);
+
+      // Get unassigned pending orders
+      const { data: unassigned } = await adminClient
+        .from("orders")
+        .select("id, price, customer_phone")
+        .is("assigned_agent_id", null)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true });
+      if (!unassigned?.length) return json({ assigned: 0, message: "No unassigned orders" });
+
+      // Get online agents
+      const { data: allProfiles } = await adminClient
+        .from("profiles")
+        .select("user_id, full_name")
+        .eq("is_active", true);
+      const profileIds = (allProfiles || []).map((p: any) => p.user_id);
+      const { data: agentRoles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", profileIds.length > 0 ? profileIds : ["__none__"])
+        .in("role", ["agent", "prediction_agent"]);
+      const agentUserIds = [...new Set((agentRoles || []).map((r: any) => r.user_id))];
+      if (!agentUserIds.length) return json({ assigned: 0, message: "No agents available" });
+
+      // Get current load per agent
+      const { data: currentLoads } = await adminClient
+        .from("orders")
+        .select("assigned_agent_id")
+        .in("assigned_agent_id", agentUserIds)
+        .in("status", ["pending", "take", "call_again"]);
+      const loadMap: Record<string, number> = {};
+      for (const uid of agentUserIds) loadMap[uid] = 0;
+      for (const o of currentLoads || []) {
+        loadMap[o.assigned_agent_id] = (loadMap[o.assigned_agent_id] || 0) + 1;
+      }
+
+      // Name map
+      const nameMap: Record<string, string> = {};
+      for (const p of allProfiles || []) nameMap[p.user_id] = p.full_name;
+
+      // Filter out agents at max capacity
+      const availableAgents = agentUserIds.filter(id => loadMap[id] < config.max_leads_per_agent);
+      if (!availableAgents.length) return json({ assigned: 0, message: "All agents at max capacity" });
+
+      let assignments: { orderId: string; agentId: string }[] = [];
+      const strategy = config.strategy;
+
+      if (strategy === "round_robin") {
+        let idx = 0;
+        for (const order of unassigned) {
+          if (idx >= availableAgents.length) idx = 0;
+          const agentId = availableAgents[idx];
+          if (loadMap[agentId] < config.max_leads_per_agent) {
+            assignments.push({ orderId: order.id, agentId });
+            loadMap[agentId]++;
+            idx++;
+          }
+        }
+      } else if (strategy === "load_balance") {
+        for (const order of unassigned) {
+          // Pick agent with lowest load
+          const sorted = availableAgents
+            .filter(id => loadMap[id] < config.max_leads_per_agent)
+            .sort((a, b) => loadMap[a] - loadMap[b]);
+          if (!sorted.length) break;
+          const agentId = sorted[0];
+          assignments.push({ orderId: order.id, agentId });
+          loadMap[agentId]++;
+        }
+      } else if (strategy === "priority") {
+        // High-value orders (above threshold) go to agents with lowest load
+        // Regular orders use round-robin
+        const highValue = unassigned.filter((o: any) => Number(o.price) >= config.priority_threshold);
+        const regular = unassigned.filter((o: any) => Number(o.price) < config.priority_threshold);
+
+        // High-value: lowest load agent
+        for (const order of highValue) {
+          const sorted = availableAgents
+            .filter(id => loadMap[id] < config.max_leads_per_agent)
+            .sort((a, b) => loadMap[a] - loadMap[b]);
+          if (!sorted.length) break;
+          assignments.push({ orderId: order.id, agentId: sorted[0] });
+          loadMap[sorted[0]]++;
+        }
+
+        // Regular: round-robin
+        let idx = 0;
+        for (const order of regular) {
+          const avail = availableAgents.filter(id => loadMap[id] < config.max_leads_per_agent);
+          if (!avail.length) break;
+          if (idx >= avail.length) idx = 0;
+          assignments.push({ orderId: order.id, agentId: avail[idx] });
+          loadMap[avail[idx]]++;
+          idx++;
+        }
+      }
+
+      // Execute assignments
+      let assigned = 0;
+      for (const a of assignments) {
+        const { error } = await adminClient
+          .from("orders")
+          .update({
+            assigned_agent_id: a.agentId,
+            assigned_agent_name: nameMap[a.agentId] || "",
+            assigned_at: new Date().toISOString(),
+            assigned_by: nameMap[userId] || userId,
+          })
+          .eq("id", a.orderId)
+          .is("assigned_agent_id", null);
+        if (!error) assigned++;
+      }
+
+      return json({ assigned, total_unassigned: unassigned.length, strategy });
+    }
+
+    // ── Operations Command Center ────────────────────────────
+    // GET /api/operations-center
+    if (req.method === "GET" && path === "operations-center") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayISO = todayStart.toISOString();
+
+      // Today's orders by status
+      const { data: todayOrders } = await adminClient
+        .from("orders")
+        .select("id, status, price, assigned_agent_id, assigned_agent_name, updated_at, created_at")
+        .gte("created_at", todayISO);
+
+      const confirmed = (todayOrders || []).filter((o: any) => o.status === "confirmed").length;
+      const shipped = (todayOrders || []).filter((o: any) => o.status === "shipped").length;
+      const returned = (todayOrders || []).filter((o: any) => o.status === "returned").length;
+      const paid = (todayOrders || []).filter((o: any) => o.status === "paid").length;
+      const todayRevenue = (todayOrders || [])
+        .filter((o: any) => ["shipped", "paid"].includes(o.status))
+        .reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+      const totalToday = (todayOrders || []).length;
+
+      // Orders updated today (status changes)
+      const { data: updatedToday } = await adminClient
+        .from("orders")
+        .select("id, status, price")
+        .gte("updated_at", todayISO)
+        .in("status", ["confirmed", "shipped", "paid", "returned"]);
+
+      const confirmedToday = (updatedToday || []).filter((o: any) => o.status === "confirmed").length;
+      const shippedToday = (updatedToday || []).filter((o: any) => o.status === "shipped").length;
+      const returnedToday = (updatedToday || []).filter((o: any) => o.status === "returned").length;
+      const paidToday = (updatedToday || []).filter((o: any) => o.status === "paid").length;
+      const revenueToday = (updatedToday || [])
+        .filter((o: any) => o.status === "paid")
+        .reduce((s: number, o: any) => s + Number(o.price || 0), 0);
+
+      // Online agents with today's activity
+      const { data: profiles } = await adminClient
+        .from("profiles")
+        .select("user_id, full_name, email")
+        .eq("is_active", true);
+
+      const pIds = (profiles || []).map((p: any) => p.user_id);
+      const { data: roles } = await adminClient
+        .from("user_roles")
+        .select("user_id, role")
+        .in("user_id", pIds.length > 0 ? pIds : ["__none__"]);
+
+      const roleMap2: Record<string, string[]> = {};
+      for (const r of roles || []) {
+        if (!roleMap2[r.user_id]) roleMap2[r.user_id] = [];
+        roleMap2[r.user_id].push(r.role);
+      }
+
+      const agentProfiles = (profiles || []).filter((p: any) => {
+        const r = roleMap2[p.user_id] || [];
+        return r.includes("agent") || r.includes("prediction_agent");
+      });
+
+      // Today's shift login logs
+      const todayDateStr = new Date().toISOString().split("T")[0];
+      const { data: loginLogs } = await adminClient
+        .from("shift_login_logs")
+        .select("user_id, login_time, logout_time, shift_start_time, shift_end_time")
+        .eq("shift_date", todayDateStr);
+
+      const loginMap: Record<string, any> = {};
+      for (const log of loginLogs || []) {
+        loginMap[log.user_id] = log;
+      }
+
+      // Agent activity: orders touched today
+      const agentActivity: Record<string, { confirmed: number; total: number }> = {};
+      for (const o of todayOrders || []) {
+        if (!o.assigned_agent_id) continue;
+        if (!agentActivity[o.assigned_agent_id]) agentActivity[o.assigned_agent_id] = { confirmed: 0, total: 0 };
+        agentActivity[o.assigned_agent_id].total++;
+        if (o.status === "confirmed") agentActivity[o.assigned_agent_id].confirmed++;
+      }
+
+      // Active lead counts
+      const { data: activeCounts } = await adminClient
+        .from("orders")
+        .select("assigned_agent_id")
+        .in("assigned_agent_id", pIds.length > 0 ? pIds : ["__none__"])
+        .in("status", ["pending", "take", "call_again"]);
+
+      const activeMap: Record<string, number> = {};
+      for (const o of activeCounts || []) {
+        activeMap[o.assigned_agent_id] = (activeMap[o.assigned_agent_id] || 0) + 1;
+      }
+
+      const agentList = agentProfiles.map((p: any) => {
+        const login = loginMap[p.user_id];
+        const activity = agentActivity[p.user_id] || { confirmed: 0, total: 0 };
+        return {
+          user_id: p.user_id,
+          full_name: p.full_name,
+          email: p.email,
+          roles: roleMap2[p.user_id] || [],
+          is_online: !!login && !login.logout_time,
+          login_time: login?.login_time || null,
+          active_leads: activeMap[p.user_id] || 0,
+          today_confirmed: activity.confirmed,
+          today_total: activity.total,
+        };
+      });
+
+      return json({
+        kpi: {
+          total_orders_today: totalToday,
+          confirmed_today: confirmedToday,
+          shipped_today: shippedToday,
+          returned_today: returnedToday,
+          paid_today: paidToday,
+          revenue_today: revenueToday,
+        },
+        agents: agentList.sort((a: any, b: any) => b.today_total - a.today_total),
+        agents_online: agentList.filter((a: any) => a.is_online).length,
+        agents_total: agentList.length,
+      });
+    }
+
     return json({ error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);

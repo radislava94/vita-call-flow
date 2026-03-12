@@ -314,6 +314,36 @@ export type Database = {
           },
         ]
       }
+      lead_distribution_config: {
+        Row: {
+          id: string
+          is_active: boolean
+          max_leads_per_agent: number
+          priority_threshold: number
+          strategy: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: string
+          is_active?: boolean
+          max_leads_per_agent?: number
+          priority_threshold?: number
+          strategy?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          max_leads_per_agent?: number
+          priority_threshold?: number
+          strategy?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       module_settings: {
         Row: {
           id: string

@@ -54,9 +54,11 @@ const PermissionsContext = createContext<PermissionsContextType | undefined>(und
 export const MODULE_ROUTE_MAP: Record<string, string> = {
   dashboard: '/',
   insights: '/insights',
+  operations: '/operations',
   orders: '/orders',
   inbound_leads: '/inbound-leads',
   assigner: '/assigner',
+  lead_distribution: '/lead-distribution',
   assigned: '/assigned',
   prediction_leads: '/prediction-leads',
   prediction_lists: '/predictions',

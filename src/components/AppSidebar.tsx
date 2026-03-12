@@ -8,7 +8,7 @@ import {
   LayoutDashboard, ShoppingCart, ClipboardList, FileSpreadsheet, Package,
   BarChart3, Users, CalendarDays, FileText, History, ChevronLeft,
   ChevronRight, ChevronDown, Phone, Warehouse, Settings, Inbox,
-  Webhook, UserPlus, SearchIcon, TrendingUp,
+  Webhook, UserPlus, SearchIcon, TrendingUp, Activity, Zap,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -30,6 +30,7 @@ const sections: NavSection[] = [
     items: [
       { title: 'Dashboard', path: '/', icon: LayoutDashboard, moduleKey: 'dashboard' },
       { title: 'Insights', path: '/insights', icon: TrendingUp, moduleKey: 'insights' },
+      { title: 'Operations', path: '/operations', icon: Activity, moduleKey: 'operations' },
     ],
   },
   {
@@ -38,6 +39,7 @@ const sections: NavSection[] = [
       { title: 'Orders', path: '/orders', icon: ShoppingCart, moduleKey: 'orders' },
       { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, moduleKey: 'inbound_leads' },
       { title: 'Assigner', path: '/assigner', icon: UserPlus, moduleKey: 'assigner' },
+      { title: 'Lead Distribution', path: '/lead-distribution', icon: Zap, moduleKey: 'lead_distribution' },
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, moduleKey: 'assigned' },
       { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, moduleKey: 'prediction_leads' },
       { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, moduleKey: 'prediction_lists' },
