@@ -3239,6 +3239,130 @@ serve(async (req) => {
     }
 
 
+    // ============================================================
+    // SHIFT TEMPLATES
+    // ============================================================
+
+    // GET /api/shift-templates
+    if (req.method === "GET" && path === "shift-templates") {
+      const { data, error } = await adminClient.from("shift_templates").select("*").order("name", { ascending: true });
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data || []);
+    }
+
+    // POST /api/shift-templates
+    if (req.method === "POST" && path === "shift-templates") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { name, start_time, end_time } = body;
+      if (!name || !start_time || !end_time) return json({ error: "name, start_time, end_time required" }, 400);
+      const { data, error } = await adminClient.from("shift_templates").insert({ name: name.trim(), start_time, end_time, created_by: user.id }).select().single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json(data);
+    }
+
+    // PATCH /api/shift-templates/:id
+    if (req.method === "PATCH" && segments[0] === "shift-templates" && segments.length === 2) {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const templateId = segments[1];
+      const body = await req.json();
+      const updates: Record<string, any> = {};
+      if (body.name !== undefined) updates.name = body.name.trim();
+      if (body.start_time !== undefined) updates.start_time = body.start_time;
+      if (body.end_time !== undefined) updates.end_time = body.end_time;
+      updates.updated_at = new Date().toISOString();
+
+      const { data, error } = await adminClient.from("shift_templates").update(updates).eq("id", templateId).select().single();
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+
+      // Update future shifts that use this template name (propagate time changes)
+      const today = new Date().toISOString().substring(0, 10);
+      if (body.start_time || body.end_time) {
+        const shiftUpdates: Record<string, any> = {};
+        if (body.start_time) shiftUpdates.start_time = body.start_time;
+        if (body.end_time) shiftUpdates.end_time = body.end_time;
+        if (body.name && data) shiftUpdates.name = data.name;
+        // Update future shifts with matching name
+        const oldName = body.name ? body.name.trim() : data.name;
+        await adminClient.from("shifts").update(shiftUpdates).eq("name", oldName).gte("date", today);
+      }
+
+      return json(data);
+    }
+
+    // DELETE /api/shift-templates/:id
+    if (req.method === "DELETE" && segments[0] === "shift-templates" && segments.length === 2) {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const templateId = segments[1];
+      const { error } = await adminClient.from("shift_templates").delete().eq("id", templateId);
+      if (error) return json({ error: sanitizeDbError(error) }, 400);
+      return json({ success: true });
+    }
+
+    // POST /api/shift-templates/assign-week — assign a template to agents for a week
+    if (req.method === "POST" && path === "shift-templates/assign-week") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+      const body = await req.json();
+      const { template_id, agent_ids, week_start, days } = body;
+      // days: array of date strings OR we generate Mon-Fri from week_start
+
+      if (!template_id || !agent_ids?.length || !week_start) {
+        return json({ error: "template_id, agent_ids, week_start required" }, 400);
+      }
+
+      // Get template
+      const { data: template } = await adminClient.from("shift_templates").select("*").eq("id", template_id).single();
+      if (!template) return json({ error: "Template not found" }, 404);
+
+      // Generate dates for the week (Mon-Sun or custom days)
+      let datesToCreate: string[] = [];
+      if (days && Array.isArray(days) && days.length > 0) {
+        datesToCreate = days;
+      } else {
+        // Default: Mon-Fri
+        const start = new Date(week_start + "T12:00:00");
+        for (let i = 0; i < 5; i++) {
+          const d = new Date(start);
+          d.setDate(d.getDate() + i);
+          datesToCreate.push(d.toISOString().substring(0, 10));
+        }
+      }
+
+      const createdShifts: any[] = [];
+      for (const date of datesToCreate) {
+        // Check if shift already exists for this template name + date
+        const { data: existing } = await adminClient.from("shifts").select("id").eq("name", template.name).eq("date", date);
+        
+        let shiftId: string;
+        if (existing && existing.length > 0) {
+          shiftId = existing[0].id;
+          // Update times in case template changed
+          await adminClient.from("shifts").update({ start_time: template.start_time, end_time: template.end_time }).eq("id", shiftId);
+        } else {
+          const { data: newShift, error: shiftErr } = await adminClient.from("shifts").insert({
+            name: template.name,
+            date,
+            start_time: template.start_time,
+            end_time: template.end_time,
+            created_by: user.id,
+          }).select().single();
+          if (shiftErr) return json({ error: sanitizeDbError(shiftErr) }, 400);
+          shiftId = newShift.id;
+          createdShifts.push(newShift);
+        }
+
+        // Add agent assignments (skip duplicates)
+        for (const agentId of agent_ids) {
+          const { data: existingAssignment } = await adminClient.from("shift_assignments").select("id").eq("shift_id", shiftId).eq("user_id", agentId);
+          if (!existingAssignment || existingAssignment.length === 0) {
+            await adminClient.from("shift_assignments").insert({ shift_id: shiftId, user_id: agentId });
+          }
+        }
+      }
+
+      return json({ success: true, shifts_created: createdShifts.length, days: datesToCreate.length });
+    }
+
     // GET /api/warehouse/incoming-orders (confirmed orders + confirmed prediction leads)
     if (req.method === "GET" && path === "warehouse/incoming-orders") {
       if (!isAdminOrManager && !isWarehouse) return json({ error: "Forbidden" }, 403);
