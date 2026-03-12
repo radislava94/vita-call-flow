@@ -371,7 +371,14 @@ export default function Orders() {
                 <tr key={order.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors cursor-pointer" onClick={() => tryOpenOrder(order)}>
                   <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
                   <td className="px-4 py-3 font-mono text-xs font-semibold">{order.display_id}</td>
-                  <td className="px-4 py-3">{order.customer_name}</td>
+                  <td className="px-4 py-3">
+                    <span>{order.customer_name}</span>
+                    {getPhoneDupCount(order.customer_phone) > 1 && (
+                      <Badge variant="destructive" className="ml-1.5 text-[9px] px-1 py-0 cursor-pointer" onClick={(e) => { e.stopPropagation(); setSearch(order.customer_phone); }}>
+                        {getPhoneDupCount(order.customer_phone)}x
+                      </Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     {order.order_items && order.order_items.length > 0
                       ? order.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
