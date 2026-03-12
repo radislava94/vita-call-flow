@@ -39,6 +39,7 @@ const sections: NavSection[] = [
       { title: 'Orders', path: '/orders', icon: ShoppingCart, moduleKey: 'orders' },
       { title: 'Inbound Leads', path: '/inbound-leads', icon: Inbox, moduleKey: 'inbound_leads' },
       { title: 'Assigner', path: '/assigner', icon: UserPlus, moduleKey: 'assigner' },
+      { title: 'Lead Distribution', path: '/lead-distribution', icon: Zap, moduleKey: 'lead_distribution' },
       { title: 'Assigned to Me', path: '/assigned', icon: ClipboardList, moduleKey: 'assigned' },
       { title: 'Prediction Leads', path: '/prediction-leads', icon: FileSpreadsheet, moduleKey: 'prediction_leads' },
       { title: 'Prediction Lists', path: '/predictions', icon: FileSpreadsheet, moduleKey: 'prediction_lists' },
