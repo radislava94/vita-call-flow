@@ -347,7 +347,7 @@ function IncomingOrdersTab() {
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">ID</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Customer</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Phone</th>
-                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Product</th>
+                          <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs min-w-[220px]">Product</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Total Price</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Agent</th>
                           <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-xs">Source</th>
@@ -367,10 +367,16 @@ function IncomingOrdersTab() {
                               <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
                               <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
-                              <td className="px-4 py-2.5 text-xs">
+                              <td className="px-4 py-2.5 text-xs min-w-[220px] whitespace-normal leading-relaxed">
                                 {o.order_items && o.order_items.length > 0
-                                  ? o.order_items.map((i: any) => `${i.product_name} x${i.quantity}`).join(', ')
-                                  : <>{o.product_name}{o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}</>}
+                                  ? o.order_items.map((i: any, idx: number) => (
+                                    <span key={i.id || idx}>
+                                      {idx > 0 && <span className="text-muted-foreground">, </span>}
+                                      <span className="font-medium">{i.product_name}</span>
+                                      <span className="text-muted-foreground"> x{i.quantity}</span>
+                                    </span>
+                                  ))
+                                  : <><span className="font-medium">{o.product_name}</span>{o.quantity > 1 && <span className="text-muted-foreground"> x{o.quantity}</span>}</>}
                               </td>
                               <td className="px-4 py-2.5 font-semibold text-primary text-xs">{o.price ? Number(o.price).toFixed(2) : '—'}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.assigned_agent_name || '—'}</td>
