@@ -32,6 +32,9 @@ export default function SearchPredictionPage() {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ orders: any[]; leads: any[]; order_history: any[] } | null>(null);
 
+  // Customer intelligence for phone-based searches
+  const { data: customerIntel, loading: intelLoading } = useCustomerIntelligence(query);
+
   const handleSearch = useCallback(async () => {
     const q = query.trim();
     if (!q) return;
