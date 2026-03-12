@@ -375,7 +375,14 @@ function IncomingOrdersTab() {
                               <td className="px-2 py-2.5 text-center">
                                 <Checkbox checked={selectedIds.has(o.id)} onCheckedChange={() => toggleSelect(o.id)} />
                               </td>
-                              <td className="px-4 py-2.5 font-medium text-xs">{o.display_id}</td>
+                               <td className="px-4 py-2.5 font-medium text-xs">
+                                 {o.display_id}
+                                 {o.ship_after_date && (
+                                   <Badge className="ml-1 bg-amber-500/15 text-amber-700 border-amber-500/30 text-[9px]">
+                                     ⏱ Ship After: {format(parseISO(o.ship_after_date), 'MMM d')}
+                                   </Badge>
+                                 )}
+                               </td>
                               <td className="px-4 py-2.5 text-xs">{o.customer_name}</td>
                               <td className="px-4 py-2.5 text-muted-foreground text-xs">{o.customer_phone || '—'}</td>
                               <td className="px-4 py-2.5 text-xs min-w-[220px] whitespace-normal leading-relaxed">
