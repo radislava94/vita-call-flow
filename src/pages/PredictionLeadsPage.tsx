@@ -99,6 +99,7 @@ export default function PredictionLeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalLead, setModalLead] = useState<LeadRow | null>(null);
+  const [historyLead, setHistoryLead] = useState<{ phone: string; name: string } | null>(null);
 
   // Filter state
   const [search, setSearch] = useState('');
