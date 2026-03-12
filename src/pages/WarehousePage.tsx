@@ -55,8 +55,10 @@ import {
   TrendingDown,
   DollarSign,
   ShoppingCart,
+  CalendarDays,
+  Clock,
 } from 'lucide-react';
-import { format, isToday, parseISO } from 'date-fns';
+import { format, isToday, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 // ─── Incoming Orders Tab ───────────────────────────────────────
