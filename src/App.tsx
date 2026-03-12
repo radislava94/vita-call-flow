@@ -4,10 +4,10 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { PermissionsProvider } from "@/contexts/PermissionsContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import Orders from "./pages/Orders";
-// OrderDetails removed — all editing happens via OrderModal
 import UsersPage from "./pages/UsersPage";
 import ProductsPage from "./pages/ProductsPage";
 import AssignedPage from "./pages/AssignedPage";
@@ -39,32 +39,33 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><Dashboard /></ProtectedRoute>} />
-            <Route path="/orders" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><Orders /></ProtectedRoute>} />
-            {/* /orders/:id route removed — OrderModal is the single editing UI */}
-            <Route path="/users" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><UsersPage /></ProtectedRoute>} />
-            <Route path="/products" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ProductsPage /></ProtectedRoute>} />
-            <Route path="/assigned" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><AssignedPage /></ProtectedRoute>} />
-            <Route path="/assigner" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><AssignerPage /></ProtectedRoute>} />
-            <Route path="/predictions" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><PredictionListsPage /></ProtectedRoute>} />
-            <Route path="/predictions/:id" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><PredictionListDetail /></ProtectedRoute>} />
-            <Route path="/prediction-leads" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'prediction_agent']}><PredictionLeadsPage /></ProtectedRoute>} />
-            <Route path="/performance" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><AgentPerformancePage /></ProtectedRoute>} />
-            <Route path="/shifts" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ShiftsManagementPage /></ProtectedRoute>} />
-            <Route path="/my-shifts" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><MyShiftsPage /></ProtectedRoute>} />
-            <Route path="/call-scripts" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><CallScriptsPage /></ProtectedRoute>} />
-            <Route path="/call-history" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><CallHistoryPage /></ProtectedRoute>} />
-            <Route path="/warehouse" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'warehouse']}><WarehousePage /></ProtectedRoute>} />
-            <Route path="/settings" element={<ProtectedRoute allowedRoles={['admin']}><SettingsPage /></ProtectedRoute>} />
-            <Route path="/ads" element={<ProtectedRoute allowedRoles={['admin', 'ads_admin']}><AdsPanelPage /></ProtectedRoute>} />
-            <Route path="/inbound-leads" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><InboundLeadsPage /></ProtectedRoute>} />
-            <Route path="/webhooks" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><WebhookManagementPage /></ProtectedRoute>} />
-            <Route path="/search-prediction" element={<ProtectedRoute allowedRoles={['admin', 'manager', 'pending_agent', 'prediction_agent', 'agent']}><SearchPredictionPage /></ProtectedRoute>} />
-            <Route path="/insights" element={<ProtectedRoute allowedRoles={['admin', 'manager']}><ManagementInsightsPage /></ProtectedRoute>} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
+          <PermissionsProvider>
+            <Routes>
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/" element={<ProtectedRoute moduleKey="dashboard"><Dashboard /></ProtectedRoute>} />
+              <Route path="/orders" element={<ProtectedRoute moduleKey="orders"><Orders /></ProtectedRoute>} />
+              <Route path="/users" element={<ProtectedRoute moduleKey="users"><UsersPage /></ProtectedRoute>} />
+              <Route path="/products" element={<ProtectedRoute moduleKey="products"><ProductsPage /></ProtectedRoute>} />
+              <Route path="/assigned" element={<ProtectedRoute moduleKey="assigned"><AssignedPage /></ProtectedRoute>} />
+              <Route path="/assigner" element={<ProtectedRoute moduleKey="assigner"><AssignerPage /></ProtectedRoute>} />
+              <Route path="/predictions" element={<ProtectedRoute moduleKey="prediction_lists"><PredictionListsPage /></ProtectedRoute>} />
+              <Route path="/predictions/:id" element={<ProtectedRoute moduleKey="prediction_lists"><PredictionListDetail /></ProtectedRoute>} />
+              <Route path="/prediction-leads" element={<ProtectedRoute moduleKey="prediction_leads"><PredictionLeadsPage /></ProtectedRoute>} />
+              <Route path="/performance" element={<ProtectedRoute moduleKey="performance"><AgentPerformancePage /></ProtectedRoute>} />
+              <Route path="/shifts" element={<ProtectedRoute moduleKey="shifts"><ShiftsManagementPage /></ProtectedRoute>} />
+              <Route path="/my-shifts" element={<ProtectedRoute moduleKey="my_shifts"><MyShiftsPage /></ProtectedRoute>} />
+              <Route path="/call-scripts" element={<ProtectedRoute moduleKey="call_scripts"><CallScriptsPage /></ProtectedRoute>} />
+              <Route path="/call-history" element={<ProtectedRoute moduleKey="call_history"><CallHistoryPage /></ProtectedRoute>} />
+              <Route path="/warehouse" element={<ProtectedRoute moduleKey="warehouse"><WarehousePage /></ProtectedRoute>} />
+              <Route path="/settings" element={<ProtectedRoute moduleKey="settings"><SettingsPage /></ProtectedRoute>} />
+              <Route path="/ads" element={<ProtectedRoute moduleKey="ads"><AdsPanelPage /></ProtectedRoute>} />
+              <Route path="/inbound-leads" element={<ProtectedRoute moduleKey="inbound_leads"><InboundLeadsPage /></ProtectedRoute>} />
+              <Route path="/webhooks" element={<ProtectedRoute moduleKey="webhooks"><WebhookManagementPage /></ProtectedRoute>} />
+              <Route path="/search-prediction" element={<ProtectedRoute moduleKey="search_prediction"><SearchPredictionPage /></ProtectedRoute>} />
+              <Route path="/insights" element={<ProtectedRoute moduleKey="insights"><ManagementInsightsPage /></ProtectedRoute>} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </PermissionsProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
