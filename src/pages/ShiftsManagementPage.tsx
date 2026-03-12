@@ -371,42 +371,43 @@ export default function ShiftsManagementPage() {
             ) : shifts.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">No shifts found</div>
             ) : (
-              <div className="rounded-lg border bg-card">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Time</TableHead>
-                      <TableHead>Agents</TableHead>
-                      <TableHead className="w-24">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {shifts.map(shift => (
-                      <TableRow key={shift.id}>
-                        <TableCell className="font-medium">{shift.name}</TableCell>
-                        <TableCell>{format(new Date(shift.date), 'MMM d, yyyy')}</TableCell>
-                        <TableCell className="text-muted-foreground">
-                          <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" />{shift.start_time.substring(0, 5)} - {shift.end_time.substring(0, 5)}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {shift.agents.length === 0 ? <span className="text-muted-foreground text-xs">Unassigned</span> : shift.agents.map(a => (
-                              <Badge key={a.user_id} variant="secondary" className="text-xs">{a.full_name}</Badge>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => openEdit(shift)}><Pencil className="h-4 w-4" /></Button>
-                            <Button variant="ghost" size="icon" onClick={() => { if (confirm('Delete this shift?')) deleteMutation.mutate(shift.id); }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <div className="rounded-lg border bg-card divide-y">
+                {shifts.map(shift => (
+                  <div key={shift.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-4 min-w-0">
+                      <div>
+                        <p className="font-medium text-foreground">{shift.name}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {format(new Date(shift.date), 'MMM d, yyyy')} · {shift.start_time.substring(0, 5)} – {shift.end_time.substring(0, 5)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap gap-1">
+                        {shift.agents.length === 0
+                          ? <span className="text-muted-foreground text-xs">Unassigned</span>
+                          : shift.agents.map(a => (
+                            <Badge key={a.user_id} variant="secondary" className="text-xs">{a.full_name}</Badge>
+                          ))}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => openEdit(shift)}>
+                            <Pencil className="h-3.5 w-3.5 mr-2" /> Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive" onClick={() => { if (confirm('Delete this shift?')) deleteMutation.mutate(shift.id); }}>
+                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </TabsContent>
