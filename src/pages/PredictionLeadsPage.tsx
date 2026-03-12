@@ -12,12 +12,14 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal } from 'lucide-react';
+import { Loader2, Check, X as XIcon, Phone, Search, CalendarIcon, Filter, Tag, HandMetal, MoreVertical, History, Copy } from 'lucide-react';
 import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
 import { PhoneQualityBadge } from '@/components/PhoneQualityBadge';
+import { CustomerHistoryDialog } from '@/components/CustomerHistoryDialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface LeadItem {
   id: string;
@@ -97,6 +99,7 @@ export default function PredictionLeadsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modalLead, setModalLead] = useState<LeadRow | null>(null);
+  const [historyLead, setHistoryLead] = useState<{ phone: string; name: string } | null>(null);
 
   // Filter state
   const [search, setSearch] = useState('');
@@ -157,6 +160,21 @@ export default function PredictionLeadsPage() {
   }, [leads, search, debouncedSearch, selectedStatuses, selectedProduct, dateFrom, dateTo]);
 
   const hasActiveFilters = search.trim() || selectedStatuses.length > 0 || selectedProduct !== 'all' || dateFrom || dateTo;
+
+  // Duplicate phone detection
+  const phoneCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const l of filteredLeads) {
+      const p = l.telephone?.replace(/[^0-9+]/g, '');
+      if (p && p.length >= 6) counts[p] = (counts[p] || 0) + 1;
+    }
+    return counts;
+  }, [filteredLeads]);
+
+  const getPhoneDupCount = (phone: string) => {
+    const p = phone?.replace(/[^0-9+]/g, '');
+    return p ? (phoneCounts[p] || 0) : 0;
+  };
 
   const clearAllFilters = () => {
     setSearch('');
@@ -359,6 +377,7 @@ export default function PredictionLeadsPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Product</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Total</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+              <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody>
@@ -374,7 +393,14 @@ export default function PredictionLeadsPage() {
                       {PREDICTION_LEAD_LABELS[lead.status]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-medium">{lead.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {lead.name}
+                    {getPhoneDupCount(lead.telephone) > 1 && (
+                      <Badge variant="destructive" className="ml-1.5 text-[9px] px-1 py-0 cursor-pointer" onClick={() => setSearch(lead.telephone)}>
+                        {getPhoneDupCount(lead.telephone)}x
+                      </Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       {lead.telephone}
@@ -419,12 +445,29 @@ export default function PredictionLeadsPage() {
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setHistoryLead({ phone: lead.telephone, name: lead.name })}>
+                          <History className="h-3.5 w-3.5 mr-2" /> See History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSearch(lead.telephone)}>
+                          <Copy className="h-3.5 w-3.5 mr-2" /> View Duplicates
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
                 </tr>
               );
             })}
             {filteredLeads.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   No leads found.
                   {hasActiveFilters && (
                     <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
@@ -446,6 +489,14 @@ export default function PredictionLeadsPage() {
         data={modalLead ? leadToModalData(modalLead) : null}
         contextType="prediction_lead"
         readOnly={!!(modalLead && (modalLead as any).is_owned === false)}
+      />
+
+      {/* Customer History Dialog */}
+      <CustomerHistoryDialog
+        open={!!historyLead}
+        onClose={() => setHistoryLead(null)}
+        customerPhone={historyLead?.phone || ''}
+        customerName={historyLead?.name || ''}
       />
     </AppLayout>
   );
