@@ -219,6 +219,17 @@ export const apiUpdateShift = (id: string, body: any) =>
   apiFetch(`shifts/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteShift = (id: string) =>
   apiFetch(`shifts/${id}`, { method: 'DELETE' });
+export const apiCheckShiftLogin = () => apiFetch('shifts/check-login');
+export const apiLogShiftLogin = (body: { shift_id: string; shift_date: string; shift_start_time: string; shift_end_time: string }) =>
+  apiFetch('shifts/login-log', { method: 'POST', body: JSON.stringify(body) });
+export const apiLogShiftLogout = () =>
+  apiFetch('shifts/logout-log', { method: 'PATCH', body: JSON.stringify({}) });
+export const apiGetShiftStatistics = (params?: { from?: string; to?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  return apiFetch(`shifts/statistics?${sp.toString()}`);
+};
 
 // Recent Activity
 export const apiGetRecentActivity = (limit?: number) => {
