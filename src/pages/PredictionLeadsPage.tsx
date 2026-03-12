@@ -393,7 +393,14 @@ export default function PredictionLeadsPage() {
                       {PREDICTION_LEAD_LABELS[lead.status]}
                     </span>
                   </td>
-                  <td className="px-4 py-3 font-medium">{lead.name}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {lead.name}
+                    {getPhoneDupCount(lead.telephone) > 1 && (
+                      <Badge variant="destructive" className="ml-1.5 text-[9px] px-1 py-0 cursor-pointer" onClick={() => setSearch(lead.telephone)}>
+                        {getPhoneDupCount(lead.telephone)}x
+                      </Badge>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
                     <div className="flex items-center gap-1.5">
                       {lead.telephone}
@@ -438,12 +445,29 @@ export default function PredictionLeadsPage() {
                       )}
                     </div>
                   </td>
+                  <td className="px-4 py-3">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => setHistoryLead({ phone: lead.telephone, name: lead.name })}>
+                          <History className="h-3.5 w-3.5 mr-2" /> See History
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setSearch(lead.telephone)}>
+                          <Copy className="h-3.5 w-3.5 mr-2" /> View Duplicates
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
                 </tr>
               );
             })}
             {filteredLeads.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   No leads found.
                   {hasActiveFilters && (
                     <button onClick={clearAllFilters} className="ml-1 text-primary hover:underline">Clear filters</button>
