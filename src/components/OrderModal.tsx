@@ -81,6 +81,7 @@ export interface OrderModalData {
   displayId?: string;
   items?: ItemLocal[];
   assigned_agent_id?: string | null;
+  ship_after_date?: string | null;
 }
 
 export type OrderModalContextType = 'prediction_lead' | 'order';
