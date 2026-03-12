@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
+import { PhoneQualityBadge } from '@/components/PhoneQualityBadge';
 
 interface LeadItem {
   id: string;
