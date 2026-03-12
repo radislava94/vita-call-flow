@@ -186,19 +186,6 @@ export default function ShiftsManagementPage() {
   const [tplStart, setTplStart] = useState('09:00');
   const [tplEnd, setTplEnd] = useState('17:00');
 
-  // Weekly assignment state
-  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
-  const [assignTemplateId, setAssignTemplateId] = useState('');
-  const [assignAgents, setAssignAgents] = useState<string[]>([]);
-  const [assignWeekStart, setAssignWeekStart] = useState(() => {
-    const now = new Date();
-    const day = now.getDay();
-    const diff = day === 0 ? 1 : (day === 1 ? 0 : 8 - day);
-    const nextMon = addDays(now, diff);
-    return format(nextMon, 'yyyy-MM-dd');
-  });
-  const [assignDays, setAssignDays] = useState<boolean[]>([true, true, true, true, true, false, false]);
-
   const { data: shifts = [], isLoading } = useQuery<Shift[]>({
     queryKey: ['shifts', filterAgent, filterFrom, filterTo],
     queryFn: () => apiGetShifts({
