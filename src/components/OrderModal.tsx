@@ -124,6 +124,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
   const [selectedOutcome, setSelectedOutcome] = useState<CallOutcome | null>(null);
   const [selectedStatus, setSelectedStatus] = useState('');
   const [followUpDate, setFollowUpDate] = useState<Date | undefined>();
+  const [shipAfterDate, setShipAfterDate] = useState<Date | undefined>();
 
   // Products
   const [items, setItems] = useState<ItemLocal[]>([]);
