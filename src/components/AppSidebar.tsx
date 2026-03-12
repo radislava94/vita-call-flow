@@ -51,7 +51,10 @@ const sections: NavSection[] = [
   {
     label: '',
     allowedRoles: ['admin', 'manager'],
-    items: [{ title: 'Dashboard', path: '/', icon: LayoutDashboard }],
+    items: [
+      { title: 'Dashboard', path: '/', icon: LayoutDashboard },
+      { title: 'Insights', path: '/insights', icon: TrendingUp },
+    ],
   },
   {
     label: 'Sales',
