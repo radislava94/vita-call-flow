@@ -3,6 +3,9 @@ import {
   Phone, FileText, Loader2, X, ChevronDown, ChevronUp, Save,
   Plus, Trash2, ShoppingCart, CalendarIcon
 } from 'lucide-react';
+import { useCustomerIntelligence } from '@/hooks/useCustomerIntelligence';
+import { CustomerIntelligencePanel } from '@/components/CustomerIntelligencePanel';
+import { ProductRecommendations } from '@/components/ProductRecommendations';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -132,6 +135,8 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
   // Saving
   const [saving, setSaving] = useState(false);
 
+  // Customer Intelligence
+  const { data: customerIntel, loading: intelLoading } = useCustomerIntelligence(customerPhone);
   useEffect(() => {
     if (!open || !data) return;
 
@@ -438,6 +443,9 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
               </div>
             </section>
 
+            {/* Customer Intelligence */}
+            <CustomerIntelligencePanel data={customerIntel} loading={intelLoading} />
+
             {/* B) Call Outcome */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Call Outcome</h3>
@@ -591,6 +599,27 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
                   </Button>
                 )}
               </div>
+
+              {/* Product Recommendations */}
+              {isEditable && customerIntel?.recommendations && (
+                <ProductRecommendations
+                  recommendations={customerIntel.recommendations}
+                  currentProductNames={activeItems.map(i => i.product_name)}
+                  onAdd={(productId, productName) => {
+                    const product = productsList.find(p => p.id === productId);
+                    setItems(prev => [...prev, {
+                      id: `_new_${Date.now()}`,
+                      product_id: productId,
+                      product_name: productName,
+                      quantity: 1,
+                      price_per_unit: product ? Number(product.price) || 0 : 0,
+                      total_price: product ? Number(product.price) || 0 : 0,
+                      _isNew: true,
+                    }]);
+                  }}
+                  disabled={loadingProducts}
+                />
+              )}
             </section>
 
             {/* E) Payment Summary */}

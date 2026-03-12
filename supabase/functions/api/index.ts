@@ -3624,6 +3624,295 @@ serve(async (req) => {
       return json({ orders, leads, order_history: historyData });
     }
 
+    // ══════════════════════════════════════════════════════════════
+    // GET /api/customer-intelligence?phone=...
+    // Returns customer history, timeline, lead quality score, and recommendations
+    // ══════════════════════════════════════════════════════════════
+    if (req.method === "GET" && path === "customer-intelligence") {
+      const phone = (url.searchParams.get("phone") || "").trim();
+      if (!phone) return json({ error: "Phone required" }, 400);
+
+      // Normalize phone: extract last 8 digits
+      const digitsOnly = phone.replace(/\D/g, "");
+      const last8 = digitsOnly.length >= 8 ? digitsOnly.slice(-8) : digitsOnly;
+      if (last8.length < 6) return json({ found: false });
+
+      // Find all orders matching this phone (last 8 digits)
+      const { data: orders } = await adminClient
+        .from("orders")
+        .select("id, display_id, status, price, product_name, customer_name, customer_phone, customer_city, customer_address, assigned_agent_name, created_at, source_type, order_items(id, product_name, quantity, price_per_unit, total_price)")
+        .ilike("customer_phone", `%${last8}%`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      // Find all prediction leads matching this phone
+      const { data: leads } = await adminClient
+        .from("prediction_leads")
+        .select("id, name, telephone, status, product, created_at, assigned_agent_name, list_id, prediction_lists(name)")
+        .ilike("telephone", `%${last8}%`)
+        .order("created_at", { ascending: false })
+        .limit(100);
+
+      const allOrders = orders || [];
+      const allLeads = leads || [];
+
+      if (allOrders.length === 0 && allLeads.length === 0) {
+        return json({ found: false });
+      }
+
+      // Stats
+      const totalOrders = allOrders.length;
+      const paidOrders = allOrders.filter((o: any) => o.status === "paid");
+      const returnedOrders = allOrders.filter((o: any) => o.status === "returned");
+      const shippedOrders = allOrders.filter((o: any) => o.status === "shipped");
+      const confirmedOrders = allOrders.filter((o: any) => o.status === "confirmed");
+      const lifetimeRevenue = paidOrders.reduce((sum: number, o: any) => sum + Number(o.price || 0), 0);
+
+      const lastOrder = allOrders[0] || null;
+
+      // Timeline: build chronological events
+      const orderIds = allOrders.map((o: any) => o.id);
+      let historyData: any[] = [];
+      if (orderIds.length > 0) {
+        const { data: history } = await adminClient
+          .from("order_history")
+          .select("*")
+          .in("order_id", orderIds)
+          .order("changed_at", { ascending: false })
+          .limit(200);
+        historyData = history || [];
+      }
+
+      // Build timeline events
+      const timeline: any[] = [];
+      
+      // Lead created events
+      for (const l of allLeads) {
+        timeline.push({
+          type: "lead_created",
+          date: l.created_at,
+          agent: l.assigned_agent_name || null,
+          details: `Lead created in ${(l as any).prediction_lists?.name || "list"}`,
+        });
+      }
+
+      // Order events from history
+      for (const h of historyData) {
+        const order = allOrders.find((o: any) => o.id === h.order_id);
+        timeline.push({
+          type: `status_${h.to_status}`,
+          date: h.changed_at,
+          agent: h.changed_by_name || null,
+          details: h.from_status 
+            ? `${order?.display_id || ""}: ${h.from_status} → ${h.to_status}`
+            : `${order?.display_id || ""}: ${h.to_status}`,
+          from_status: h.from_status,
+          to_status: h.to_status,
+          order_display_id: order?.display_id,
+        });
+      }
+
+      // Sort newest first
+      timeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      // Lead quality score
+      let qualityScore = "MEDIUM";
+      let qualityReason = "";
+      if (paidOrders.length >= 2 && returnedOrders.length === 0) {
+        qualityScore = "HIGH";
+        qualityReason = `${paidOrders.length} paid orders, no returns`;
+      } else if (paidOrders.length >= 1 && returnedOrders.length === 0) {
+        qualityScore = "HIGH";
+        qualityReason = `${paidOrders.length} paid order(s), no returns`;
+      } else if (returnedOrders.length > paidOrders.length) {
+        qualityScore = "RISK";
+        qualityReason = `${returnedOrders.length} returns vs ${paidOrders.length} paid`;
+      } else if (returnedOrders.length > 0 && paidOrders.length > 0) {
+        qualityScore = "MEDIUM";
+        qualityReason = `${paidOrders.length} paid, ${returnedOrders.length} returned`;
+      } else if (totalOrders === 0 && allLeads.length > 0) {
+        qualityScore = "MEDIUM";
+        qualityReason = "New lead, no order history";
+      } else if (totalOrders > 0 && paidOrders.length === 0 && returnedOrders.length === 0) {
+        qualityScore = "MEDIUM";
+        qualityReason = `${totalOrders} orders, none paid yet`;
+      }
+
+      // Product recommendations: find frequently co-purchased products
+      const productPairs: Record<string, number> = {};
+      const currentProducts = new Set<string>();
+      // Get product IDs from all order items
+      for (const o of allOrders) {
+        const items = o.order_items || [];
+        for (const item of items) {
+          if (item.product_name) currentProducts.add(item.product_name);
+        }
+      }
+
+      // Find products often bought together across ALL orders
+      const { data: coPurchaseOrders } = await adminClient
+        .from("order_items")
+        .select("order_id, product_id, product_name")
+        .in("order_id", 
+          // Get order_ids that contain any of the current products  
+          allOrders.filter((o: any) => o.order_items?.length > 0).map((o: any) => o.id)
+        )
+        .limit(500);
+
+      // Group by order to find co-purchased products
+      const orderProductMap: Record<string, string[]> = {};
+      for (const item of (coPurchaseOrders || [])) {
+        if (!orderProductMap[item.order_id]) orderProductMap[item.order_id] = [];
+        orderProductMap[item.order_id].push(item.product_name);
+      }
+
+      // Find products that appear in multi-product orders
+      // Instead, query globally for popular add-ons
+      const { data: popularProducts } = await adminClient
+        .from("order_items")
+        .select("product_id, product_name")
+        .not("product_id", "is", null)
+        .limit(1000);
+
+      // Count product frequency
+      const productFreq: Record<string, { name: string; id: string; count: number }> = {};
+      for (const p of (popularProducts || [])) {
+        if (!p.product_id) continue;
+        if (!productFreq[p.product_id]) productFreq[p.product_id] = { name: p.product_name, id: p.product_id, count: 0 };
+        productFreq[p.product_id].count++;
+      }
+      const recommendations = Object.values(productFreq)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 5)
+        .map(p => ({ product_id: p.id, product_name: p.name, frequency: p.count }));
+
+      return json({
+        found: true,
+        stats: {
+          total_orders: totalOrders,
+          paid_orders: paidOrders.length,
+          returned_orders: returnedOrders.length,
+          shipped_orders: shippedOrders.length,
+          confirmed_orders: confirmedOrders.length,
+          lifetime_revenue: lifetimeRevenue,
+          total_leads: allLeads.length,
+        },
+        last_order: lastOrder ? {
+          display_id: lastOrder.display_id,
+          product: lastOrder.order_items?.length > 0
+            ? lastOrder.order_items.map((i: any) => i.product_name).join(", ")
+            : lastOrder.product_name,
+          status: lastOrder.status,
+          date: lastOrder.created_at,
+          agent: lastOrder.assigned_agent_name,
+          price: lastOrder.price,
+        } : null,
+        quality_score: qualityScore,
+        quality_reason: qualityReason,
+        timeline: timeline.slice(0, 50),
+        recommendations,
+        customer_name: allOrders[0]?.customer_name || allLeads[0]?.name || "",
+      });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // GET /api/management-insights
+    // Admin/Manager only analytics
+    // ══════════════════════════════════════════════════════════════
+    if (req.method === "GET" && path === "management-insights") {
+      if (!isAdminOrManager) return json({ error: "Forbidden" }, 403);
+
+      const from = url.searchParams.get("from") || "";
+      const to = url.searchParams.get("to") || "";
+
+      // Get all relevant orders
+      let oQuery = adminClient
+        .from("orders")
+        .select("id, status, price, product_name, customer_city, assigned_agent_id, assigned_agent_name, created_at, source_type, order_items(id, product_name, quantity, price_per_unit, total_price)")
+        .in("status", ["confirmed", "shipped", "delivered", "returned", "paid"]);
+
+      if (from) oQuery = oQuery.gte("created_at", from);
+      if (to) oQuery = oQuery.lte("created_at", to + "T23:59:59");
+
+      const { data: allOrders } = await oQuery.order("created_at", { ascending: false }).limit(5000);
+      const orders = allOrders || [];
+
+      // Returns by product
+      const returnsByProduct: Record<string, { product: string; returns: number; total: number }> = {};
+      for (const o of orders) {
+        const items = o.order_items || [];
+        const productNames = items.length > 0 
+          ? items.map((i: any) => i.product_name) 
+          : [o.product_name];
+        for (const pn of productNames) {
+          if (!returnsByProduct[pn]) returnsByProduct[pn] = { product: pn, returns: 0, total: 0 };
+          returnsByProduct[pn].total++;
+          if (o.status === "returned") returnsByProduct[pn].returns++;
+        }
+      }
+
+      // Returns by city
+      const returnsByCity: Record<string, { city: string; returns: number; total: number }> = {};
+      for (const o of orders) {
+        const city = o.customer_city || "Unknown";
+        if (!returnsByCity[city]) returnsByCity[city] = { city, returns: 0, total: 0 };
+        returnsByCity[city].total++;
+        if (o.status === "returned") returnsByCity[city].returns++;
+      }
+
+      // Revenue per agent
+      const agentStats: Record<string, {
+        agent: string; agent_id: string;
+        revenue: number; orders: number; paid: number; returned: number;
+        confirmed: number; shipped: number;
+      }> = {};
+      for (const o of orders) {
+        const agentId = o.assigned_agent_id || "unassigned";
+        const agentName = o.assigned_agent_name || "Unassigned";
+        if (!agentStats[agentId]) agentStats[agentId] = {
+          agent: agentName, agent_id: agentId,
+          revenue: 0, orders: 0, paid: 0, returned: 0, confirmed: 0, shipped: 0,
+        };
+        agentStats[agentId].orders++;
+        if (o.status === "paid") {
+          agentStats[agentId].paid++;
+          agentStats[agentId].revenue += Number(o.price || 0);
+        }
+        if (o.status === "returned") agentStats[agentId].returned++;
+        if (o.status === "confirmed") agentStats[agentId].confirmed++;
+        if (o.status === "shipped") agentStats[agentId].shipped++;
+      }
+
+      // Average order value per agent (paid only)
+      const agentAov: Record<string, number> = {};
+      for (const [id, s] of Object.entries(agentStats)) {
+        agentAov[id] = s.paid > 0 ? Math.round(s.revenue / s.paid) : 0;
+      }
+
+      // Revenue per lead source
+      const sourceStats: Record<string, { source: string; revenue: number; orders: number; paid: number }> = {};
+      for (const o of orders) {
+        const src = o.source_type || "manual";
+        if (!sourceStats[src]) sourceStats[src] = { source: src, revenue: 0, orders: 0, paid: 0 };
+        sourceStats[src].orders++;
+        if (o.status === "paid") {
+          sourceStats[src].paid++;
+          sourceStats[src].revenue += Number(o.price || 0);
+        }
+      }
+
+      return json({
+        returns_by_product: Object.values(returnsByProduct).sort((a, b) => b.returns - a.returns),
+        returns_by_city: Object.values(returnsByCity).sort((a, b) => b.returns - a.returns),
+        agent_stats: Object.values(agentStats).sort((a, b) => b.revenue - a.revenue),
+        agent_aov: agentAov,
+        source_stats: Object.values(sourceStats).sort((a, b) => b.revenue - a.revenue),
+        total_orders: orders.length,
+        total_revenue: orders.filter((o: any) => o.status === "paid").reduce((s: number, o: any) => s + Number(o.price || 0), 0),
+        total_returned: orders.filter((o: any) => o.status === "returned").length,
+      });
+    }
+
     return json({ error: "Not found" }, 404);
   } catch (err) {
     console.error("API Error:", err);

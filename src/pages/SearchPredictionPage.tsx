@@ -7,6 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Phone, User, ShoppingCart, FileSpreadsheet, Clock } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { useCustomerIntelligence } from '@/hooks/useCustomerIntelligence';
+import { CustomerIntelligencePanel } from '@/components/CustomerIntelligencePanel';
 
 const API_BASE = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/api`;
 
@@ -29,6 +31,9 @@ export default function SearchPredictionPage() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<{ orders: any[]; leads: any[]; order_history: any[] } | null>(null);
+
+  // Customer intelligence for phone-based searches
+  const { data: customerIntel, loading: intelLoading } = useCustomerIntelligence(query);
 
   const handleSearch = useCallback(async () => {
     const q = query.trim();
@@ -98,6 +103,11 @@ export default function SearchPredictionPage() {
         <p className="text-xs text-muted-foreground">
           Phone search normalizes numbers — formats like 078319044, +38978319044, 38978319044 all match the same record.
         </p>
+
+        {/* Customer Intelligence Panel */}
+        {customerIntel?.found && (
+          <CustomerIntelligencePanel data={customerIntel} loading={intelLoading} />
+        )}
 
         {results && (
           <div className="space-y-6">

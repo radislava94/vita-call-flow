@@ -272,3 +272,15 @@ export const apiUpdateWebhook = (id: string, body: any) =>
   apiFetch(`webhooks/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
 export const apiDeleteWebhook = (id: string) =>
   apiFetch(`webhooks/${id}`, { method: 'DELETE' });
+
+// Customer Intelligence
+export const apiGetCustomerIntelligence = (phone: string) =>
+  apiFetch(`customer-intelligence?phone=${encodeURIComponent(phone)}`);
+
+// Management Insights
+export const apiGetManagementInsights = (params?: { from?: string; to?: string }) => {
+  const sp = new URLSearchParams();
+  if (params?.from) sp.set('from', params.from);
+  if (params?.to) sp.set('to', params.to);
+  return apiFetch(`management-insights?${sp.toString()}`);
+};

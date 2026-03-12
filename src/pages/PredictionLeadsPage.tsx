@@ -17,6 +17,7 @@ import { format } from 'date-fns';
 import { apiGetMyLeads, apiTakeLead } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { OrderModal, OrderModalData } from '@/components/OrderModal';
+import { PhoneQualityBadge } from '@/components/PhoneQualityBadge';
 
 interface LeadItem {
   id: string;
@@ -374,7 +375,12 @@ export default function PredictionLeadsPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 font-medium">{lead.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{lead.telephone}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5">
+                      {lead.telephone}
+                      <PhoneQualityBadge phone={lead.telephone} />
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{lead.city || '—'}</td>
                   <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
                     {hasItems ? `${items.length} product${items.length > 1 ? 's' : ''}` : lead.product || '—'}
