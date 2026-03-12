@@ -193,6 +193,7 @@ export default function ShiftsManagementPage() {
             <TabsTrigger value="list">List View</TabsTrigger>
             <TabsTrigger value="calendar">Calendar View</TabsTrigger>
             <TabsTrigger value="statistics" className="gap-1"><BarChart3 className="h-3.5 w-3.5" /> Statistics</TabsTrigger>
+            <TabsTrigger value="login-activity" className="gap-1"><LogIn className="h-3.5 w-3.5" /> Login Activity</TabsTrigger>
           </TabsList>
 
           <TabsContent value="list">
