@@ -22,7 +22,7 @@ import CallScriptsPage from "./pages/CallScriptsPage";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import WarehousePage from "./pages/WarehousePage";
 import SettingsPage from "./pages/SettingsPage";
-import AdsPanelPage from "./pages/AdsPanelPage";
+
 import InboundLeadsPage from "./pages/InboundLeadsPage";
 import WebhookManagementPage from "./pages/WebhookManagementPage";
 import SearchPredictionPage from "./pages/SearchPredictionPage";
