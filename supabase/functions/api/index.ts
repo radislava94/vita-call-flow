@@ -2984,27 +2984,61 @@ serve(async (req) => {
           const { data: currentOrder } = await adminClient.from("orders").select("*").eq("id", itemId).single();
           if (!currentOrder) return json({ error: "Order not found" }, 404);
 
-          // Stock deduction on shipped
-          const orderQty = body.quantity ?? currentOrder.quantity ?? 1;
-          const productId = body.product_id ?? currentOrder.product_id;
-          if (body.status === "shipped" && currentOrder.status !== "shipped" && productId) {
-            const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", productId).single();
-            if (product && product.stock_quantity < orderQty) {
-              return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
-            }
-            if (product) {
-              const newQty = product.stock_quantity - orderQty;
-              await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", productId);
-              await adminClient.from("inventory_logs").insert({
-                product_id: productId,
-                change_amount: -orderQty,
-                previous_stock: product.stock_quantity,
-                new_stock: newQty,
-                reason: "order_deduction",
-                movement_type: "order_deduction",
-                user_id: user.id,
-                notes: `Order ${currentOrder.display_id} shipped (warehouse)`,
-              });
+          // Stock deduction on shipped — supports multi-product orders
+          if (body.status === "shipped" && currentOrder.status !== "shipped") {
+            const { data: orderItems } = await adminClient.from("order_items").select("*").eq("order_id", itemId);
+            if (orderItems && orderItems.length > 0) {
+              // Multi-product: check stock for all items first
+              for (const item of orderItems) {
+                if (!item.product_id) continue;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+                if (product && product.stock_quantity < item.quantity) {
+                  return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${item.quantity}` }, 400);
+                }
+              }
+              // All checks passed, deduct
+              for (const item of orderItems) {
+                if (!item.product_id) continue;
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", item.product_id).single();
+                if (product) {
+                  const newQty = product.stock_quantity - item.quantity;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", item.product_id);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: item.product_id,
+                    change_amount: -item.quantity,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_deduction",
+                    movement_type: "order_deduction",
+                    user_id: user.id,
+                    notes: `Order ${currentOrder.display_id} shipped (warehouse) — ${item.product_name}`,
+                  });
+                }
+              }
+            } else {
+              // Legacy single-product fallback
+              const orderQty = body.quantity ?? currentOrder.quantity ?? 1;
+              const productId = body.product_id ?? currentOrder.product_id;
+              if (productId) {
+                const { data: product } = await adminClient.from("products").select("stock_quantity, name").eq("id", productId).single();
+                if (product && product.stock_quantity < orderQty) {
+                  return json({ error: `Insufficient stock: ${product.name} has ${product.stock_quantity} available, but order requires ${orderQty}` }, 400);
+                }
+                if (product) {
+                  const newQty = product.stock_quantity - orderQty;
+                  await adminClient.from("products").update({ stock_quantity: newQty }).eq("id", productId);
+                  await adminClient.from("inventory_logs").insert({
+                    product_id: productId,
+                    change_amount: -orderQty,
+                    previous_stock: product.stock_quantity,
+                    new_stock: newQty,
+                    reason: "order_deduction",
+                    movement_type: "order_deduction",
+                    user_id: user.id,
+                    notes: `Order ${currentOrder.display_id} shipped (warehouse)`,
+                  });
+                }
+              }
             }
           }
 
