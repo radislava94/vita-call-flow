@@ -343,6 +343,7 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
           customer_address: customerAddress.trim(),
           customer_city: customerCity.trim(),
           postal_code: postalCode.trim(),
+          ship_after_date: shipAfterDate ? format(shipAfterDate, 'yyyy-MM-dd') : null,
         });
         // Sync items only if order is NOT in a locked status AND not transitioning TO locked
         const isCurrentlyLocked = lockedStatuses.includes(data.status);
