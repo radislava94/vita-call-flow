@@ -8,7 +8,7 @@ import {
   LayoutDashboard, ShoppingCart, ClipboardList, FileSpreadsheet, Package,
   BarChart3, Users, CalendarDays, FileText, History, ChevronLeft,
   ChevronRight, ChevronDown, Phone, Warehouse, Settings, Inbox,
-  Webhook, UserPlus, SearchIcon, TrendingUp,
+  Webhook, UserPlus, SearchIcon, TrendingUp, Activity, Zap,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
