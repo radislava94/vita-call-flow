@@ -47,12 +47,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
                 className="h-9 w-64 rounded-lg border bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-            <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border bg-background hover:bg-muted transition-colors">
-              <Bell className="h-4 w-4 text-muted-foreground" />
-              <span className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-                3
-              </span>
-            </button>
+            <NotificationsDropdown />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-muted transition-colors">
