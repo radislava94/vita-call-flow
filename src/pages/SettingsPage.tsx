@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { AppLayout } from '@/layouts/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { usePermissions } from '@/contexts/PermissionsContext';
+import type { ModuleSetting, RolePermission, FinancialVisibility } from '@/contexts/PermissionsContext';
 import {
   apiGetUsers, apiCreateUser, apiToggleUserActive, apiSetUserRoles, apiDeleteUser,
   apiGetProducts, apiUpdateProduct,
@@ -12,6 +14,7 @@ import {
   Sun, Moon, Eye, EyeOff, Bell, BellOff, ChevronDown, ChevronRight,
   AlertTriangle, Save, RotateCcw, Mail, Lock, User as UserIcon,
   Crown, Clock, TrendingUp, Megaphone, UserCheck, ArrowUpDown,
+  Blocks, KeyRound, DollarSign, LockKeyhole, Check, X,
 } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Switch } from '@/components/ui/switch';
