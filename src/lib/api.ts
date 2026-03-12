@@ -239,6 +239,17 @@ export const apiGetLoginActivity = (params?: { from?: string; to?: string; agent
   return apiFetch(`shifts/login-activity?${sp.toString()}`);
 };
 
+// Shift Templates
+export const apiGetShiftTemplates = () => apiFetch('shift-templates');
+export const apiCreateShiftTemplate = (body: { name: string; start_time: string; end_time: string }) =>
+  apiFetch('shift-templates', { method: 'POST', body: JSON.stringify(body) });
+export const apiUpdateShiftTemplate = (id: string, body: any) =>
+  apiFetch(`shift-templates/${id}`, { method: 'PATCH', body: JSON.stringify(body) });
+export const apiDeleteShiftTemplate = (id: string) =>
+  apiFetch(`shift-templates/${id}`, { method: 'DELETE' });
+export const apiAssignTemplateWeek = (body: { template_id: string; agent_ids: string[]; week_start: string; days?: string[] }) =>
+  apiFetch('shift-templates/assign-week', { method: 'POST', body: JSON.stringify(body) });
+
 // Recent Activity
 export const apiGetRecentActivity = (limit?: number) => {
   const sp = new URLSearchParams();
