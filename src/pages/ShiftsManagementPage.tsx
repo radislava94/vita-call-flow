@@ -316,51 +316,20 @@ export default function ShiftsManagementPage() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="rounded-lg border bg-card divide-y">
+                <div className="space-y-3">
                   {templates.map(tpl => (
-                    <div key={tpl.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="h-9 w-9 rounded-md bg-primary/10 flex items-center justify-center">
-                          <Clock className="h-4 w-4 text-primary" />
-                        </div>
-                        <div>
-                          <p className="font-medium text-foreground">{tpl.name}</p>
-                          <p className="text-sm text-muted-foreground">
-                            {tpl.start_time.substring(0, 5)} → {tpl.end_time.substring(0, 5)}
-                          </p>
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openEditTemplate(tpl)}>
-                            <Pencil className="h-3.5 w-3.5 mr-2" /> Edit Shift
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => { if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplateMutation.mutate(tpl.id); }}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-2" /> Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <TemplateCard
+                      key={tpl.id}
+                      template={tpl}
+                      agents={agents}
+                      onEdit={() => openEditTemplate(tpl)}
+                      onDelete={() => { if (confirm(`Delete template "${tpl.name}"?`)) deleteTemplateMutation.mutate(tpl.id); }}
+                      onAssign={(data) => assignWeekMutation.mutate(data)}
+                      isAssigning={assignWeekMutation.isPending}
+                    />
                   ))}
                 </div>
               )}
-
-              {/* Quick help */}
-              <Card className="bg-muted/30 border-dashed">
-                <CardContent className="py-4">
-                  <p className="text-sm text-muted-foreground">
-                    <strong>How it works:</strong> Create templates (e.g. Morning, Evening, Night), then use <strong>Assign Week</strong> to quickly assign a template to agents for the entire week. Editing a template automatically updates all future shifts using it.
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </TabsContent>
 
