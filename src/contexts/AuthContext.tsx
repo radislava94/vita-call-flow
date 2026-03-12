@@ -133,6 +133,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    // Log shift logout before signing out
+    try {
+      const { apiLogShiftLogout } = await import('@/lib/api');
+      await apiLogShiftLogout();
+    } catch {
+      // Non-critical
+    }
     await supabase.auth.signOut();
     setSession(null);
     setUser(null);
