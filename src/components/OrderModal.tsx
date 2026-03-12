@@ -443,6 +443,9 @@ export function OrderModal({ open, onClose, data, contextType, readOnly = false 
               </div>
             </section>
 
+            {/* Customer Intelligence */}
+            <CustomerIntelligencePanel data={customerIntel} loading={intelLoading} />
+
             {/* B) Call Outcome */}
             <section>
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Call Outcome</h3>
