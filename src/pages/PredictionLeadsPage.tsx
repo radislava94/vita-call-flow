@@ -377,6 +377,7 @@ export default function PredictionLeadsPage() {
               <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Product</th>
               <th className="px-4 py-3 text-right font-medium text-muted-foreground">Total</th>
               <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
+              <th className="px-4 py-3 w-10"></th>
             </tr>
           </thead>
           <tbody>
