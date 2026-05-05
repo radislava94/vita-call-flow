@@ -213,6 +213,10 @@ serve(async (req) => {
     // Dynamic webhook by slug: POST /api/webhook/:slug
     if (req.method === "POST" && segments[0] === "webhook" && segments.length === 2 && segments[1] !== "leads") {
       const slug = segments[1];
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+      if (!checkWebhookRateLimit(`slug:${slug}`) || !checkWebhookRateLimit(`ip:${ip}`)) {
+        return json({ error: "Rate limit exceeded" }, 429);
+      }
       const { data: webhook } = await adminClient
         .from("webhooks")
         .select("id, product_name, status, total_leads")
