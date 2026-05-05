@@ -180,6 +180,10 @@ serve(async (req) => {
     // ── PUBLIC WEBHOOK (no auth required) ──
     // Legacy generic webhook
     if (req.method === "POST" && path === "webhook/leads") {
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+      if (!checkWebhookRateLimit(`legacy:${ip}`)) {
+        return json({ error: "Rate limit exceeded" }, 429);
+      }
       let body;
       try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { data: lead, error } = await adminClient
@@ -209,6 +213,10 @@ serve(async (req) => {
     // Dynamic webhook by slug: POST /api/webhook/:slug
     if (req.method === "POST" && segments[0] === "webhook" && segments.length === 2 && segments[1] !== "leads") {
       const slug = segments[1];
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+      if (!checkWebhookRateLimit(`slug:${slug}`) || !checkWebhookRateLimit(`ip:${ip}`)) {
+        return json({ error: "Rate limit exceeded" }, 429);
+      }
       const { data: webhook } = await adminClient
         .from("webhooks")
         .select("id, product_name, status, total_leads")
@@ -600,9 +608,10 @@ serve(async (req) => {
       const page = parseInt(url.searchParams.get("page") || "1");
       const limit = parseInt(url.searchParams.get("limit") || "20");
 
-      // When an agent is searching, use adminClient for global search
-      const isGlobalSearch = search && isAgent && !isAdminOrManager;
-      const client = isGlobalSearch ? adminClient : (isAdminOrManager ? adminClient : supabase);
+      // Only admins/managers may use the elevated client. Agents are always
+      // restricted by RLS — search must not bypass row-level access controls.
+      const isGlobalSearch = false;
+      const client = isAdminOrManager ? adminClient : supabase;
 
       let query = client
         .from("orders")
@@ -611,8 +620,7 @@ serve(async (req) => {
         .range((page - 1) * limit, page * limit - 1);
 
       if (status && status !== "all") query = query.eq("status", status);
-      // When doing global search as agent, don't filter by agent
-      if (!isGlobalSearch && agentId && agentId !== "all") query = query.eq("assigned_agent_id", agentId);
+      if (agentId && agentId !== "all") query = query.eq("assigned_agent_id", agentId);
       if (source && source !== "all") query = query.eq("source_type", source);
       if (from) query = query.gte("created_at", from);
       if (to) query = query.lte("created_at", to);
@@ -1991,20 +1999,15 @@ serve(async (req) => {
     // GET /api/prediction-leads/my (agent's assigned leads)
     if (req.method === "GET" && path === "prediction-leads/my") {
       const search = url.searchParams.get("search");
-      const isGlobalSearch = search && isAgent && !isAdminOrManager;
 
-      // When agent searches, use adminClient for global search
+      // Agents are always restricted to their own assigned leads — no global
+      // search bypass via adminClient.
       let query: any;
       if (isAdminOrManager) {
         query = adminClient
           .from("prediction_leads")
           .select("*, prediction_lists(name), prediction_lead_items(*)")
           .not("assigned_agent_id", "is", null);
-      } else if (isGlobalSearch) {
-        // Global search: use adminClient, no agent filter
-        query = adminClient
-          .from("prediction_leads")
-          .select("*, prediction_lists(name), prediction_lead_items(*)");
       } else {
         query = supabase
           .from("prediction_leads")
@@ -4935,13 +4938,20 @@ serve(async (req) => {
 });
 
 function sanitizeDbError(err: any): string {
-  if (err?.code === '23505') return 'Duplicate entry';
-  if (err?.code === '23503') return 'Referenced record not found';
-  if (err?.code === '23502') return 'Required field missing';
-  if (err?.code === '42P01') return 'Operation failed';
-  if (err?.code === '42703') return 'Operation failed';
-  console.error('Database error:', JSON.stringify(err));
-  return 'Operation failed';
+  const errorMap: Record<string, string> = {
+    '23505': 'Duplicate entry',
+    '23503': 'Referenced record not found',
+    '23502': 'Required field missing',
+    '23514': 'Invalid value',
+    '42P01': 'Operation failed',
+    '42703': 'Operation failed',
+    '42501': 'Permission denied',
+  };
+  const code = err?.code;
+  // Only log the error code, never the full error payload (avoid leaking
+  // schema details such as table/column/constraint names into logs).
+  console.error('Database error code:', code || 'unknown');
+  return errorMap[code] || 'Operation failed';
 }
 
 function json(data: any, status = 200) {
@@ -4952,4 +4962,19 @@ function json(data: any, status = 200) {
       "Content-Type": "application/json",
     },
   });
+}
+
+// In-memory sliding-window rate limiter for public webhook endpoints.
+// 100 requests per 60 seconds per key (slug or IP).
+const __webhookRateBuckets = new Map<string, number[]>();
+function checkWebhookRateLimit(key: string, limit = 100, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const arr = (__webhookRateBuckets.get(key) || []).filter(t => now - t < windowMs);
+  if (arr.length >= limit) {
+    __webhookRateBuckets.set(key, arr);
+    return false;
+  }
+  arr.push(now);
+  __webhookRateBuckets.set(key, arr);
+  return true;
 }
