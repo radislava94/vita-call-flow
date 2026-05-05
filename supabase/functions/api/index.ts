@@ -600,9 +600,10 @@ serve(async (req) => {
       const page = parseInt(url.searchParams.get("page") || "1");
       const limit = parseInt(url.searchParams.get("limit") || "20");
 
-      // When an agent is searching, use adminClient for global search
-      const isGlobalSearch = search && isAgent && !isAdminOrManager;
-      const client = isGlobalSearch ? adminClient : (isAdminOrManager ? adminClient : supabase);
+      // Only admins/managers may use the elevated client. Agents are always
+      // restricted by RLS — search must not bypass row-level access controls.
+      const isGlobalSearch = false;
+      const client = isAdminOrManager ? adminClient : supabase;
 
       let query = client
         .from("orders")
@@ -611,8 +612,7 @@ serve(async (req) => {
         .range((page - 1) * limit, page * limit - 1);
 
       if (status && status !== "all") query = query.eq("status", status);
-      // When doing global search as agent, don't filter by agent
-      if (!isGlobalSearch && agentId && agentId !== "all") query = query.eq("assigned_agent_id", agentId);
+      if (agentId && agentId !== "all") query = query.eq("assigned_agent_id", agentId);
       if (source && source !== "all") query = query.eq("source_type", source);
       if (from) query = query.gte("created_at", from);
       if (to) query = query.lte("created_at", to);
