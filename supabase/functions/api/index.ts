@@ -4930,13 +4930,20 @@ serve(async (req) => {
 });
 
 function sanitizeDbError(err: any): string {
-  if (err?.code === '23505') return 'Duplicate entry';
-  if (err?.code === '23503') return 'Referenced record not found';
-  if (err?.code === '23502') return 'Required field missing';
-  if (err?.code === '42P01') return 'Operation failed';
-  if (err?.code === '42703') return 'Operation failed';
-  console.error('Database error:', JSON.stringify(err));
-  return 'Operation failed';
+  const errorMap: Record<string, string> = {
+    '23505': 'Duplicate entry',
+    '23503': 'Referenced record not found',
+    '23502': 'Required field missing',
+    '23514': 'Invalid value',
+    '42P01': 'Operation failed',
+    '42703': 'Operation failed',
+    '42501': 'Permission denied',
+  };
+  const code = err?.code;
+  // Only log the error code, never the full error payload (avoid leaking
+  // schema details such as table/column/constraint names into logs).
+  console.error('Database error code:', code || 'unknown');
+  return errorMap[code] || 'Operation failed';
 }
 
 function json(data: any, status = 200) {
