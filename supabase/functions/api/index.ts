@@ -180,6 +180,10 @@ serve(async (req) => {
     // ── PUBLIC WEBHOOK (no auth required) ──
     // Legacy generic webhook
     if (req.method === "POST" && path === "webhook/leads") {
+      const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
+      if (!checkWebhookRateLimit(`legacy:${ip}`)) {
+        return json({ error: "Rate limit exceeded" }, 429);
+      }
       let body;
       try { body = parseBody(inboundLeadSchema, await req.json()); } catch (e: any) { return json({ error: e.message }, 400); }
       const { data: lead, error } = await adminClient
