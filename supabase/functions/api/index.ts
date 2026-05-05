@@ -1991,20 +1991,15 @@ serve(async (req) => {
     // GET /api/prediction-leads/my (agent's assigned leads)
     if (req.method === "GET" && path === "prediction-leads/my") {
       const search = url.searchParams.get("search");
-      const isGlobalSearch = search && isAgent && !isAdminOrManager;
 
-      // When agent searches, use adminClient for global search
+      // Agents are always restricted to their own assigned leads — no global
+      // search bypass via adminClient.
       let query: any;
       if (isAdminOrManager) {
         query = adminClient
           .from("prediction_leads")
           .select("*, prediction_lists(name), prediction_lead_items(*)")
           .not("assigned_agent_id", "is", null);
-      } else if (isGlobalSearch) {
-        // Global search: use adminClient, no agent filter
-        query = adminClient
-          .from("prediction_leads")
-          .select("*, prediction_lists(name), prediction_lead_items(*)");
       } else {
         query = supabase
           .from("prediction_leads")
