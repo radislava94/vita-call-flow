@@ -4963,3 +4963,18 @@ function json(data: any, status = 200) {
     },
   });
 }
+
+// In-memory sliding-window rate limiter for public webhook endpoints.
+// 100 requests per 60 seconds per key (slug or IP).
+const __webhookRateBuckets = new Map<string, number[]>();
+function checkWebhookRateLimit(key: string, limit = 100, windowMs = 60_000): boolean {
+  const now = Date.now();
+  const arr = (__webhookRateBuckets.get(key) || []).filter(t => now - t < windowMs);
+  if (arr.length >= limit) {
+    __webhookRateBuckets.set(key, arr);
+    return false;
+  }
+  arr.push(now);
+  __webhookRateBuckets.set(key, arr);
+  return true;
+}
